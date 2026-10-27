@@ -984,7 +984,7 @@ HTML;
                                                 if ($bfcBeta && $calc) {
                                                     // Beta: the system number includes the demand bonus. Same
                                                     // 95% / x credit math as the calculator's untouched final.
-                                                    $bfcAutoCash = round((float) data_get($calc, 'calculated_cash_total', 0) * 0.95, 2);
+                                                    $bfcAutoCash = \App\Services\BuyOfferCalculatorService::roundOffer((float) data_get($calc, 'calculated_cash_total', 0) * 0.95);
                                                     $bfcPureAuto = [
                                                         'final_offer_cash' => $bfcAutoCash,
                                                         'final_offer_credit' => round($bfcAutoCash * (float) app(\App\Services\BuyOfferCalculatorService::class)->getRules()['credit_bonus_multiplier'], 2),
@@ -1650,13 +1650,15 @@ HTML;
             ['second_offer_cash', 'cash', 0.75], ['second_offer_credit', 'credit', 0.75],
             ['final_offer_cash', 'cash', 0.95], ['final_offer_credit', 'credit', 0.95]
         ];
+        // Same as BuyOfferCalculatorService::roundOffer: whole dollars, $1 minimum.
+        function bfcRoundOffer(x) { return x > 0 ? Math.max(1, Math.round(x)) : 0; }
         function bfcPopulateLadder(cashTotal) {
-            var creditTotal = Math.round(cashTotal * (parseFloat(BFC_RULES.credit_bonus) || 1) * 100) / 100;
+            var bonus = parseFloat(BFC_RULES.credit_bonus) || 1;
             BFC_LADDER.forEach(function (f) {
                 var $inp = $('#buy_offer_form').find('[name="' + f[0] + '"]');
                 if (!$inp.length || $inp.data('manual')) return;
-                var base = f[1] === 'credit' ? creditTotal : cashTotal;
-                var val = cashTotal > 0 ? (Math.round(base * f[2] * 100) / 100).toFixed(2) : '';
+                var cash = bfcRoundOffer(cashTotal * f[2]);
+                var val = cashTotal > 0 ? (f[1] === 'credit' ? Math.round(cash * bonus * 100) / 100 : cash).toFixed(2) : '';
                 $inp.val(val).attr('data-auto', val);
             });
         }
@@ -1787,10 +1789,10 @@ HTML;
             });
             cashTotal = Math.round(cashTotal * 100) / 100;
             $('#bfc_running_total').text(bfcMoney(cashTotal));
-            $('#bfc_running_final').text(bfcMoney(Math.round(cashTotal * 0.95 * 100) / 100));
-            $('#bfc_max_warn_cash').text(bfcMoney(Math.round(cashTotal * 0.95 * 100) / 100));
-            $('#bfc_max_warn_credit').text(bfcMoney(Math.round(Math.round(cashTotal * 0.95 * 100) / 100 * {{ (float) app(\App\Services\BuyOfferCalculatorService::class)->getRules()['credit_bonus_multiplier'] }} * 100) / 100));
-            $('#bfc_running_credit').text(bfcMoney(Math.round(Math.round(cashTotal * 0.95 * 100) / 100 * {{ (float) app(\App\Services\BuyOfferCalculatorService::class)->getRules()['credit_bonus_multiplier'] }} * 100) / 100));
+            $('#bfc_running_final').text(bfcMoney(bfcRoundOffer(cashTotal * 0.95)));
+            $('#bfc_max_warn_cash').text(bfcMoney(bfcRoundOffer(cashTotal * 0.95)));
+            $('#bfc_max_warn_credit').text(bfcMoney(Math.round(bfcRoundOffer(cashTotal * 0.95) * {{ (float) app(\App\Services\BuyOfferCalculatorService::class)->getRules()['credit_bonus_multiplier'] }} * 100) / 100));
+            $('#bfc_running_credit').text(bfcMoney(Math.round(bfcRoundOffer(cashTotal * 0.95) * {{ (float) app(\App\Services\BuyOfferCalculatorService::class)->getRules()['credit_bonus_multiplier'] }} * 100) / 100));
             if (!BFC_HAS_CALC) { bfcPopulateLadder(cashTotal); }
         }
 
@@ -2220,14 +2222,13 @@ HTML;
                 var paid = parseFloat($('#bfc_accept_final_amount').val());
                 var auto = parseFloat($('#bfc_accept_pm').val() === 'store_credit' ? $a.data('auto-credit') : $a.data('auto-cash'));
                 var hasText = $.trim($box.find('textarea').val()) !== '';
-                if (donated || !isFinite(paid) || !isFinite(auto) || Math.abs(paid - auto) <= 0.009) {
+                // Paying less than the max offer needs no reason (Jon 2026-10-26).
+                if (donated || !isFinite(paid) || !isFinite(auto) || paid - auto <= 0.009) {
                     $box.toggle(hasText && !donated);
                     return;
                 }
-                var diff = Math.abs(paid - auto).toFixed(2);
-                $('#bfc_override_heading').css('cssText', paid > auto ? 'color:#c62828 !important' : '').text(paid > auto
-                    ? 'You are paying $' + diff + ' MORE than the max offer. Explain why:'
-                    : 'You are paying $' + diff + ' less than the max offer. Explain why:');
+                var diff = (paid - auto).toFixed(2);
+                $('#bfc_override_heading').css('cssText', 'color:#c62828 !important').text('You are paying $' + diff + ' MORE than the max offer. Explain why:');
                 $box.show();
             }
             $(document).on('input change', '#bfc_accept_final_amount, #bfc_accept_pm, #bfc_is_donated_checkbox', bfcRefreshOverrideBox);
@@ -2342,9 +2343,9 @@ HTML;
                 var autoForPm = parseFloat(acceptPm === 'store_credit'
                     ? $('#bfc_final_credit').data('auto')
                     : $('#bfc_final_cash').data('auto'));
-                if (!isDonated && isFinite(finalAmt) && isFinite(autoForPm) && Math.abs(finalAmt - autoForPm) > 0.009
+                if (!isDonated && isFinite(finalAmt) && isFinite(autoForPm) && finalAmt - autoForPm > 0.009
                     && !$.trim($('textarea[name="price_override_reason"]').val())) {
-                    problems.push('Final amount differs from the suggestion — add an override reason.');
+                    problems.push('Final amount is more than the suggestion — add an override reason.');
                 }
                 if (problems.length) {
                     e.preventDefault();

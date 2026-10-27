@@ -531,9 +531,9 @@ class BuyOfferCalculatorService
         // 1.5x cash the moment any negotiation happened (the normal case).
         // Deriving credit from the (possibly overridden) cash figure here
         // makes the ratio hold everywhere, not just on the untouched default.
-        $startingCash = isset($offerInputs['starting_offer_cash']) && $offerInputs['starting_offer_cash'] !== '' ? (float) $offerInputs['starting_offer_cash'] : round($cashTotal * 0.50, 2);
-        $secondCash = isset($offerInputs['second_offer_cash']) && $offerInputs['second_offer_cash'] !== '' ? (float) $offerInputs['second_offer_cash'] : round($cashTotal * 0.75, 2);
-        $finalCash = isset($offerInputs['final_offer_cash']) && $offerInputs['final_offer_cash'] !== '' ? (float) $offerInputs['final_offer_cash'] : round($cashTotal * 0.95, 2);
+        $startingCash = isset($offerInputs['starting_offer_cash']) && $offerInputs['starting_offer_cash'] !== '' ? (float) $offerInputs['starting_offer_cash'] : self::roundOffer($cashTotal * 0.50);
+        $secondCash = isset($offerInputs['second_offer_cash']) && $offerInputs['second_offer_cash'] !== '' ? (float) $offerInputs['second_offer_cash'] : self::roundOffer($cashTotal * 0.75);
+        $finalCash = isset($offerInputs['final_offer_cash']) && $offerInputs['final_offer_cash'] !== '' ? (float) $offerInputs['final_offer_cash'] : self::roundOffer($cashTotal * 0.95);
 
         $result = [
             'lines' => $normalized,
@@ -552,6 +552,17 @@ class BuyOfferCalculatorService
         }
 
         return $result;
+    }
+
+    /**
+     * Jon 2026-10-26: suggested cash offers are whole dollars ($9.45 -> $9,
+     * $9.58 -> $10), at least $1 when there's anything to pay for. Credit stays
+     * exactly credit_bonus x the cash offer.
+     */
+    public static function roundOffer($amount)
+    {
+        $amount = (float) $amount;
+        return $amount > 0 ? max(1.0, round($amount)) : 0.0;
     }
 
     /**
