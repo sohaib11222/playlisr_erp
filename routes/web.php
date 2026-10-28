@@ -1648,6 +1648,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/transfers/slip/{id}', 'TransferReceiptController@slip');
     Route::get('/transfers/labels/{id}', 'TransferReceiptController@labels');
     Route::get('/transfers/receive', 'TransferReceiptController@receive');
+    Route::post('/transfers/receive/{id}/found', 'TransferReceiptController@found');
     Route::post('/transfers/receive/{id}', 'TransferReceiptController@confirm');
     Route::get('/transfers/log', 'TransferReceiptController@log');
 

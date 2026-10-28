@@ -42,7 +42,11 @@
         <div class="tr-msg bad">This box is going to {{ $receipt->to_name }}. You are signed in at another store. Only receive it if it is in front of you.</div>
       @endif
 
-      @if($receipt->status === 'in_transit')
+      @if($receipt->status === 'received_missing')
+        <div class="tr-msg bad">Some items were missing when this box was received. Found them? Scan them below and press <strong>Mark found</strong>.</div>
+      @endif
+
+      @if($receipt->status === 'in_transit' || $receipt->status === 'received_missing')
         <div class="tr-row">
           <div class="tr-field">
             <label for="tr-scan">Scan each item (barcode, SKU or product ID)</label>
@@ -54,23 +58,29 @@
         <div id="tr-scan-msg"></div>
       @endif
 
-      <form method="post" action="{{ url('/transfers/receive/' . $receipt->id) }}" id="tr-receive-form">
+      <form method="post" action="{{ url('/transfers/receive/' . $receipt->id . ($receipt->status === 'received_missing' ? '/found' : '')) }}" id="tr-receive-form" data-mode="{{ $receipt->status === 'received_missing' ? 'found' : 'receive' }}">
         @csrf
         <div class="tr-table-wrap">
           <table class="tr-table">
-            <thead><tr><th>Artist - Title</th><th>SKU</th><th class="num">Sent</th><th class="num">Got</th></tr></thead>
+            <thead><tr><th>Artist - Title</th><th>SKU</th><th class="num">Sent</th><th class="num">{{ $receipt->status === 'received_missing' ? 'Found' : 'Got' }}</th></tr></thead>
             <tbody>
             @foreach($items as $it)
-              <tr data-vid="{{ $it['variation_id'] }}" data-pid="{{ $it['product_id'] }}" data-sku="{{ strtolower($it['sku']) }}" data-qty="{{ $it['qty'] }}">
+              @if($receipt->status === 'in_transit' || ($receipt->status === 'received_missing' && !empty($missingQty[$it['product_id']])))
+              <tr data-vid="{{ $it['variation_id'] }}" data-pid="{{ $it['product_id'] }}" data-sku="{{ strtolower($it['sku']) }}" data-qty="{{ $receipt->status === 'in_transit' ? $it['qty'] : $missingQty[$it['product_id']] }}">
+              @else
+              <tr>
+              @endif
                 <td>{{ $it['name'] }}</td>
                 <td>{{ $it['sku'] }}</td>
                 <td class="num">{{ rtrim(rtrim(number_format($it['qty'], 2), '0'), '.') }}</td>
                 <td class="num">
-                  @if($receipt->status === 'in_transit')
+                  @if($receipt->status === 'received_missing' && !empty($missingQty[$it['product_id']]))
+                    <span class="tr-pill bad">Missing {{ rtrim(rtrim(number_format($missingQty[$it['product_id']], 2), '0'), '.') }}</span>
+                    <input type="number" min="0" step="1" name="got[{{ $it['variation_id'] }}]" value="0" class="tr-got" style="width:70px; text-align:right; border:1px solid var(--tr-line-2); border-radius:7px; padding:4px 6px; margin-left:6px;">
+                  @elseif($receipt->status === 'in_transit')
                     <input type="number" min="0" step="1" name="got[{{ $it['variation_id'] }}]" value="0" class="tr-got" style="width:70px; text-align:right; border:1px solid var(--tr-line-2); border-radius:7px; padding:4px 6px;">
                   @else
-                    @php $miss = collect($receipt->missing_json ? json_decode($receipt->missing_json, true) : [])->firstWhere('product_id', $it['product_id']); @endphp
-                    @if($miss)<span class="tr-pill bad">Missing {{ rtrim(rtrim(number_format($miss['qty'], 2), '0'), '.') }}</span>@else<span class="tr-pill ok">Got it</span>@endif
+                    <span class="tr-pill ok">Got it</span>
                   @endif
                 </td>
               </tr>
@@ -87,6 +97,12 @@
             <button type="submit" class="tr-btn tr-btn-primary" id="tr-mark">Mark received</button>
             <span class="tr-hint" id="tr-mark-hint"></span>
           </div>
+        @elseif($receipt->status === 'received_missing')
+          <div class="tr-actions" style="margin-top:14px;">
+            <button type="submit" class="tr-btn tr-btn-primary" id="tr-mark">Mark found</button>
+            <span class="tr-hint" id="tr-mark-hint"></span>
+          </div>
+          @if($receipt->receive_note)<p style="margin-top:12px;"><strong>Note:</strong> {{ $receipt->receive_note }}</p>@endif
         @elseif($receipt->receive_note)
           <p style="margin-top:12px;"><strong>Note:</strong> {{ $receipt->receive_note }}</p>
         @endif
@@ -118,6 +134,7 @@
 (function () {
   var $scan = $('#tr-scan');
   if (!$scan.length) return;
+  var foundMode = $('#tr-receive-form').data('mode') === 'found';
   $scan.trigger('focus');
   function count() {
     var sent = 0, got = 0;
@@ -127,7 +144,11 @@
       $(this).css('background', g >= q ? '#E4F0E7' : (g > 0 ? '#FFF8E1' : ''));
     });
     $('#tr-count').text(got + ' of ' + sent + ' scanned');
-    $('#tr-mark-hint').text(got < sent ? (sent - got) + ' not scanned. They will be marked missing.' : 'Everything is here.');
+    if (foundMode) {
+      $('#tr-mark-hint').text(got < sent ? (sent - got) + ' still missing after this.' : 'Everything missing is found.');
+    } else {
+      $('#tr-mark-hint').text(got < sent ? (sent - got) + ' not scanned. They will be marked missing.' : 'Everything is here.');
+    }
   }
   $(document).on('input change', '.tr-got', count);
   $scan.on('keydown', function (e) {
@@ -140,7 +161,7 @@
       .filter(function () { return (parseFloat($(this).find('.tr-got').val()) || 0) < (parseFloat($(this).data('qty')) || 0); }).first();
     if (!$row.length) {
       var any = $('tr[data-vid]').filter(function () { return $(this).data('sku') == code || String($(this).data('pid')) === code; }).length;
-      $('#tr-scan-msg').html('<div class="tr-msg bad">' + (any ? 'Already scanned all of that one.' : 'That item is not on this transfer.') + '</div>');
+      $('#tr-scan-msg').html('<div class="tr-msg bad">' + (any ? 'Already scanned all of that one.' : (foundMode ? 'That item is not one of the missing ones.' : 'That item is not on this transfer.')) + '</div>');
       return;
     }
     var $g = $row.find('.tr-got'); $g.val((parseFloat($g.val()) || 0) + 1);

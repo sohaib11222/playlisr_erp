@@ -135,7 +135,65 @@ class TransferReceiptController extends Controller
         $dutyLocation = (int) $request->session()->get('pos_duty_location_id', 0)
             ?: (int) $request->session()->get('user.business_location_id', 0);
         $inTransit = $this->list($business_id, 'in_transit', 50);
-        return view('bulk_transfer.receive', compact('receipt', 'items', 'notFound', 'dutyLocation', 'inTransit'));
+        $missingQty = $receipt ? $this->missingQty($receipt) : [];
+        return view('bulk_transfer.receive', compact('receipt', 'items', 'notFound', 'dutyLocation', 'inTransit', 'missingQty'));
+    }
+
+    /** product_id => qty still missing on a received box. */
+    protected function missingQty($receipt): array
+    {
+        $out = [];
+        foreach ($receipt->missing_json ? (array) json_decode($receipt->missing_json, true) : [] as $m) {
+            $out[(int) $m['product_id']] = ($out[(int) $m['product_id']] ?? 0) + (float) $m['qty'];
+        }
+        return $out;
+    }
+
+    /** Box was marked received with items missing, then some turned up: scan them to clear them. */
+    public function found(Request $request, $id)
+    {
+        $this->guard();
+        $business_id = (int) $request->session()->get('user.business_id');
+        $receipt = $this->findReceipt($business_id, $id);
+        abort_if(!$receipt, 404);
+        if ($receipt->status !== 'received_missing') {
+            return redirect('/transfers/receive?code=' . $receipt->code)
+                ->with('status', ['success' => 0, 'msg' => 'Nothing is missing on this transfer.']);
+        }
+        $scanned = (array) $request->input('got', []);
+        $was = $this->missingQty($receipt);
+        $missing = [];
+        $foundQty = 0;
+        foreach ($this->items($receipt) as $it) {
+            $left = $was[$it['product_id']] ?? 0;
+            if ($left <= 0) {
+                continue;
+            }
+            $got = min($left, max(0, (float) ($scanned[$it['variation_id']] ?? 0)));
+            $foundQty += $got;
+            $was[$it['product_id']] = 0;
+            if ($left - $got > 0.0001) {
+                $missing[] = ['product_id' => $it['product_id'], 'name' => $it['name'], 'sku' => $it['sku'], 'qty' => $left - $got];
+            }
+        }
+        if ($foundQty <= 0) {
+            return redirect('/transfers/receive?code=' . $receipt->code)
+                ->with('status', ['success' => 0, 'msg' => 'Nothing scanned, so nothing changed.']);
+        }
+        $user = auth()->user();
+        $line = sprintf('Found %s later (%s, %s).', rtrim(rtrim(number_format($foundQty, 2), '0'), '.'),
+            trim($user->first_name . ' ' . $user->last_name), now()->format('m/d/y g:ia'));
+        DB::table('transfer_receipts')->where('id', $receipt->id)->where('status', 'received_missing')->update([
+            'status' => $missing ? 'received_missing' : 'received',
+            'missing_json' => $missing ? json_encode($missing) : null,
+            'receive_note' => mb_substr(trim(($receipt->receive_note ? $receipt->receive_note . ' ' : '') . $line), 0, 250),
+            'updated_at' => now(),
+        ]);
+        $left = array_sum(array_column($missing, 'qty'));
+        $msg = $missing
+            ? sprintf('Transfer %s: marked %s found. %s still missing.', $receipt->code, rtrim(rtrim(number_format($foundQty, 2), '0'), '.'), rtrim(rtrim(number_format($left, 2), '0'), '.'))
+            : sprintf('Transfer %s: everything is found. It now shows as Received.', $receipt->code);
+        return redirect('/transfers/receive?code=' . $receipt->code)->with('status', ['success' => $missing ? 0 : 1, 'msg' => $msg]);
     }
 
     public function confirm(Request $request, $id)
