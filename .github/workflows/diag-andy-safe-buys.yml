@@ -1,0 +1,74 @@
+# READ-ONLY: a cashier's recent registers/safe drops + their recent buy offers + BFC log errors.
+name: Diag cashier safe drops and buys
+
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "Cashier first name"
+        required: true
+        default: "Andy"
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Inspect (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 300s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            N="${{ github.event.inputs.name }}"
+            php artisan tinker --no-ansi <<PHP
+            \$n = "$N";
+            \$ids = \DB::table('users')->where('first_name','like',\$n.'%')->pluck('id')->all();
+            echo "USERS ".implode(',', \$ids)."\n";
+            \$since = \Carbon::now()->subDays(10)->format('Y-m-d');
+            foreach (\DB::table('cash_registers')->whereIn('user_id', \$ids)->where('created_at','>=',\$since)->orderBy('id')->get() as \$r) {
+              \$init = \DB::table('cash_register_transactions')->where('cash_register_id',\$r->id)->where('transaction_type','initial')->sum('amount');
+              \$deps = \DB::table('cash_deposits')->where('cash_register_id',\$r->id)->get();
+              \$d = []; foreach (\$deps as \$x) \$d[] = \$x->phase.':'.\$x->amount.'#'.(\$x->deposit_number ?? '');
+              echo "REG ".\$r->id." loc=".\$r->location_id." open=".\$r->created_at." closed=".(\$r->closed_at ?? '-')." status=".\$r->status." initial=".\$init." closing=".(\$r->closing_amount ?? '-')." safe_drop=".(\$r->safe_drop_amount ?? '-')." deposits=[".implode(' ', \$d)."] note=[".str_replace("\n",' | ',(string)\$r->closing_note)."]\n";
+              foreach (\DB::table('cash_register_transactions')->where('cash_register_id',\$r->id)->where('pay_method','cash')->selectRaw('transaction_type, type, SUM(amount) s, COUNT(*) c')->groupBy('transaction_type','type')->get() as \$t) echo "   cash ".\$t->transaction_type."/".\$t->type." ".\$t->s." (".\$t->c.")\n";
+            }
+            echo "--- deposits cols ---\n"; echo implode(',', \Schema::getColumnListing('cash_deposits'))."\n";
+            foreach (\App\BuyCustomerOffer::whereIn('created_by', \$ids)->where('created_at','>=',\Carbon::now()->subDays(4))->orderBy('id')->get() as \$o) {
+              echo "OFFER ".\$o->id." ".\$o->buy_record_number." status=".\$o->status." seller=[".\$o->seller_name."] payout=".\$o->payout_type." cash=".\$o->final_offer_cash." paid=".(\$o->final_amount_paid ?? '-')." loc=".\$o->location_id." created=".\$o->created_at." updated=".\$o->updated_at."\n";
+              foreach (\DB::table('buy_customer_offer_lines')->where('offer_id', \$o->id)->get() as \$l) echo "   LINE ".json_encode(\$l)."\n";
+            }
+            PHP
+            echo "=== log ==="
+            for L in storage/logs/laravel-$(date +%Y-%m-%d).log storage/logs/laravel-$(date -d yesterday +%Y-%m-%d).log storage/logs/laravel.log; do [ -f "$L" ] && grep -n -i "buy-from-customer\|BuyFromCustomer\|BuyCustomerOffer" "$L" | tail -30 | cut -c1-700; done
+            echo "=== done ==="
