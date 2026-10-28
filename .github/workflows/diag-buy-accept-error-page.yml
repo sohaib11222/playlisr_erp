@@ -1,0 +1,84 @@
+# READ-ONLY (rolled back): replay a failed buy Accept as the cashier and check the page that comes back.
+name: Diag buy accept error page
+
+on:
+  workflow_dispatch:
+    inputs:
+      offer:
+        description: "Draft BFC id"
+        required: true
+        default: "1260"
+      paid:
+        description: "Amount paid"
+        required: true
+        default: "250"
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Replay (rolled back)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 300s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<PHP
+            \$offer = \App\BuyCustomerOffer::find(${{ github.event.inputs.offer }});
+            \Auth::loginUsingId(\$offer->created_by);
+            echo "AS ".auth()->user()->first_name."\n";
+            \$sess = app('session')->driver(); \$sess->start();
+            \$g = \Illuminate\Http\Request::create('/x','GET'); \$g->setLaravelSession(\$sess); app()->instance('request', \$g);
+            session(['user.business_id'=>\$offer->business_id, 'business.id'=>\$offer->business_id, 'user.id'=>\$offer->created_by]);
+            view()->share('errors', new \Illuminate\Support\ViewErrorBag);
+            \$ctrl = app(\App\Http\Controllers\BuyFromCustomerController::class);
+            \$in = \$ctrl->edit(\$offer->id)->getData()['input_data'];
+            foreach ([0, 1] as \$signed) {
+              \DB::beginTransaction();
+              try {
+                \$data = array_merge(\$in, ['beta'=>'1', 'offer_id'=>\$offer->id, 'final_offer_cash'=>\$offer->final_offer_cash, 'final_offer_credit'=>\$offer->final_offer_credit, 'payment_method'=>'cash_in_store', 'final_amount_paid'=>'${{ github.event.inputs.paid }}', 'price_override_reason'=>'test reason', 'approver_password'=>'SECRETPW']);
+                if (\$signed) \$data = array_merge(\$data, ['seller_signature_data'=>str_repeat('a',100), 'compliance_items_owned'=>'1', 'compliance_sales_final'=>'1']);
+                \$r = \Illuminate\Http\Request::create('/buy-from-customer/accept','POST',\$data); \$r->setLaravelSession(\$sess); app()->instance('request', \$r);
+                \$resp = \$ctrl->accept(\$r);
+                \$html = is_object(\$resp) && method_exists(\$resp,'render') ? \$resp->render() : (method_exists(\$resp,'getContent') ? \$resp->getContent() : (string) \$resp);
+                echo "CASE signed=".\$signed." class=".get_class(\$resp)." len=".strlen(\$html)."\n";
+                if (method_exists(\$resp,'getTargetUrl')) echo "  REDIRECT ".\$resp->getTargetUrl()."\n";
+                preg_match('/The form couldn.t be submitted:.*?<\/ul>/s', \$html, \$m); echo "  ERRORS ".trim(preg_replace('/\s+/',' ',strip_tags(\$m[0] ?? 'none')))."\n";
+                echo "  accept_form=".(strpos(\$html,'id="accept_buy_offer_form"')!==false?'yes':'no')." approval_box=".(strpos(\$html,'id="bfc_overpay_approval"')!==false?'yes':'no')." force=".(preg_match('/data-force="1"/',\$html)?'1':'0')." max_cash=".(preg_match('/Max offer: Cash <strong>([^<]+)/',\$html,\$mm)?\$mm[1]:'-')." paid_refill=".(preg_match('/name="final_amount_paid"[^>]*value="([^"]*)"/',\$html,\$pp)?\$pp[1]:(preg_match('/value="([^"]*)"[^>]*name="final_amount_paid"/',\$html,\$pp)?\$pp[1]:'-'))." pw_leak=".(strpos(\$html,'SECRETPW')!==false?'YES':'no')." reason_kept=".(strpos(\$html,'test reason')!==false?'yes':'no')." hidden_offer_id=".(preg_match('/name="offer_id" value="(\d+)"/',\$html,\$oo)?\$oo[1]:'-')."\n";
+              } catch (\Throwable \$e) { echo "CASE signed=".\$signed." EXC ".get_class(\$e)." ".\$e->getMessage()." @".\$e->getFile().":".\$e->getLine()."\n"; }
+              \DB::rollBack();
+            }
+            echo "drafts_after=".\App\BuyCustomerOffer::where('id','>=',\$offer->id)->count()." status=".\App\BuyCustomerOffer::find(\$offer->id)->status."\n";
+            PHP
+            echo "=== done ==="
