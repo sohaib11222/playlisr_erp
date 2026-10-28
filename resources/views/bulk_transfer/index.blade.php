@@ -46,6 +46,7 @@
       <button type="button" class="tr-btn tr-btn-primary" id="tr-move" disabled>Move items</button>
       <span class="tr-summary" id="tr-summary"></span>
     </div>
+    <div class="tr-hint">Step 1: press <strong>Check list</strong> to see what will move (nothing moves yet). Step 2: <strong>Move items</strong> turns on once at least one line is OK. If you change the list or stores, check again.</div>
   </div>
 
   <div class="tr-card" id="tr-preview-card" style="display:none;">
@@ -142,7 +143,9 @@
       renderPreview(res.rows);
       checkedKey = key();
       var n = res.ok_qty;
-      $('#tr-summary').text(res.ok_lines + ' of ' + res.rows.length + ' lines OK. Lines that are not OK are skipped.');
+      $('#tr-summary').text(n > 0
+        ? res.ok_lines + ' of ' + res.rows.length + ' lines OK. Lines that are not OK are skipped.'
+        : 'No lines are OK, so nothing can move. See the Status column below.');
       $('#tr-move').prop('disabled', n <= 0).text('Move ' + num(n) + ' item' + (n == 1 ? '' : 's'));
     }).fail(function () { msg('bad', 'Check failed. Try again.'); })
       .always(function () { $b.prop('disabled', false).text('Check list'); });
