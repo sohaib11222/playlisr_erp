@@ -39,6 +39,11 @@
       <label for="tr-list">Paste or scan product IDs / SKUs, one per line (a number like 158831 can be either)</label>
       <textarea id="tr-list" placeholder="158831&#10;0602455912345 x2&#10;AXM-004,3" autofocus>{{ $prefill ?? '' }}</textarea>
       <div class="tr-hint">One per line. Add a quantity with "SKU x2" or "SKU,2". Without one, it moves 1.</div>
+      <div class="tr-hint" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        Same quantity for every line:
+        <input type="number" id="tr-copy-qty" min="1" max="9999" step="1" value="1" style="width:70px; border:1px solid var(--tr-line-2); border-radius:7px; padding:4px 6px;">
+        <button type="button" class="tr-btn" id="tr-copy-down" style="padding:5px 12px; font-size:13px;">Copy down</button>
+      </div>
     </div>
 
     <div class="tr-actions">
@@ -100,6 +105,15 @@
   }
   $('#tr-from, #tr-to').on('change', invalidate);
   $('#tr-list').on('input', invalidate);
+  // Copy down: set every line to the same quantity, replacing any it already had.
+  $('#tr-copy-down').on('click', function () {
+    var n = Math.max(1, Math.min(9999, parseInt($('#tr-copy-qty').val(), 10) || 1));
+    var lines = $('#tr-list').val().split(/\r\n|\r|\n/).map(function (l) {
+      var code = $.trim(l).replace(/(?:\s+[xX*]\s*|\s*\*\s*|\s*,\s*)\d{1,4}$/, '');
+      return code === '' ? '' : (n > 1 ? code + ' x' + n : code);
+    });
+    $('#tr-list').val(lines.join('\n')).trigger('input');
+  });
   $('#tr-swap').on('click', function () {
     var f = $('#tr-from').val(); $('#tr-from').val($('#tr-to').val()); $('#tr-to').val(f); invalidate();
   });
