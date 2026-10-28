@@ -517,8 +517,17 @@ class BuyFromCustomerController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        $this->validateRequest($request, true);
-        $this->validateAcceptCompliance($request);
+        // Andy 2026-10-28: a failed Accept (a $250+ buy needing Zak's OK, a
+        // missing signature) redirected back to GET /calculate, which is a
+        // blank form: no offer, no accept step, no approval box. He couldn't
+        // finish the buy and each retry made another draft. Show the same
+        // quote again with the error and the approval box open instead.
+        try {
+            $this->validateRequest($request, true);
+            $this->validateAcceptCompliance($request);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->reshowQuoteWithErrors($request, $e);
+        }
 
         $offerId = $id ?? ($request->input('offer_id') ?: null);
         $result = DB::transaction(function () use ($request, $offerId) {
@@ -559,6 +568,24 @@ class BuyFromCustomerController extends Controller
         return redirect()->route('buy-from-customer.intake-sheet', $result['offer_id'])
             ->with('status', ['success' => 1, 'msg' => $msg])
             ->with('bfc_finished', ['credit' => $result['credit']]);
+    }
+
+    /**
+     * Re-render the calculated quote (same draft, via calculate()) with the
+     * accept step's errors, keeping what the cashier typed there. Accept-only
+     * fields are taken out of the quote input so they don't come back as
+     * hidden fields; the visible ones refill from old input. Passwords and
+     * the signature are never refilled.
+     */
+    protected function reshowQuoteWithErrors(Request $request, \Illuminate\Validation\ValidationException $e)
+    {
+        $request->flashExcept(['approver_password', 'seller_signature_data', '_token']);
+        $request->replace($request->except([
+            'final_amount_paid', 'seller_signature_data', 'compliance_items_owned', 'compliance_sales_final',
+            'approver_username', 'approver_password', 'overpay_request_id', 'is_donated', '_token',
+        ]));
+        view()->share('errors', (new \Illuminate\Support\ViewErrorBag)->put('default', new \Illuminate\Support\MessageBag($e->errors())));
+        return $this->calculate($request);
     }
 
     public function reject(Request $request, $id = null)
