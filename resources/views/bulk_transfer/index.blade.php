@@ -76,6 +76,7 @@
 (function () {
   var URL_PREVIEW = @json(url('/transfers/bulk/preview'));
   var URL_STORE = @json(url('/transfers/bulk'));
+  var URL_RECEIVE = @json(url('/transfers/receive?code='));
   var history = @json($history);
   var checkedKey = null;
 
@@ -123,7 +124,7 @@
     var html = '';
     history.forEach(function (h) {
       var st = h.receipt_status === 'received' ? '<span class="tr-pill ok">Received</span>'
-        : (h.receipt_status === 'received_missing' ? '<span class="tr-pill bad">Received, items missing</span>'
+        : (h.receipt_status === 'received_missing' ? '<a href="' + URL_RECEIVE + encodeURIComponent(h.code) + '" title="Found them? Scan them here"><span class="tr-pill bad">Received, items missing</span></a>'
         : (h.receipt_status === 'in_transit' ? '<span class="tr-pill dup">On the way</span>' : ''));
       html += '<tr><td>' + esc(h.date) + '</td><td>' + esc(h.code || h.ref_no) + '</td><td>' + esc(h.from) + ' to ' + esc(h.to) + '</td>' +
         '<td class="num">' + esc(h.items) + '</td><td>' + esc(h.by) + '</td><td>' + st + '</td>' +
