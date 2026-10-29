@@ -1,0 +1,39 @@
+# Category moves from the 2026-10-29 audit (scripts/ops/category_moves.php).
+# Push to ops-cat/** runs it; the mode comes from scripts/ops/category_moves_mode.txt
+# (dry | apply | undo). Log of every move stays on the server for undo.
+name: Ops category moves
+
+on:
+  push:
+    branches: ['ops-cat/**']
+
+concurrency:
+  group: ops-category-moves
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run on prod
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          MODE=$(tr -d ' \n' < scripts/ops/category_moves_mode.txt)
+          echo "mode=$MODE"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "$DEPLOY_SSH_KEY" > ~/.ssh/id && chmod 600 ~/.ssh/id
+          P=${DEPLOY_PORT:-22}
+          for i in 1 2 3 4 5; do ssh-keyscan -T 15 -p $P -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null && grep -q . ~/.ssh/known_hosts && break; sleep 10; done
+          D=/www/playlist.nivessa.com/app/storage/ops_category_moves
+          for i in 1 2 3 4 5; do
+            ssh -o ConnectTimeout=30 -i ~/.ssh/id -p $P "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p $D/scripts/ops" && \
+            scp -o ConnectTimeout=30 -i ~/.ssh/id -P $P scripts/ops/category_moves.php scripts/ops/category_moves_2026_10_29.json "$DEPLOY_USER@$DEPLOY_HOST:$D/scripts/ops/" && break
+            sleep 20
+          done
+          # One attempt only for the real run (no retry after it may have started).
+          ssh -o ConnectTimeout=30 -o ServerAliveInterval=15 -i ~/.ssh/id -p $P "$DEPLOY_USER@$DEPLOY_HOST" "cd /www/playlist.nivessa.com/app && sed -i \"s#__DIR__ . '/../../#'\$(pwd)/#g\" $D/scripts/ops/category_moves.php && MODE=$MODE php $D/scripts/ops/category_moves.php" 2>&1 | tee out.txt | grep -v -E '^[A-Za-z0-9+/=]{200,}$'
