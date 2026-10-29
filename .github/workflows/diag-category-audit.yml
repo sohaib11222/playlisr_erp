@@ -1,0 +1,42 @@
+# READ-ONLY: exports products + categories from prod (category_audit_export.php)
+# and runs scripts/diag/category_audit.js; review CSVs come back as an artifact.
+# Runs on push to diag-audit/**.
+name: Diag category audit
+
+on:
+  push:
+    branches: ['diag-audit/**']
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Export from prod (read-only)
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "$DEPLOY_SSH_KEY" > ~/.ssh/id && chmod 600 ~/.ssh/id
+          P=${DEPLOY_PORT:-22}
+          for i in 1 2 3 4 5; do ssh-keyscan -T 15 -p $P -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null && grep -q . ~/.ssh/known_hosts && break; sleep 10; done
+          for i in 1 2 3 4 5; do
+            scp -o ConnectTimeout=30 -i ~/.ssh/id -P $P scripts/diag/category_audit_export.php "$DEPLOY_USER@$DEPLOY_HOST:/www/playlist.nivessa.com/app/storage/category_audit_export.php" && \
+            ssh -o ConnectTimeout=30 -o ServerAliveInterval=15 -i ~/.ssh/id -p $P "$DEPLOY_USER@$DEPLOY_HOST" "cd /www/playlist.nivessa.com/app && sed -i \"s#__DIR__ . '/../../#'\$(pwd)/#g\" storage/category_audit_export.php && php -d memory_limit=2G storage/category_audit_export.php; rm -f storage/category_audit_export.php" > out.txt 2>&1 && grep -q AUDIT_B64_END out.txt && break
+            echo "attempt $i failed"; tail -3 out.txt; sleep 20
+          done
+          grep -E "^ROWS|Error|Exception" out.txt | head
+          awk '/^AUDIT_B64_START/{f=1;next}/^AUDIT_B64_END/{f=0}f' out.txt | tr -d '\n ' | base64 -d | gunzip > audit.json
+          ls -la audit.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Audit
+        run: mkdir -p out && node --max-old-space-size=4096 scripts/diag/category_audit.js audit.json out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: category-audit
+          path: out/

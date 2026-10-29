@@ -48,6 +48,10 @@
         [/\bboard\s*games?\b/g, ' boardgame '],
         [/\bgift\s*cards?\b/g, ' giftcard '],
         [/\bupper\s+deck\b/g, ' card '],
+        // Found by the 10/29 product audit: genre / player names that look like product words.
+        [/\bsynth\s*-?\s*(?:pop|wave)\b/g, ' synthpop '],
+        [/\bmagic\s+johnson\b/g, ' magicjohnson '],
+        [/\bmagic\s*:?\s*the\s+gathering\b|\bmtg\b/g, ' magic '],
         [/\bcd\s+players?\b|\bdiscman\b/g, ' cdplayer '],
     ];
     // Single words -> one canonical word.
@@ -69,7 +73,7 @@
         band: 'music', tour: 'music', concert: 'music', merch: 'music',
         clothing: 'apparel', clothes: 'apparel',
         rookie: 'card', rc: 'card', psa: 'card', bgs: 'card', topps: 'card', fleer: 'card', bowman: 'card', panini: 'card', prizm: 'card',
-        synth: 'synthesizer', synthesizer: 'synthesizer', keyboard: 'synthesizer',
+        synthesizer: 'synthesizer', keyboard: 'synthesizer',
         hardcover: 'book', paperback: 'book', walkman: 'walkman', walkmen: 'walkman',
         costume: 'mask', figurine: 'figure', plushie: 'plush',
     };
