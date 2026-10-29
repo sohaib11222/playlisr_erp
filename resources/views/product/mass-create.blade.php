@@ -2121,6 +2121,8 @@ Nevermind,Nirvana,Cassettes - Used,Rock,,18.00,</pre>
         lines.forEach((line, index) => {
             line = line.trim();
             if (!line || line.startsWith('//') || line.startsWith('#')) return; // Skip comments
+            // Skip a pasted header line ("Product Name,Artist,Category,...") — ChatGPT echoes it.
+            if (/^\s*"?(product\s*)?(name|title)"?\s*[,|\t]\s*"?artist\b/i.test(line)) return;
             
             let product = {
                 name: '',
