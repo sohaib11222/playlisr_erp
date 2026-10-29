@@ -50,14 +50,14 @@ if ($mode === 'undo') {
 
 // Which sub each pack goes in. Order matters: first match wins.
 $rules = [
-    'NBA Packs' => '/\bnba\b|basketball|hoops|skybox|fleer ultra basketball/i',
+    'NBA Packs' => '/\bw?nba\b|basketball|hoops|skybox|fleer ultra basketball/i',
     'NFL Packs' => '/\bnfl\b|football|pro set|score football/i',
     'NHL Packs' => '/\bnhl\b|hockey/i',
     'MLB Packs' => '/\bmlb\b|baseball|topps baseball|donruss|bowman/i',
     'Pokemon Packs' => '/pok[eé]mon/i',
     'One Piece Packs' => '/one piece/i',
 ];
-$sportsWords = '/\bnba\b|\bnfl\b|\bnhl\b|\bmlb\b|basketball|football|hockey|baseball|soccer|\bufc\b|wrestling|\bwwe\b|\bwwf\b|golf|racing|nascar|boxing/i';
+$sportsWords = '/michigan state|college|ncaa|topps chrome|\bnba\b|\bnfl\b|\bnhl\b|\bmlb\b|basketball|football|hockey|baseball|soccer|\bufc\b|wrestling|\bwwe\b|\bwwf\b|golf|racing|nascar|boxing/i';
 $subs = array_merge(array_keys($rules), ['Non-Sports Packs']);
 
 $subId = [];
