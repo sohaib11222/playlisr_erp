@@ -218,7 +218,7 @@
 
         // 2b. Pick the subcategory inside it.
         var rowT = subT.concat(nameSubT);
-        var typeSub = function (sOpt) { return sOpt.tok.some(function (t) { return TYPES[t] && rowT.indexOf(t) !== -1; }); };
+        var typeSub = function (sOpt) { return sOpt.tok.some(function (t) { return TYPES[t] && g.tok.indexOf(t) === -1 && rowT.indexOf(t) !== -1; }); };
         var anyType = g.subs.some(typeSub);
         var subs = g.subs.map(function (sOpt) {
             var f = sOpt.tok.filter(function (t) { return g.tok.indexOf(t) === -1; });
