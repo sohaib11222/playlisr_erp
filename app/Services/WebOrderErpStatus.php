@@ -43,12 +43,12 @@ class WebOrderErpStatus
     }
 
     /** One website order from /erp/orders/console (or the cancel response). Returns sales changed. */
-    public static function applyWebsiteOrder(array $o): int
+    public static function applyWebsiteOrder(array $o, ?array $index = null): int
     {
         $id = (string) ($o['_id'] ?? '');
         if (!self::enabled() || !preg_match('/^[a-f0-9]{24}$/i', $id)) return 0;
 
-        $sales = DB::table('transactions')
+        $sales = $index !== null ? collect($index[$id] ?? []) : DB::table('transactions')
             ->where('type', 'sell')
             ->where(function ($q) use ($id) {
                 $q->where('additional_notes', 'Website order ' . $id)
@@ -70,7 +70,7 @@ class WebOrderErpStatus
 
         $changed = 0;
         foreach ($sales as $s) {
-            $productIds = DB::table('transaction_sell_lines')->where('transaction_id', $s->id)->pluck('product_id')->map(function ($p) { return (string) $p; })->all();
+            $productIds = $s->product_ids ?? DB::table('transaction_sell_lines')->where('transaction_id', $s->id)->pluck('product_id')->map(function ($p) { return (string) $p; })->all();
             $matched = array_values(array_intersect_key($byProduct, array_flip($productIds)));
             // Sale for one item: that item's status. No match (placeholder
             // import, or the item was substituted): the whole order's.
@@ -81,7 +81,7 @@ class WebOrderErpStatus
     }
 
     /** One Discogs order row from /erp/orders/all?source=discogs ({id, status}). */
-    public static function applyDiscogsOrder(array $row): int
+    public static function applyDiscogsOrder(array $row, ?array $index = null): int
     {
         $id = (string) ($row['id'] ?? '');
         if (!self::enabled() || $id === '') return 0;
@@ -90,7 +90,7 @@ class WebOrderErpStatus
             : ($st === 'refund sent' ? 'refunded'
             : (strpos($st, 'cancelled') === 0 ? 'cancelled' : null));
 
-        $sales = DB::table('transactions')
+        $sales = $index !== null ? collect($index[$id] ?? []) : DB::table('transactions')
             ->where('type', 'sell')
             ->where(function ($q) use ($id) {
                 $q->where('additional_notes', 'Discogs order ' . $id)
@@ -111,16 +111,61 @@ class WebOrderErpStatus
     {
         $ctl = app(WebsiteOrdersController::class);
         $web = 0;
-        foreach ($ctl->recentPaidOrders() as $o) $web += self::applyWebsiteOrder($o);
+        $orders = $ctl->recentPaidOrders();
+        if ($orders) {
+            $index = self::salesIndex('Website order ', 'nivessa_web', true);
+            foreach ($orders as $o) $web += self::applyWebsiteOrder($o, $index);
+        }
 
         $dg = 0;
+        $index = null;
         for ($page = 1; $page <= $discogsPages; $page++) {
             $r = $ctl->bridgeGet('/erp/orders/all?source=discogs&per=200&page=' . $page, 30);
             if (($r['success'] ?? false) !== true) break;
-            foreach (($r['data'] ?? []) as $row) $dg += self::applyDiscogsOrder($row);
+            if ($index === null) $index = self::salesIndex('Discogs order ', 'discogs', false);
+            foreach (($r['data'] ?? []) as $row) $dg += self::applyDiscogsOrder($row, $index);
             if (count($r['data'] ?? []) < 200) break;
         }
         return [$web, $dg];
+    }
+
+    /**
+     * Every ERP sale from website (or Discogs) orders, keyed by order id, in
+     * one pass: one LIKE scan per order took minutes on the full table.
+     */
+    protected static function salesIndex(string $notePrefix, string $importSource, bool $withProducts): array
+    {
+        $rows = DB::table('transactions')
+            ->where('type', 'sell')
+            ->where(function ($q) use ($notePrefix, $importSource) {
+                $q->where('additional_notes', 'like', $notePrefix . '%')
+                  ->orWhere('import_source', $importSource);
+            })
+            ->get(['id', 'web_order_status', 'additional_notes', 'import_source', 'import_external_id']);
+
+        $products = [];
+        if ($withProducts) {
+            foreach ($rows->pluck('id')->chunk(1000) as $ids) {
+                foreach (DB::table('transaction_sell_lines')->whereIn('transaction_id', $ids->all())->get(['transaction_id', 'product_id']) as $l) {
+                    $products[$l->transaction_id][] = (string) $l->product_id;
+                }
+            }
+        }
+
+        $index = [];
+        foreach ($rows as $r) {
+            if ($r->import_source === $importSource && (string) $r->import_external_id !== '') {
+                $key = (string) $r->import_external_id;
+            } elseif (strpos((string) $r->additional_notes, $notePrefix) === 0) {
+                $key = strtok(substr((string) $r->additional_notes, strlen($notePrefix)), " \t\n");
+            } else {
+                continue;
+            }
+            if ($key === false || $key === '') continue;
+            $r->product_ids = $products[$r->id] ?? [];
+            $index[$key][] = $r;
+        }
+        return $index;
     }
 
     protected static function websiteOrderStatus(array $o): ?string
