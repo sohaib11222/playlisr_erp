@@ -258,7 +258,7 @@ class AddTopTierSubcategories extends Command
         if ($this->option('create-only')) { $this->info($commit ? 'Done (create only).' : 'DRY RUN (create only).'); return 0; }
 
         // Step 2 — re-file.
-        $this->newLine();
+        $this->line('');
         $this->info('Step 2 — re-file matching items');
         $moved = [];  // product id => true, so two rules never fight over one item
         $total = 0;
@@ -291,13 +291,13 @@ class AddTopTierSubcategories extends Command
             }
             $total += $count;
             arsort($from);
-            $this->newLine();
+            $this->line('');
             $this->line("▶ {$rule['label']}: " . ($commit ? 'moved' : 'would move') . " {$count}");
             foreach ($from as $k => $n) $this->line("    from {$k}: {$n}");
             foreach ($examples as $e) $this->line("    · {$e}");
         }
 
-        $this->newLine();
+        $this->line('');
         $this->info(($commit ? '✅ Moved ' : '🧪 DRY RUN — would move ') . $total . ' items.' . ($commit ? '' : ' Re-run with --commit.'));
         return 0;
     }
