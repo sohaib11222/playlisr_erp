@@ -35,6 +35,20 @@
         [/\bbillie\s+holiday\b/g, ' billieholiday '],
         [/\bpre\s*-?\s*owned\b|\bsecond\s*hand\b/g, ' used '],
         [/\bfactory\s+sealed\b|\bbrand\s+new\b/g, ' sealed '],
+        // Things that say "vinyl" / "record" but aren't records.
+        [/\bmini\s+vinyl\b/g, ' minivinyl '],
+        [/\bvinyl\s+(?:figures?|toys?|art\s+toys?)\b/g, ' figure '],
+        [/\brecord\s+players?\b/g, ' turntable '],
+        [/\b(?:record|vinyl)\s+(?:accessor(?:y|ies)|care|cleaning|cleaner|brush|sleeves?|storage|crates?)\b/g, ' recordcare '],
+        [/\bcassette\s+(?:decks?|recorders?)\b/g, ' cassettedeck '],
+        [/\bvhs\s+tapes?\b/g, ' vhs '],
+        [/\b(?:phono|turntable)\s+cartridges?\b/g, ' needle '],
+        [/\bnon\s*-?\s*music\b/g, ' nonmusic '],
+        [/\bvideo\s*games?\b/g, ' videogame '],
+        [/\bboard\s*games?\b/g, ' boardgame '],
+        [/\bgift\s*cards?\b/g, ' giftcard '],
+        [/\bupper\s+deck\b/g, ' card '],
+        [/\bcd\s+players?\b|\bdiscman\b/g, ' cdplayer '],
     ];
     // Single words -> one canonical word.
     var WORDS = {
@@ -51,7 +65,38 @@
         electronica: 'electronic', edm: 'electronic', techno: 'electronic', house: 'electronic',
         alternative: 'alt', ost: 'soundtrack', score: 'soundtrack', soundtrack: 'soundtrack',
         turntable: 'turntable', pokémon: 'pokemon', yugioh: 'yu',
+        stylus: 'needle', needle: 'needle',
+        band: 'music', tour: 'music', concert: 'music', merch: 'music',
+        clothing: 'apparel', clothes: 'apparel',
+        rookie: 'card', rc: 'card', psa: 'card', bgs: 'card', topps: 'card', fleer: 'card', bowman: 'card', panini: 'card', prizm: 'card',
+        synth: 'synthesizer', synthesizer: 'synthesizer', keyboard: 'synthesizer',
+        hardcover: 'book', paperback: 'book', walkman: 'walkman', walkmen: 'walkman',
+        costume: 'mask', figurine: 'figure', plushie: 'plush',
     };
+    // Words never made singular ("Blues" is not "Blue").
+    var KEEP = { blues: 1, series: 1, news: 1, pants: 1, jeans: 1, glasses: 1, sports: 1 };
+    // Product-type words: strong evidence for a category, whatever else the
+    // row says ("Tupac poster" under "Wall Art" is a poster).
+    var TYPES = {
+        poster: /^posters$/, magazine: /^magazines$/, comic: /^comics$/, vhs: /^vhs$/, dvd: /^dvd/, laser: /^laser/,
+        cassette: /^cassettes/, cd: /^cd /, vinyl: /^vinyl/, sevenin: /^7"/, eighttrack: /^8 track/,
+        shirt: /^apparel/, hat: /^apparel/, jersey: /^apparel/, sweatshirt: /^apparel/, apparel: /^apparel/,
+        turntable: /^(audio gear|electronics)$/, walkman: /^(audio gear|electronics)$/, guitar: /^(audio gear|electronics)$/, cdplayer: /^(audio gear|electronics)$/,
+        needle: /^audio gear$/, headphone: /^audio gear$/, speaker: /^audio gear$/, receiver: /^audio gear$/, amp: /^audio gear$/,
+        pedal: /^audio gear$/, synthesizer: /^audio gear$/, mixer: /^audio gear$/, vcr: /^audio gear$/, cassettedeck: /^audio gear$/,
+        camera: /^photo/, lens: /^photo/,
+        figure: /^toys$/, plush: /^toys$/, puzzle: /^toys$/, funko: /^toys$/, squishy: /^toys$/, boardgame: /^toys$/, minivinyl: /^toys$/,
+        pin: /^(toys|decorative collectibles)$/, sticker: /^gift items$/, slipmat: /^gift items$/, magnet: /^(gift items|toys)$/, keychain: /^(gift items|toys)$/,
+        mask: /^accessories/, book: /^books$/, novel: /^books$/, manga: /^books$/,
+        card: /^trading card/, pack: /^trading card packs$/, booster: /^trading card packs$/,
+        videogame: /^video games$/, giftcard: /^gift cards$/,
+    };
+    // Title words that are also genre names: from the item name alone they
+    // don't pick a subcategory ("Kind of Blue", "Star Wars", "Just Kids").
+    var GENRE = {};
+    ('war drama comedy love blue blues soul rock pop jazz country metal punk world classical action adventure family kid ' +
+     'romance horror fantasy thriller western animation musical folk gospel latin disco house dance electronic reggae ' +
+     'new wave alt indie hiphop rnb funk hardcore soundtrack christmas children sci fi tv drink candy art').split(' ').forEach(function (w) { GENRE[w] = 1; });
     // Words that say nothing about the category.
     var STOP = { and: 1, the: 1, of: 1, a: 1, an: 1, for: 1, with: 1, other: 1, misc: 1, item: 1, items: 1, general: 1 };
 
@@ -66,7 +111,7 @@
         var out = [];
         t.replace(/&/g, ' ').split(/[^a-z0-9]+/).forEach(function (w) {
             if (!w || STOP[w]) return;
-            w = singular(w);
+            if (!KEEP[w]) w = singular(w);
             w = WORDS[w] || w;
             if (w.length < 2 && !/\d/.test(w)) return;
             if (out.indexOf(w) === -1) out.push(w);
@@ -97,6 +142,10 @@
         });
         return m ? w + 0.5 * Math.min(1, m / labelTok.length) : 0;
     }
+
+    // Same item in two places (Audio Gear > Walkmen, Electronics > Walkmen):
+    // on an otherwise even score take the fuller category.
+    var PREFER = { 'audio gear': 0.1, toys: 0.1 };
 
     function loose(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
 
@@ -130,6 +179,8 @@
         var catT = tokens(cat);
         var subT = expand(tokens(sub));
         var nameT = tokens(String(product.name || '') + ' ' + String(product.artist || ''));
+        // Name words for picking a subcategory: no genre words from titles.
+        var nameSubT = nameT.filter(function (t) { return !GENRE[t]; });
         var allT = catT.concat(subT, nameT);
         var says = function (w) { return allT.indexOf(w) !== -1; };
 
@@ -142,12 +193,16 @@
             var bestSub = 0;
             g.subs.forEach(function (sOpt) {
                 var f = sOpt.tok.filter(function (t) { return g.tok.indexOf(t) === -1; });
-                bestSub = Math.max(bestSub, 2 * overlap(f, subT) + 1.5 * overlap(f, nameT) + overlap(f, catT));
+                bestSub = Math.max(bestSub, 2 * overlap(f, subT) + 1.5 * overlap(f, nameSubT) + overlap(f, catT));
             });
+            var typeHits = 0;
+            allT.forEach(function (t) { if (TYPES[t] && TYPES[t].test(top.toLowerCase())) typeHits++; });
+            if (typeHits) s += 8 * typeHits;
             if (s > 0) s += bestSub;
             else if (bestSub >= 2 && !catT.length) s = bestSub * 0.5;
+            if (s > 0 && PREFER[top.toLowerCase()]) s += PREFER[top.toLowerCase()];
             // Sealed vs used only splits groups that already match.
-            if (s > 0 && g.tok.indexOf('sealed') !== -1) s += says('sealed') ? 3 : (says('used') ? -3 : -0.5);
+            if (s > 0 && g.tok.indexOf('sealed') !== -1) s += says('sealed') ? 3 : (says('used') ? -3 : -1.5);
             if (s > 0 && g.tok.indexOf('used') !== -1) s += says('used') ? 3 : (says('sealed') ? -3 : 0);
             if (s > 0 && g.tok.indexOf('clearance') !== -1 && !says('clearance')) s -= 2;
             return { g: g, s: s };
@@ -156,12 +211,28 @@
         if (!scored.length) return '';
         if (scored.length > 1 && scored[1].s >= scored[0].s - 0.01) return ''; // tie: let the clerk pick
         var g = scored[0].g;
-        if (g.subs.length === 1) return g.subs[0].value;
+        if (g.subs.length === 1) {
+            // A lone named subcategory ("Accessories & Supplies > Halloween
+            // Mask") only when the row is actually about it.
+            var only = g.subs[0].tok.filter(function (t) { return g.tok.indexOf(t) === -1; });
+            return !only.length || overlap(only, allT) ? g.subs[0].value : '';
+        }
 
         // 2b. Pick the subcategory inside it.
+        var rowT = subT.concat(nameSubT);
+        var typeSub = function (sOpt) { return sOpt.tok.some(function (t) { return TYPES[t] && g.tok.indexOf(t) === -1 && rowT.indexOf(t) !== -1; }); };
+        var anyType = g.subs.some(typeSub);
         var subs = g.subs.map(function (sOpt) {
             var f = sOpt.tok.filter(function (t) { return g.tok.indexOf(t) === -1; });
-            var s = 5 * overlap(f, subT) + 4 * overlap(f, nameT) + 1 * overlap(f, catT);
+            var s = 5 * overlap(f, subT) + 4 * overlap(f, nameSubT) + 1 * overlap(f, catT);
+            // Product-type words ("needle", "Funko") beat brand / title words,
+            // and a subcategory the row names in full beats a partial one.
+            // (A brand-named one like "audio technica" loses to the type the row names.)
+            f.forEach(function (t) { if (TYPES[t] && rowT.indexOf(t) !== -1) s += 4; });
+            if (s > 0 && f.length && f.every(function (t) { return rowT.indexOf(t) !== -1; }) && (!anyType || typeSub(sOpt))) s += 6;
+            // Tie-break: the earlier word of the hint ("Latin Rock" -> Latin).
+            var pos = subT.findIndex(function (t) { return f.indexOf(t) !== -1; });
+            if (s > 0 && pos !== -1) s += 0.05 / (pos + 1);
             return { o: sOpt, s: s };
         }).sort(function (a, b) { return b.s - a.s; });
         if (dbg) dbg.push('SUB ' + subs.slice(0, 4).map(function (x) { return x.o.name + '=' + x.s.toFixed(2); }).join(', '));

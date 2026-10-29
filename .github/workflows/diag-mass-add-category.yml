@@ -35,6 +35,7 @@ jobs:
           # Prod SSH is flaky: fall back to the saved list (2026-10-28).
           [ -s combos.json ] || cp scripts/diag/mass_add_combos.json combos.json
           node scripts/diag/mass_add_category_test.js combos.json
+          [ -f scripts/diag/mass_add_category_100.js ] && node scripts/diag/mass_add_category_100.js combos.json || true
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '7.3'
