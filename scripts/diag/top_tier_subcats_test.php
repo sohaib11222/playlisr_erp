@@ -19,22 +19,25 @@ function target($parent, $sub, $text) {
 
 // [parent, current sub, "name artist", expected target or null]
 $cases = [
-    ['Vinyl - Used', 'Rock', 'A Christmas Gift For You Phil Spector', 'Christmas / Holiday'],
-    ['Vinyl - Used', null, 'Merry Christmas Bing Crosby', 'Christmas / Holiday'],
+    // Vinyl is off-limits: nothing moves there, no rule names a vinyl parent.
+    ['Vinyl - Used', 'Rock', 'A Christmas Gift For You Phil Spector', null],
+    ['Vinyl - Sealed', 'Jazz', 'Songs for Swingin\' Lovers Frank Sinatra', null],
+    ['CD - Used', 'Rock', 'A Christmas Gift For You Phil Spector', 'Christmas / Holiday'],
+    ['CD - Used', null, 'Merry Christmas Bing Crosby', 'Christmas / Holiday'],
     ['CD - Used', 'Jazz', 'Lady in Satin Billie Holiday', null],
-    ['Vinyl - Used', 'Punk / Hardcore', 'Holiday in Cambodia Dead Kennedys', null],
-    ['Vinyl - Used', 'Pop', 'Holiday Madonna', null],
+    ['CD - Used', 'Punk / Hardcore', 'Holiday in Cambodia Dead Kennedys', null],
+    ['CD - Used', 'Pop', 'Holiday Madonna', null],
     ['Cassettes - Used', 'pop', 'Happy Holidays Various', 'Christmas / Holiday'],
-    ['Vinyl - Used', 'Jazz', 'Songs for Swingin\' Lovers Frank Sinatra', 'Vocal Standards & Swing'],
-    ['Vinyl - Used', 'Jazz', 'Ella and Louis Ella Fitzgerald', null],
-    ['Vinyl - Used', 'Jazz', 'Kind of Blue Miles Davis', null],
-    ['Vinyl - Used', 'Jazz', 'Getz/Gilberto Stan Getz', 'Brazilian / MPB'],
-    ['Vinyl - Used', 'Bossanova', 'Wave Antonio Carlos Jobim', null],
+    ['CD - Used', 'Jazz', 'Songs for Swingin\' Lovers Frank Sinatra', 'Vocal Standards & Swing'],
+    ['CD - Used', 'Jazz', 'Ella and Louis Ella Fitzgerald', null],
+    ['CD - Used', 'Jazz', 'Kind of Blue Miles Davis', null],
+    ['CD - Used', 'Jazz', 'Getz/Gilberto Stan Getz', 'Brazilian / MPB'],
+    ['CD - Used', 'Bossanova', 'Wave Antonio Carlos Jobim', null],
     ['CD - Used', 'Latin', 'Africa Brasil Jorge Ben', 'Brazilian / MPB'],
-    ['Vinyl - Used', 'Jazz', 'Samurai Samba Yellowjackets', null],
-    ['Vinyl - Used', 'Soundtracks', 'Dames At Sea David Christmas', null],
-    ['Vinyl - Used', 'Jazz', 'Whipped Cream & Other Delights Herb Alpert & The Tijuana Brass', 'Easy Listening / Lounge / Exotica'],
-    ['Vinyl - Used', null, 'Quiet Village Martin Denny', 'Easy Listening / Lounge / Exotica'],
+    ['CD - Used', 'Jazz', 'Samurai Samba Yellowjackets', null],
+    ['CD - Used', 'Soundtracks', 'Dames At Sea David Christmas', null],
+    ['CD - Used', 'Jazz', 'Whipped Cream & Other Delights Herb Alpert & The Tijuana Brass', 'Easy Listening / Lounge / Exotica'],
+    ['CD - Used', null, 'Quiet Village Martin Denny', 'Easy Listening / Lounge / Exotica'],
     ['Toys', null, 'Nekomata Okayu Figure', 'Anime Figures'],
     ['Toys', null, 'Haikyuu', 'Anime Figures'],
     ['Toys', 'Funko Pop', 'Naruto #727', null],
@@ -62,6 +65,8 @@ $cases = [
     ['Books', 'Biographies & Memoirs', 'Superman: The Biography', null],
 ];
 $fail = 0;
+foreach (array_keys(C::newSubs()) as $p) if (C::isVinyl($p)) { echo "FAIL vinyl parent in newSubs: $p\n"; $fail++; }
+foreach (C::rules() as $r) foreach ($r['parents'] as $p) if (C::isVinyl($p)) { echo "FAIL vinyl parent in rule {$r['label']}\n"; $fail++; }
 foreach ($cases as $c) {
     [$p, $s, $t, $want] = $c;
     $got = target($p, $s, $t);

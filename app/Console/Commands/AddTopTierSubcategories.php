@@ -40,14 +40,14 @@ class AddTopTierSubcategories extends Command
 
     protected $description = 'Create the top-tier missing subcategories and re-file matching items.';
 
-    const MUSIC_ALL = ['Vinyl - Used', 'Vinyl - Sealed', 'CD - Used', 'CD - Sealed', 'Cassettes - Used', 'Cassettes - Sealed'];
+    // Vinyl - Used / Vinyl - Sealed keep their own genre list: no new subs
+    // and no moves there (Sarah 2026-10-29). handle() also refuses them.
+    const MUSIC_ALL = ['CD - Used', 'CD - Sealed', 'Cassettes - Used', 'Cassettes - Sealed'];
 
     /** Parent category => new subcategories under it. */
     public static function newSubs()
     {
         return [
-            'Vinyl - Used' => ['Christmas / Holiday', 'Vocal Standards & Swing', 'Brazilian / MPB', 'Easy Listening / Lounge / Exotica'],
-            'Vinyl - Sealed' => ['Christmas / Holiday', 'Vocal Standards & Swing', 'Brazilian / MPB', 'Easy Listening / Lounge / Exotica'],
             'CD - Used' => ['Christmas / Holiday', 'Vocal Standards & Swing', 'Brazilian / MPB', 'Easy Listening / Lounge / Exotica'],
             'CD - Sealed' => ['Christmas / Holiday', 'Vocal Standards & Swing', 'Brazilian / MPB'],
             'Cassettes - Used' => ['Christmas / Holiday'],
@@ -72,7 +72,7 @@ class AddTopTierSubcategories extends Command
         $marvel = 'marvel|spider-?\s?man|\bhulk\b|x-?men|x-?force|wolverine|avengers|iron man|\bthor\b|captain america|deadpool|punisher|fantastic four|daredevil|venom|carnage|black panther|wakanda|moon knight|ghost rider|doctor strange|guardians of the galaxy|silver surfer|galactus|conan|deathlok|werewolf by night|what if|amadeus cho|elektra|ant-man|namor|new mutants|web of spider|she-hulk|killmonger|thanos|kang\b';
         $dc = '\bdc\b|batman|superman|wonder woman|justice league|aquaman|\bflash\b|green lantern|green arrow|\barrow\b|nightwing|joker|harley quinn|catwoman|teen titans|outsiders|world\'?s finest|supergirl|swamp thing|sandman|constantine|hellblazer|shazam|doom patrol|watchmen|the authority|lobo\b|darkseid';
         $indie = '\bimage\b|spawn|invincible|walking dead|\bsaga\b|\bidw\b|dark horse|boom!? studios|cyber ?force|turok|valiant|godzilla|ninja turtles|\btmnt\b|hellboy|savage dragon|witchblade|the darkness|youngblood|wildc\.?a\.?t\.?s|bone\b|archie|vertigo';
-        $music = ['Vinyl - Used', 'Vinyl - Sealed', 'CD - Used', 'CD - Sealed'];
+        $music = ['CD - Used', 'CD - Sealed'];
 
         return [
             [
@@ -101,7 +101,7 @@ class AddTopTierSubcategories extends Command
             ],
             [
                 'label' => 'Easy Listening / Lounge / Exotica',
-                'parents' => ['Vinyl - Used', 'Vinyl - Sealed', 'CD - Used'],
+                'parents' => ['CD - Used'],
                 'from' => [null, 'Jazz', 'Pop', 'pop', 'Rock', 'World', 'world', 'Soundtracks'],
                 'to' => 'Easy Listening / Lounge / Exotica',
                 'match' => $easy,
@@ -190,6 +190,11 @@ class AddTopTierSubcategories extends Command
         ];
     }
 
+    public static function isVinyl($parent)
+    {
+        return stripos($parent, 'vinyl') !== false;
+    }
+
     /** Does a rule take this product? Pure, so it can be tested without a DB. */
     public static function ruleMatches(array $rule, $currentSub, $text)
     {
@@ -235,6 +240,7 @@ class AddTopTierSubcategories extends Command
         // Step 1 — create the subcategories.
         $this->info('Step 1 — subcategories');
         foreach (self::newSubs() as $parent => $subs) {
+            if (self::isVinyl($parent)) { $this->warn("  ! {$parent} is off-limits — skipped"); continue; }
             $pid = $parentId[mb_strtolower($parent)] ?? null;
             if (!$pid) { $this->warn("  ! parent '{$parent}' not found — skipped"); continue; }
             foreach ($subs as $s) {
@@ -265,6 +271,7 @@ class AddTopTierSubcategories extends Command
         foreach (self::rules() as $rule) {
             $count = 0; $from = []; $examples = [];
             foreach ($rule['parents'] as $parent) {
+                if (self::isVinyl($parent)) continue;
                 $pid = $parentId[mb_strtolower($parent)] ?? null;
                 if (!$pid) continue;
                 $targetId = $subId[$pid][mb_strtolower($rule['to'])] ?? null;
