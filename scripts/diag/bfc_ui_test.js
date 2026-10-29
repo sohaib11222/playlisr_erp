@@ -52,7 +52,7 @@ const fs = require('fs');
   // Seller gate: no name / no phone blocks Calculate.
   const gate = await page.evaluate(() => {
     $('#seller_mode').val('phone').trigger('change');
-    const click = () => { $('#bfc_calc_error').hide().empty(); $('#buy_offer_form').one('submit', e => e.preventDefault()); $('#buy_offer_form button[type="submit"], #buy_offer_form input[type="submit"]').first().trigger('click'); return $('#bfc_calc_error').text(); };
+    const click = () => { $('#bfc_calc_error').hide().empty(); $('#buy_offer_form').triggerHandler('submit'); return $('#bfc_calc_error').text(); };
     const noName = click();
     $('#buy_offer_form input[name="seller_first_name"]').val('Test').trigger('input');
     const noPhone = click();
@@ -170,8 +170,7 @@ const fs = require('fs');
         if (!opt.length) return { skip: 'no category matching ' + o.cat.src };
       } else if ($g.length) { $g.val('').trigger('change'); }
       $('#bfc_calc_error').hide().empty();
-      $('#buy_offer_form').one('submit', e => e.preventDefault());
-      $('#buy_offer_form button[type="submit"], #buy_offer_form input[type="submit"]').first().trigger('click');
+      $('#buy_offer_form').triggerHandler('submit');
       return { err: $.trim($('#bfc_calc_error').text()), cat };
     }, o.cat ? Object.assign({}, o, { cat: { src: o.cat.source, test: true } }) : o);
     if (r.skip) return console.log('MATRIX SKIP want=' + want + ' ' + name + ' -> ' + r.skip);
@@ -188,8 +187,9 @@ const fs = require('fs');
     ['GO', 'VHS rare $25, eBay link without https://', { type: 'rare_vhs', value: 25, link: 'www.ebay.com/itm/123' }],
     ['GO', 'VHS rare $25, eBay app share link (ebay.us)', { type: 'rare_vhs', value: 25, link: 'https://ebay.us/m/AbC123' }],
     ['BLOCK', 'VHS rare $25, Google link (not eBay)', { type: 'rare_vhs', value: 25, link: 'https://www.google.com/search?q=ebay+vhs' }],
-    ['GO', 'Valuable item $50, category Vinyl, no link', { type: 'ebay_value', value: 50, cat: /vinyl|record/ }],
-    ['GO', 'Valuable item $50, category Cassette, no link', { type: 'ebay_value', value: 50, cat: /cassette/ }],
+    ['GO', 'Valuable item $50, category Vinyl, no link', { type: 'ebay_value', value: 50, cat: /^(vinyl|records?)\b/ }],
+    ['GO', 'Valuable item $50, category Cassette, no link', { type: 'ebay_value', value: 50, cat: /^cassettes?\b/ }],
+    ['BLOCK', 'Valuable item $50, category Audio Gear record/cassette gear, no link', { type: 'ebay_value', value: 50, cat: /^audio gear.*(record|cassette)/ }],
     ['BLOCK', 'Valuable item $50, category non-music, no link', { type: 'ebay_value', value: 50, cat: /^(vhs|dvd|toys|trading cards|books?)\b/ }],
     ['BLOCK', 'Valuable item $50, no category, no link', { type: 'ebay_value', value: 50 }],
     ['BLOCK', 'Camera $40, no link', { type: 'camera', value: 40 }],

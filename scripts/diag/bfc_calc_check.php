@@ -64,10 +64,12 @@ echo "NUDGE dvd_player: " . App\Http\Controllers\BuyFromCustomerController::flat
 // (server side, BuyFromCustomerController::validateLineSanity), one line per case.
 config(['session.driver' => 'array']);
 $vcats = $ds->categoryChoices($biz);
-$vinylCat = array_search(current(array_filter($vcats, function ($n) { return preg_match('/vinyl|record/i', $n); })), $vcats);
-$castCat = array_search(current(array_filter($vcats, function ($n) { return preg_match('/cassette/i', $n); })), $vcats);
+$vinylCat = array_search(current(array_filter($vcats, function ($n) { return preg_match('/^(vinyl|records?)\b/i', $n); })), $vcats);
+$castCat = array_search(current(array_filter($vcats, function ($n) { return preg_match('/^cassettes?\b/i', $n); })), $vcats);
+$gearCat = array_search(current(array_filter($vcats, function ($n) { return preg_match('/^audio gear.*(record|cassette)/i', $n); })), $vcats);
 $otherCat = array_search(current(array_filter($vcats, function ($n) { return preg_match('/^(vhs|dvd|toys|trading cards|books?)\b/i', $n); })), $vcats);
-echo "CATS vinyl=$vinylCat " . ($vcats[$vinylCat] ?? '-') . " | cassette=$castCat " . ($vcats[$castCat] ?? '-') . " | other=$otherCat " . ($vcats[$otherCat] ?? '-') . "\n";
+echo "FORMATS " . implode(', ', array_filter($vcats, function ($n) { return strpos($n, '›') === false; })) . "\n";
+echo "CATS gear=$gearCat " . ($vcats[$gearCat] ?? '-') . " | vinyl=$vinylCat " . ($vcats[$vinylCat] ?? '-') . " | cassette=$castCat " . ($vcats[$castCat] ?? '-') . " | other=$otherCat " . ($vcats[$otherCat] ?? '-') . "\n";
 $san = new ReflectionMethod($ctl, 'validateLineSanity');
 $san->setAccessible(true);
 $cases = [
@@ -82,6 +84,7 @@ $cases = [
     ['BLOCK', 'VHS rare $25, Google link (not eBay)', ['item_type' => 'rare_vhs', 'discogs_median_price' => 25, 'discogs_link' => 'https://www.google.com/search?q=ebay+vhs']],
     ['GO',    'Valuable item $50, category Vinyl, no link', ['item_type' => 'ebay_value', 'discogs_median_price' => 50, 'genre' => $vinylCat]],
     ['GO',    'Valuable item $50, category Cassette, no link', ['item_type' => 'ebay_value', 'discogs_median_price' => 50, 'genre' => $castCat]],
+    ['BLOCK', 'Valuable item $50, category Audio Gear record/cassette gear, no link', ['item_type' => 'ebay_value', 'discogs_median_price' => 50, 'genre' => $gearCat]],
     ['BLOCK', 'Valuable item $50, category non-music, no link', ['item_type' => 'ebay_value', 'discogs_median_price' => 50, 'genre' => $otherCat]],
     ['BLOCK', 'Valuable item $50, no category, no link', ['item_type' => 'ebay_value', 'discogs_median_price' => 50]],
     ['BLOCK', 'Camera $40, no link', ['item_type' => 'camera', 'discogs_median_price' => 40]],

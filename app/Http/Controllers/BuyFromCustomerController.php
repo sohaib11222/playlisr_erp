@@ -1065,11 +1065,12 @@ class BuyFromCustomerController extends Controller
             if ($type === 'individual_vinyl' && empty($line['signed']) && $qty > 0 && ($title !== '' || $link !== '' || $value > 0) && trim((string) ($line['condition_grade'] ?? '')) === '') {
                 $errors["lines.$i.condition_grade"] = sprintf('Line %s: pick the record\'s condition grade.', $n);
             }
-            // The Beta category pick posts an id (c:123); match on its name ("Vinyl › Rock").
+            // The Beta category pick posts an id (c:123); match on its format name
+            // ("Vinyl" of "Vinyl › Rock"), so "Audio Gear › Record Needle" still needs a link.
             $genre = (string) ($line['genre'] ?? '');
             if (strpos($genre, 'c:') === 0) {
                 $cats = $cats ?? app(BuyDemandService::class)->categoryChoices((int) $request->session()->get('user.business_id'));
-                $genre .= ' ' . ($cats[$genre] ?? '');
+                $genre = explode(' › ', $cats[$genre] ?? '')[0];
             }
             if ($qty > 0 && $this->calculator->requiresEbaySoldLink($type, $value, $genre)) {
                 if ($link === '') {
