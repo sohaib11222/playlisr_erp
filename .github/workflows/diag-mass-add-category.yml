@@ -1,0 +1,54 @@
+# READ-ONLY: pulls the mass-add category list from prod and runs
+# scripts/diag/mass_add_category_test.js against it. Runs on push to diag-cat/**.
+name: Diag mass-add category match
+
+on:
+  push:
+    branches: ['diag-cat/**']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get category list from prod
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        continue-on-error: true
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "$DEPLOY_SSH_KEY" > ~/.ssh/id && chmod 600 ~/.ssh/id
+          P=${DEPLOY_PORT:-22}
+          for i in 1 2 3; do ssh-keyscan -T 10 -p $P -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null && grep -q . ~/.ssh/known_hosts && break; sleep 5; done
+          scp -i ~/.ssh/id -P $P scripts/diag/mass_add_categories.php "$DEPLOY_USER@$DEPLOY_HOST:/www/playlist.nivessa.com/app/storage/mass_add_categories.php"
+          ssh -i ~/.ssh/id -p $P "$DEPLOY_USER@$DEPLOY_HOST" "cd /www/playlist.nivessa.com/app && sed -i \"s#__DIR__ . '/../../#'\$(pwd)/#g\" storage/mass_add_categories.php && php storage/mass_add_categories.php; rm -f storage/mass_add_categories.php" > out.txt 2>&1
+          awk '/^COMBOS_JSON_START/{f=1;next}/^COMBOS_JSON_END/{f=0}f' out.txt > combos.json
+          wc -c combos.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run matcher test
+        run: |
+          # Prod SSH is flaky: fall back to the saved list (2026-10-28).
+          [ -s combos.json ] || cp scripts/diag/mass_add_combos.json combos.json
+          node scripts/diag/mass_add_category_test.js combos.json
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '7.3'
+          tools: composer
+      - name: Blade compile check (mass-create)
+        run: |
+          mkdir -p /tmp/bc && cd /tmp/bc
+          composer require -q illuminate/view:5.8.* illuminate/filesystem:5.8.* illuminate/events:5.8.*
+          cat > c.php <<'PHP'
+          <?php
+          require 'vendor/autoload.php';
+          $c = new Illuminate\View\Compilers\BladeCompiler(new Illuminate\Filesystem\Filesystem, '/tmp/bc');
+          file_put_contents('/tmp/bc/out.php', $c->compileString(file_get_contents($argv[1])));
+          PHP
+          php c.php "$GITHUB_WORKSPACE/resources/views/product/mass-create.blade.php"
+          php -l /tmp/bc/out.php
+          grep -c "massAddCategoryMatch" /tmp/bc/out.php
