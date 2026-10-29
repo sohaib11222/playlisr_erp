@@ -1,0 +1,63 @@
+# READ-ONLY diagnostic: look up an ERP transaction by its nivessa.com website
+# order Mongo _id, checking both the ways it can land in transactions —
+# the periodic SyncNivessaWebSales backfill (import_source='nivessa_web',
+# import_external_id=<id>) and the live/manual "Website order <id>" note
+# path (additional_notes). No writes.
+name: Diag web order ERP status
+
+on:
+  workflow_dispatch:
+    inputs:
+      order_id:
+        description: "nivessa.com order Mongo _id, e.g. 6a9c7e56620d59e82359bac1"
+        required: true
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+
+      - name: Look up website order in ERP transactions (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DIAG_ORDER_ID: ${{ github.event.inputs.order_id }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 300s
+          envs: DIAG_ORDER_ID
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            export DIAG_ORDER_ID
+            php artisan website-orders:sync-erp-status --no-ansi
+            php artisan tinker --no-ansi <<'PHP'
+            foreach (DB::table('transactions')->whereNotNull('web_order_status')->groupBy('web_order_status')->selectRaw('web_order_status, count(*) n')->get() as $r) echo $r->web_order_status . ': ' . $r->n . PHP_EOL;
+            foreach (DB::table('transactions')->whereNotNull('web_order_status')->orderByDesc('id')->limit(8)->get(['id','invoice_no','additional_notes','web_order_status','payment_status']) as $r) echo "{$r->id} {$r->invoice_no} {$r->web_order_status} {$r->payment_status} " . substr($r->additional_notes, 0, 50) . PHP_EOL;
+            PHP
