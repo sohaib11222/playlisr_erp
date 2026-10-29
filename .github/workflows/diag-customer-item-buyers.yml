@@ -1,0 +1,82 @@
+# READ-ONLY (2026-10-29): find customers whose name matches NAME who bought
+# items whose name/artist matches ITEM. No writes.
+name: Diag customer item buyers
+
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "Customer name contains"
+        required: true
+        default: "adam"
+      item:
+        description: "Product name/artist contains"
+        required: true
+        default: "tame impala"
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+
+      - name: Find buyers (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DIAG_NAME: ${{ github.event.inputs.name }}
+          DIAG_ITEM: ${{ github.event.inputs.item }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 120s
+          envs: DIAG_NAME,DIAG_ITEM
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            export DIAG_NAME DIAG_ITEM
+            php artisan tinker --no-ansi <<'PHP'
+            $n = '%' . trim((string) getenv('DIAG_NAME')) . '%';
+            $i = '%' . trim((string) getenv('DIAG_ITEM')) . '%';
+            $rows = \DB::table('transaction_sell_lines as l')
+              ->join('transactions as t', 't.id', '=', 'l.transaction_id')
+              ->join('contacts as c', 'c.id', '=', 't.contact_id')
+              ->join('products as p', 'p.id', '=', 'l.product_id')
+              ->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')
+              ->where('t.type', 'sell')
+              ->where(fn($q) => $q->where('c.name', 'like', $n)->orWhere('c.first_name', 'like', $n)->orWhere('c.supplier_business_name', 'like', $n))
+              ->where(fn($q) => $q->where('p.name', 'like', $i)->orWhere('p.artist', 'like', $i))
+              ->orderBy('t.transaction_date')
+              ->get(['c.id as cid', 'c.name', 'c.mobile', 'c.email', 't.id as tid', 't.invoice_no', 't.transaction_date', 't.status', 'bl.name as store', 'p.name as product', 'p.artist', 'l.quantity', 'l.unit_price_inc_tax']);
+            echo 'MATCHES ' . count($rows) . "\n";
+            foreach ($rows as $r) echo 'ROW ' . json_encode($r) . "\n";
+            $buyers = \DB::table('transactions as t')->join('contacts as c', 'c.id', '=', 't.contact_id')
+              ->where('t.type', 'sell')->where(fn($q) => $q->where('c.name', 'like', $n)->orWhere('c.first_name', 'like', $n))
+              ->selectRaw('c.id, c.name, count(*) as sales')->groupBy('c.id', 'c.name')->get();
+            echo 'NAME_MATCH_BUYERS ' . count($buyers) . ' ' . json_encode($buyers) . "\n";
+            PHP
+            echo "=== done ==="
