@@ -67,7 +67,7 @@ class AddTopTierSubcategories extends Command
     public static function rules()
     {
         $vocal = 'sinatra|dean martin|bing crosby|tony bennett|perry como|andy williams|nat king cole|johnny mathis|rosemary clooney|doris day|patti page|glenn miller|benny goodman|tommy dorsey|jimmy dorsey|harry james|lawrence welk|mitch miller|jo stafford|vic damone|frankie laine|eddie fisher|connie francis|steve lawrence|eydie gorme|robert goulet|jack jones|al martino|mel torm[eé]|bobby darin|andrews sisters|mills brothers|ink spots|guy lombardo|kay starr|julie london|keely smith|louis prima|matt monro|engelbert humperdinck|jerry vale';
-        $brazil = 'jobim|gilberto|caetano|gal costa|milton nascimento|jorge ben|elis regina|chico buarque|os mutantes|s[eé]rgio mendes|brasil ?66|marcos valle|tim maia|maria beth[aâ]nia|airto|flora purim|edu lobo|baden powell|luiz bonf[aá]|djavan|novos baianos|tom z[eé]|azymuth|ivan lins|joyce moreno|\bbrasil\b|\bbrazil|\bsamba\b|\bmpb\b';
+        $brazil = 'jobim|gilberto|caetano|gal costa|milton nascimento|jorge ben|elis regina|chico buarque|os mutantes|s[eé]rgio mendes|brasil ?66|marcos valle|tim maia|maria beth[aâ]nia|airto|flora purim|edu lobo|baden powell|luiz bonf[aá]|djavan|novos baianos|tom z[eé]|azymuth|ivan lins|joyce moreno|\bbrasil\b|\bbrazil|\bmpb\b';
         $easy = 'exotica|easy listening|\blounge\b|herb alpert|tijuana brass|mantovani|ray conniff|percy faith|101 strings|james last|bert kaempfert|martin denny|arthur lyman|les baxter|living strings|hollyridge strings|jackie gleason|enoch light|esquivel|billy vaughn|kostelanetz|roger williams|ferrante (&|and) teicher|ray anthony|sounds orchestral';
         $marvel = 'marvel|spider-?\s?man|\bhulk\b|x-?men|x-?force|wolverine|avengers|iron man|\bthor\b|captain america|deadpool|punisher|fantastic four|daredevil|venom|carnage|black panther|wakanda|moon knight|ghost rider|doctor strange|guardians of the galaxy|silver surfer|galactus|conan|deathlok|werewolf by night|what if|amadeus cho|elektra|ant-man|namor|new mutants|web of spider|she-hulk|killmonger|thanos|kang\b';
         $dc = '\bdc\b|batman|superman|wonder woman|justice league|aquaman|\bflash\b|green lantern|green arrow|\barrow\b|nightwing|joker|harley quinn|catwoman|teen titans|outsiders|world\'?s finest|supergirl|swamp thing|sandman|constantine|hellblazer|shazam|doom patrol|watchmen|the authority|lobo\b|darkseid';
@@ -81,7 +81,7 @@ class AddTopTierSubcategories extends Command
                 'from' => '*',
                 'to' => 'Christmas / Holiday',
                 'match' => 'christmas|x-?mas\b|navidad|hanukk?ah|chanukah|happy holidays|holiday (songs|album|music|favou?rites|classics|greetings|cheer|collection|wishes|season|sing|spirit|hits|magic)|santa claus|jingle bell|sleigh ride|silent night|yuletide',
-                'exclude' => 'billie holiday',
+                'exclude' => 'billie holiday|david christmas',
             ],
             [
                 'label' => 'Vocal Standards & Swing',

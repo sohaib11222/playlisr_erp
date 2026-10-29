@@ -31,6 +31,8 @@ $cases = [
     ['Vinyl - Used', 'Jazz', 'Getz/Gilberto Stan Getz', 'Brazilian / MPB'],
     ['Vinyl - Used', 'Bossanova', 'Wave Antonio Carlos Jobim', null],
     ['CD - Used', 'Latin', 'Africa Brasil Jorge Ben', 'Brazilian / MPB'],
+    ['Vinyl - Used', 'Jazz', 'Samurai Samba Yellowjackets', null],
+    ['Vinyl - Used', 'Soundtracks', 'Dames At Sea David Christmas', null],
     ['Vinyl - Used', 'Jazz', 'Whipped Cream & Other Delights Herb Alpert & The Tijuana Brass', 'Easy Listening / Lounge / Exotica'],
     ['Vinyl - Used', null, 'Quiet Village Martin Denny', 'Easy Listening / Lounge / Exotica'],
     ['Toys', null, 'Nekomata Okayu Figure', 'Anime Figures'],
