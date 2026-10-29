@@ -273,8 +273,12 @@ class ListingCommissionController extends Controller
         // The listing query already excludes them, but the sales-bonus / payout
         // ledger merge above can re-add someone (e.g. Ece kept showing via an old
         // sales payout). Filtering by name here guarantees they never render.
+        // Also drop people who don't work here (Sarah 10/29: "why are we showing
+        // ppl who dont even work here"): login turned off (the offboarding flag)
+        // or no clock-in and no sale rung in the last 45 days.
+        $gone = $this->formerStaffIds($businessId, array_keys($byId));
         $people = collect($byId)->values()
-            ->reject(function ($p) { return $this->isExcludedName($p->name); })
+            ->reject(function ($p) use ($gone) { return $this->isExcludedName($p->name) || isset($gone[(int) $p->user_id]); })
             ->sortByDesc('total_owed_now')->values();
 
         $history = collect($paid)->sortByDesc('marked_at')->values();
@@ -2454,6 +2458,27 @@ class ListingCommissionController extends Controller
             ->groupBy('p.created_by')
             ->get()
             ->keyBy('user_id');
+    }
+
+    // user_id => true for anyone who no longer works here: login turned off,
+    // or no time-clock punch and no final sale rung in the last 45 days.
+    private function formerStaffIds($businessId, array $userIds)
+    {
+        $userIds = array_values(array_filter(array_map('intval', $userIds)));
+        if (empty($userIds)) { return []; }
+        $since = now()->subDays(45)->toDateTimeString();
+        $active = [];
+        try {
+            foreach (DB::table('time_clock_punches')->whereIn('user_id', $userIds)->where('clock_in_at', '>=', $since)
+                ->whereNull('voided_at')->distinct()->pluck('user_id') as $u) { $active[(int) $u] = true; }
+        } catch (\Throwable $e) { \Log::warning('commissions active-staff punch check failed: ' . $e->getMessage()); }
+        foreach (DB::table('transactions')->where('business_id', $businessId)->where('type', 'sell')->where('status', 'final')
+            ->whereIn('created_by', $userIds)->where('transaction_date', '>=', $since)->distinct()->pluck('created_by') as $u) { $active[(int) $u] = true; }
+        $gone = [];
+        foreach (DB::table('users')->whereIn('id', $userIds)->get(['id', 'allow_login']) as $u) {
+            if ((int) $u->allow_login === 0 || !isset($active[(int) $u->id])) { $gone[(int) $u->id] = true; }
+        }
+        return $gone;
     }
 
     // Drop owner/back-office accounts from a query that has joined `users as u`.
