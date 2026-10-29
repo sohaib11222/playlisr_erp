@@ -454,6 +454,22 @@ class PayrollController extends Controller
             }
         } catch (\Throwable $e) { \Log::warning('payroll register check failed: ' . $e->getMessage()); }
 
+        // Refused punches (not at the store / too early): show when they tried,
+        // so a person blocked by the clock is paid from when they really
+        // started or stopped. Several tries in a row show once.
+        try {
+            $seen = [];
+            foreach (\App\Services\TimeClockService::blockedAttempts() as $b) {
+                $uid = (int) ($b['user_id'] ?? 0);
+                $day = substr((string) ($b['at'] ?? ''), 0, 10);
+                if (!isset($byUid[$uid]) || $day < $start || $day > $end) { continue; }
+                $k = $uid . '|' . $day . '|' . ($b['doing'] ?? '') . '|' . substr((string) $b['at'], 11, 4);
+                if (isset($seen[$k])) { continue; }
+                $seen[$k] = true;
+                $add($byUid[$uid], $day, 'Tried to clock ' . ($b['doing'] ?? 'in') . ' at ' . \Carbon::parse($b['at'])->format('g:ia') . ' but the clock refused (' . rtrim((string) ($b['reason'] ?? ''), '.') . ')');
+            }
+        } catch (\Throwable $e) { \Log::warning('payroll blocked-punch check failed: ' . $e->getMessage()); }
+
         foreach ($byUid as $uid => $i) {
             foreach ($this->scheduleCache[$uid] ?? [] as $day => $s) {
                 if ($day > $end || $day >= $today) { continue; }

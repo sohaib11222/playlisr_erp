@@ -118,6 +118,31 @@ class TimeClockService
         return \Carbon::now(self::TZ);
     }
 
+    // Every refused punch (not at the store, too early) is saved so payroll
+    // can see when someone TRIED to clock in or out (Sarah 10/29: "is the
+    // ERP short changing anyone"). Small JSON file, newest kept, no migration.
+    const BLOCKED_FILE = 'time-clock-blocked.json';
+
+    public static function logBlocked(int $userId, string $doing, string $reason, ?int $locationId = null): void
+    {
+        try {
+            $rows = self::blockedAttempts();
+            $rows[] = ['user_id' => $userId, 'doing' => $doing, 'reason' => $reason, 'location_id' => $locationId, 'at' => self::nowString()];
+            $cut = self::now()->subDays(60)->format('Y-m-d H:i:s');
+            $rows = array_values(array_filter($rows, function ($r) use ($cut) { return ($r['at'] ?? '') >= $cut; }));
+            Storage::disk('local')->put(self::BLOCKED_FILE, json_encode($rows));
+        } catch (\Throwable $e) {
+            \Log::warning('time clock blocked-attempt log failed: ' . $e->getMessage());
+        }
+    }
+
+    public static function blockedAttempts(): array
+    {
+        if (!Storage::disk('local')->exists(self::BLOCKED_FILE)) { return []; }
+        $rows = json_decode(Storage::disk('local')->get(self::BLOCKED_FILE), true);
+        return is_array($rows) ? $rows : [];
+    }
+
     public static function nowString(): string
     {
         return self::now()->format('Y-m-d H:i:s');

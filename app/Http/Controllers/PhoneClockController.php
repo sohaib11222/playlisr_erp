@@ -283,6 +283,7 @@ class PhoneClockController extends Controller
                 $msg = $denied
                     ? 'Allow location for this page to clock ' . $doing . '.'
                     : (!empty($where['has_fix']) ? 'You need to be at the store to clock ' . $doing . '.' : 'Could not confirm you are at the store, try again.');
+                TC::logBlocked($userId, $doing, $msg);
                 return ['ok' => false, 'blocked' => true, 'geo_denied' => $denied, 'name' => $first, 'msg' => $msg];
             }
         }
@@ -302,6 +303,7 @@ class PhoneClockController extends Controller
                 $sched = ['ok' => true, 'no_data' => true, 'late_min' => null, 'sched_start' => null];
             }
             if (!$sched['ok'] && !empty($sched['early'])) {
+                TC::logBlocked($userId, 'in', 'Too early for their shift', $where['location_id'] ?? null);
                 return ['ok' => false, 'blocked' => true, 'geo_denied' => false, 'name' => $first,
                     'msg' => 'You can clock in ' . TC::scheduleWindow() . ' minutes before your shift.'];
             }
