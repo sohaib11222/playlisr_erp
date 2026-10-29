@@ -32,6 +32,19 @@ $idsOf = function ($label) use ($cats) {
     return $sub ? [(int) $top->id, (int) $sub->id] : null;
 };
 
+if ($mode === 'verify') {
+    $moves = json_decode(file_get_contents(__DIR__ . '/category_moves_2026_10_29.json'), true);
+    $ok = 0; $bad = [];
+    foreach ($moves as $m) {
+        $p = DB::table('products')->where('business_id', $biz)->where('id', $m['id'])->first(['id', 'name', 'category_id', 'sub_category_id', 'updated_at']);
+        $now = $p ? $labelOf($p->category_id, $p->sub_category_id) : '(missing)';
+        $now === $m['to'] ? $ok++ : $bad[] = "#{$m['id']} now='{$now}' want='{$m['to']}'";
+    }
+    echo "VERIFY in-new-category=$ok of " . count($moves) . "\n";
+    foreach ($bad as $b) echo "  NOT $b\n";
+    exit;
+}
+
 if ($mode === 'undo') {
     $log = json_decode(@file_get_contents($logPath), true) ?: [];
     $n = 0; $skip = 0;
