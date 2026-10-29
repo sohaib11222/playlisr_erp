@@ -166,6 +166,11 @@ class Kernel extends ConsoleKernel
             ->dailyAt('06:00')
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(30);
+        // Cancelled / refunded / refund-pending on /website-orders shows on
+        // the ERP sale too (Sarah, 2026-10-29).
+        $schedule->command('website-orders:sync-erp-status')
+            ->everyTenMinutes()
+            ->withoutOverlapping(15);
 
         // Auto-apply the listening-party / double-staffed-floor commission split
         // so it's ready on the Commissions page each morning — paying stays a
