@@ -464,9 +464,33 @@
                     Price these items for a Hollywood / Pico Blvd retail record store, using fair current market value (Discogs / eBay) for the condition. Fill in the best category and subcategory for each, and leave SKU blank. Return one item per line in this exact format, nothing else:<br>
                     <code>Product Name,Artist,Category,Subcategory,SKU,Price,</code><br>
                     <br>
+                    Copy the Category and Subcategory exactly from this list (Category: Subcategories). LPs / albums go in Vinyl - Used or Vinyl - Sealed, not 7", 45 RPM:<br>
+                    <em class="text-muted">[our full category list, added when you click Copy prompt]</em><br>
+                    <br>
                     Items:<br>
                     a, b, c, d, e
                 </div>
+                {{-- Sarah 2026-10-28: the prompt carries the store's exact category
+                     names, so ChatGPT stops inventing ones like "Sports Cards". --}}
+                <textarea id="mass_ai_prompt" style="position:absolute; left:-9999px;" aria-hidden="true" tabindex="-1">Price these items for a Hollywood / Pico Blvd retail record store, using fair current market value (Discogs / eBay) for the condition. Fill in the best category and subcategory for each, and leave SKU blank. Return one item per line in this exact format, nothing else:
+Product Name,Artist,Category,Subcategory,SKU,Price,
+
+Copy the Category and Subcategory exactly from this list (Category: Subcategories). LPs / albums go in Vinyl - Used or Vinyl - Sealed, not 7", 45 RPM:
+{{ collect($category_combos ?? [])->groupBy(function ($c) { return explode(' > ', $c['label'], 2)[0]; })->map(function ($g, $cat) { $subs = $g->map(function ($c) { return explode(' > ', $c['label'], 2)[1] ?? null; })->filter()->implode('; '); return $cat . ($subs !== '' ? ': ' . $subs : ''); })->implode("\n") }}
+
+Items:
+a, b, c, d, e</textarea>
+                <button type="button" class="btn btn-success btn-sm" id="mass_ai_prompt_copy" style="margin-top:6px;"><i class="fa fa-clipboard"></i> Copy prompt</button>
+                <span id="mass_ai_prompt_copied" class="text-success" style="display:none; margin-left:6px;">Copied. Paste it into ChatGPT and swap a, b, c, d, e for your items.</span>
+                <script>
+                    document.getElementById('mass_ai_prompt_copy').addEventListener('click', function () {
+                        var t = document.getElementById('mass_ai_prompt');
+                        var done = function () { document.getElementById('mass_ai_prompt_copied').style.display = 'inline'; };
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(t.value).then(done, function () { t.select(); document.execCommand('copy'); done(); });
+                        } else { t.select(); document.execCommand('copy'); done(); }
+                    });
+                </script>
                 <small class="text-muted" style="display:block; margin-top:6px;">
                     Swap <code>a, b, c, d, e</code> for your actual items &mdash; add the format (LP, CD, cassette) and condition (sealed, VG+, etc.) where you can, so the price is accurate. The reply comes back in the CSV format above, ready to paste into the box below.
                 </small>
@@ -509,10 +533,10 @@
                                     <span>csv</span>
                                     <span><i class="fa fa-clipboard"></i> Copy code</span>
                                 </div>
-                                <pre style="margin:0; padding:12px; background:#0d0d0d; color:#e6e6e6; font-family:'Courier New',monospace; font-size:12px; line-height:1.85; overflow-x:auto; white-space:pre;">Rumours,Fleetwood Mac,Used Vinyl,Rock,,32.00,
-Thriller,Michael Jackson,Sealed Vinyl,Pop,,45.00,
-Kind of Blue,Miles Davis,Used CD,Jazz,,12.00,
-Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
+                                <pre style="margin:0; padding:12px; background:#0d0d0d; color:#e6e6e6; font-family:'Courier New',monospace; font-size:12px; line-height:1.85; overflow-x:auto; white-space:pre;">Rumours,Fleetwood Mac,Vinyl - Used,Rock,,32.00,
+Thriller,Michael Jackson,Vinyl - Sealed,Pop,,45.00,
+Kind of Blue,Miles Davis,CD - Used,Jazz,,12.00,
+Nevermind,Nirvana,Cassettes - Used,Rock,,18.00,</pre>
                             </div>
                         </div>
                     </div>
@@ -865,6 +889,7 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
     };
 </script>
 <script src="{{ asset('js/product.js?v=' . $asset_v) }}"></script>
+<script src="{{ asset('js/mass_add_category_match.js?v=' . (file_exists(public_path('js/mass_add_category_match.js')) ? filemtime(public_path('js/mass_add_category_match.js')) : 1)) }}"></script>
 
 <script type="text/javascript">
     window.isAddingNewRow = false;
@@ -2332,52 +2357,16 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
             return weight * (matches + coverage);
         }
 
+        // Sarah 2026-10-28: public/js/mass_add_category_match.js (vague hints
+        // used to land on the first option: Trading Cards > Digimon, 7", 45 RPM).
         function findBestCategoryComboValue($combo, product) {
-            if (!$combo || !$combo.length) {
+            if (!$combo || !$combo.length || typeof window.massAddCategoryMatch !== 'function') {
                 return '';
             }
-            const categoryTokens = tokenize(product.category);
-            const subTokens = tokenize(product.subcategory);
-            const nameTokens = tokenize(product.name);
-            const artistTokens = tokenize(product.artist);
-            const rawTokens = tokenize(product.raw_line);
-
-            let bestVal = '';
-            let bestScore = 0;
-
-            $combo.find('option').each(function() {
-                const $opt = $(this);
-                const val = String($opt.val() || '');
-                if (!val) return;
-                const labelTokens = tokenize($opt.text());
-                if (!labelTokens.length) return;
-
-                let score = 0;
-                // Subcategory hints are most reliable (e.g. "Vinyl LP", "7 Inch")
-                score += scoreOptionForHint(labelTokens, subTokens, 5);
-                // Category hints (e.g. "Records", "Cassettes")
-                score += scoreOptionForHint(labelTokens, categoryTokens, 4);
-                // Direct substring match of full hint within label as a tiebreaker
-                const labelStr = labelTokens.join(' ');
-                const catStr = categoryTokens.join(' ');
-                const subStr = subTokens.join(' ');
-                if (catStr && labelStr.indexOf(catStr) !== -1) score += 2;
-                if (subStr && labelStr.indexOf(subStr) !== -1) score += 3;
-                // Fall back to product name / artist hints when no category was provided
-                if (!categoryTokens.length && !subTokens.length) {
-                    score += scoreOptionForHint(labelTokens, nameTokens, 1);
-                    score += scoreOptionForHint(labelTokens, rawTokens, 1);
-                    score += scoreOptionForHint(labelTokens, artistTokens, 0.5);
-                }
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestVal = val;
-                }
-            });
-
-            // Require a meaningful score before auto-selecting; very weak matches
-            // (e.g. a single common word) shouldn't auto-pick a wrong combo.
-            return bestScore >= 2 ? bestVal : '';
+            const options = $combo.find('option').map(function() {
+                return { value: String($(this).val() || ''), label: $.trim($(this).text()) };
+            }).get();
+            return window.massAddCategoryMatch(options, product);
         }
 
         function findLocationIdsByText($locations, hintText) {
@@ -3173,7 +3162,20 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
 
         function handleCsv(entry) {
             const csv = entry.csv;
-            const combo = resolveCategoryComboByName(csv.category, csv.sub_category);
+            let combo = resolveCategoryComboByName(csv.category, csv.sub_category);
+            if (!combo && csv.category && typeof window.massAddCategoryMatch === 'function') {
+                const $opts = $('#preset_bulk_category option');
+                const val = window.massAddCategoryMatch($opts.map(function() {
+                    return { value: String($(this).val() || ''), label: $.trim($(this).text()) };
+                }).get(), { category: csv.category, subcategory: csv.sub_category, name: csv.name, artist: csv.artist });
+                const $hit = val ? $opts.filter(function() { return String($(this).val()) === val; }).first() : $();
+                if ($hit.length) {
+                    combo = {
+                        category_id: parseInt($hit.attr('data-category-id'), 10) || null,
+                        sub_category_id: parseInt($hit.attr('data-sub-category-id'), 10) || 0,
+                    };
+                }
+            }
             if (csv.category && !combo) {
                 warnings.push({
                     id: csv.name,
