@@ -72,6 +72,7 @@ $rpmCat = array_search('45 RPM', $vcats);
 $otherCat = array_search(current(array_filter($vcats, function ($n) { return preg_match('/^(vhs|dvd|toys|trading cards|books?)\b/i', $n); })), $vcats);
 echo "FORMATS " . implode(', ', array_filter($vcats, function ($n) { return strpos($n, '›') === false; })) . "\n";
 echo "CATS gear=$gearCat " . ($vcats[$gearCat] ?? '-') . " | vinyl=$vinylCat " . ($vcats[$vinylCat] ?? '-') . " | cassette=$castCat " . ($vcats[$castCat] ?? '-') . " | other=$otherCat " . ($vcats[$otherCat] ?? '-') . "\n";
+echo "DBG seven=" . var_export($sevenCat, true) . " rpm=" . var_export($rpmCat, true) . " req7=" . var_export($calc->requiresEbaySoldLink('ebay_value', 50, '7"'), true) . " req45=" . var_export($calc->requiresEbaySoldLink('ebay_value', 50, '45 RPM'), true) . " src=" . (strpos(file_get_contents(base_path('app/Services/BuyOfferCalculatorService.php')), '45 ?rpm') !== false ? 'new' : 'old') . "\n";
 $san = new ReflectionMethod($ctl, 'validateLineSanity');
 $san->setAccessible(true);
 $cases = [
