@@ -102,7 +102,7 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
                     <div class="sub">{{ $sales_bonus['party_split'] > 0 ? 'your share of a party bonus while sharing the floor' : "your helper's share of a party bonus, moved to them" }} — included above</div>
                 </div>
                 @endif
-                @php $salesOwed = round((float) $sales_bonus['bonus'] - (float) $sales_paid, 2); @endphp
+                @php $salesOwed = isset($sales_owed_now) && $sales_owed_now !== null ? (float) $sales_owed_now : round((float) $sales_bonus['bonus'] - (float) $sales_paid, 2); @endphp
                 <div class="me-stat">
                     <div class="lbl">Paid out to you</div>
                     <div class="val" style="font-size:24px;">${{ number_format($sales_paid, 2) }}</div>

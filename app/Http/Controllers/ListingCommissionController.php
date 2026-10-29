@@ -224,8 +224,11 @@ class ListingCommissionController extends Controller
             // payouts excluded) above sales earned, or listing paid above listing
             // earned - is shown in its own section below the pay table and is
             // NEVER netted against what's being paid now.
-            $partyPaidAllTime = round($this->partyPaidAllTimeForUser($uid), 2);
-            $p->credit_sales   = round(min(0, $p->sales_earned - ($p->sales_paid - $partyPaidAllTime)), 2);
+            // Sales credit is no longer shown (Sarah 10/29 "i do not trust this
+            // small credit"): sales are paid per period, and recomputing old
+            // paid days with today's targets made fake credits (Davis, Zak,
+            // Jacob). Listing credit below is real (dollar ledger).
+            $p->credit_sales   = 0.0;
             $p->credit_listing = round(min(0, $p->listing_net), 2);
             $p->credit_total   = round($p->credit_sales + $p->credit_listing, 2);
             $p->listing_net    = max(0, $p->listing_net);

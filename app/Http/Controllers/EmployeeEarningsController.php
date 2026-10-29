@@ -152,6 +152,20 @@ class EmployeeEarningsController extends Controller
         $salesPaid = round($salesPaid, 2);
         $totalPaidAll = round($paidOut + $salesPaid, 2);
         $totalOwedNow = round(($earned + (float) $salesBonus['bonus']) - $totalPaidAll, 2);
+        // What's owed NOW comes from the Commissions page itself (Sarah 10/29:
+        // the "overpaid / small credit" numbers here were wrong). Sales owed is
+        // the bonus for days since the last payout; recomputing old, already
+        // paid days with today's targets made fake overpays (Davis, Manolo).
+        $salesOwedNow = null;
+        try {
+            $lcc = app(\App\Http\Controllers\ListingCommissionController::class);
+            $listingNow = (float) (($lcc->listingNetByUser($businessId)[$userId]['owed']) ?? 0);
+            $salesOwedNow = round((float) ($lcc->periodSalesOwedByUser($businessId, null, $userId)['owed'][$userId] ?? 0), 2);
+            $owed = round($listingNow, 2);
+            $totalOwedNow = round($listingNow + $salesOwedNow, 2);
+        } catch (\Throwable $e) {
+            \Log::warning('my-earnings owed-now pull failed: ' . $e->getMessage());
+        }
 
         // Productivity context (NOT pay): items listed + items put out (labeled).
         $listedCount = $this->listedCount($businessId, $userId, $start);
@@ -267,6 +281,7 @@ class EmployeeEarningsController extends Controller
             'payment_history' => $myPaymentHistory,
             'total_paid_all'  => $totalPaidAll,
             'total_owed_now'  => $totalOwedNow,
+            'sales_owed_now'  => $salesOwedNow,
             'sales_paid'      => $salesPaid,
             'sales_bonus'  => $salesBonus,
             'bonus_from'   => $bonusFrom,
