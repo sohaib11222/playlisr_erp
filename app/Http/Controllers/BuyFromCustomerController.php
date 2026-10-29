@@ -1065,11 +1065,11 @@ class BuyFromCustomerController extends Controller
             if ($type === 'individual_vinyl' && empty($line['signed']) && $qty > 0 && ($title !== '' || $link !== '' || $value > 0) && trim((string) ($line['condition_grade'] ?? '')) === '') {
                 $errors["lines.$i.condition_grade"] = sprintf('Line %s: pick the record\'s condition grade.', $n);
             }
-            if ($qty > 0 && $this->calculator->requiresEbaySoldLink($type)) {
+            if ($qty > 0 && $this->calculator->requiresEbaySoldLink($type, $value, (string) ($line['genre'] ?? ''))) {
                 if ($link === '') {
-                    $errors["lines.$i.discogs_link"] = sprintf('Line %s: paste the link to eBay SOLD listings for this item (search eBay, turn on "Sold items", copy the page link).', $n);
-                } elseif (!BuyOfferCalculatorService::isEbaySoldUrl($link)) {
-                    $errors["lines.$i.discogs_link"] = sprintf('Line %s: that is not an eBay sold-items link. Search eBay, turn on the "Sold items" filter, and copy that results page link.', $n);
+                    $errors["lines.$i.discogs_link"] = sprintf('Line %s: items worth more than $%d need an eBay link (paste the eBay page link).', $n, BuyOfferCalculatorService::EBAY_LINK_REQUIRED_OVER);
+                } elseif (!BuyOfferCalculatorService::isEbayUrl($link)) {
+                    $errors["lines.$i.discogs_link"] = sprintf('Line %s: that is not an eBay link. Paste a link from ebay.com.', $n);
                 }
             }
             if ($type === 'individual_vinyl' && $value >= BuyOfferCalculatorService::LINK_REQUIRED_FROM && $link === '') {
