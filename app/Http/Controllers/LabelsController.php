@@ -49,7 +49,7 @@ class LabelsController extends Controller
             foreach ($catNames as $n) {
                 $n = strtolower((string) $n);
                 if (strpos($n, 'sealed') !== false && preg_match('/vinyl|\bcds?\b|cassette|\blps?\b/', $n)) {
-                    return 'Record M, Sleeve M';
+                    return 'Media M, Sleeve M';
                 }
             }
         }
@@ -63,7 +63,7 @@ class LabelsController extends Controller
         $slv = $short($row->sleeve_condition);
         if ($rec === 'Sealed') return 'Sealed';
         $parts = [];
-        if ($rec) $parts[] = 'Record ' . $rec;
+        if ($rec) $parts[] = 'Media ' . $rec;
         if ($slv) $parts[] = 'Sleeve ' . $slv;
         return $parts ? implode(', ', $parts) : null;
     }
