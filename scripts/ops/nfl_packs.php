@@ -52,7 +52,7 @@ $rows = DB::table('products')->where('business_id', $biz)
 
 $plan = [];
 foreach ($rows as $p) {
-    $isPack = preg_match('/\bpacks?\b|\bwax\b|\bsealed\b/i', $p->name);
+    $isPack = (int) $p->id >= 141050 && (int) $p->id <= 141057; // the 8 1990/1991 packs (named 'NFL Cards')
     $already = (int) $p->category_id === $tid;
     $tag = $already ? 'ALREADY' : ($isPack ? 'MOVE' : 'SKIP(not a pack?)');
     echo "  [$tag] #{$p->id} {$p->sku} {$p->name} :: " . $labelOf($p->category_id, $p->sub_category_id) . "\n";
