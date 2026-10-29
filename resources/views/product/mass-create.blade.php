@@ -581,7 +581,7 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
         <div class="box-header with-border" style="cursor: pointer;" data-widget="collapse">
             <h3 class="box-title">
                 <i class="fa fa-music"></i> Bulk Discogs Release IDs
-                <span style="font-size: 14px; font-weight: 600; color: #000; margin-left: 8px;">Type: number, price, record grade, cover grade (e.g. 1873085 19.99 VG+ G+)</span>
+                <span style="font-size: 14px; font-weight: 600; color: #000; margin-left: 8px;">Type: number, price, media grade, sleeve grade (e.g. 1873085 19.99 VG+ G+)</span>
                 {{-- Sarah 2026-07-22: Discogs logo next to the heading. --}}
                 <span style="display:inline-flex; align-items:center; gap:5px; margin-left:8px; vertical-align:middle;">
                     <svg title="Discogs" role="img" aria-label="Discogs" viewBox="0 0 32 32" style="height:18px; width:18px;" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="#333333" stroke-width="2.4"><circle cx="16" cy="16" r="14"/><circle cx="16" cy="16" r="8.2"/></g><circle cx="16" cy="16" r="2.4" fill="#333333"/></svg>
@@ -598,7 +598,7 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
             <div class="form-group">
                 {{-- Plain how-to, condition included (Sarah, 2026-10-26: "more obvious suggestive text") --}}
                 <div style="margin-bottom: 12px; padding: 12px 14px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; color: #000; font-size: 15px;">
-                    <div style="font-weight: 800; font-size: 17px; margin-bottom: 6px;">One record per line: Discogs number, price, record grade, cover grade</div>
+                    <div style="font-weight: 800; font-size: 17px; margin-bottom: 6px;">One record per line: Discogs number, price, media grade, sleeve grade</div>
                     <div style="font-family: 'Courier New', monospace; font-size: 18px; font-weight: 700; background: #fff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px;">
                         1873085 &nbsp;19.99 &nbsp;VG+ &nbsp;G+
                     </div>
@@ -3032,20 +3032,20 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
                     element: 'div',
                     attributes: {
                         innerHTML: `<div style="text-align:left;font-size:15px;line-height:1.5;">`
-                            + `${ungraded === discogsCount ? 'None' : ungraded + ' of ' + discogsCount} of your lines ${ungraded === discogsCount ? 'have' : 'are missing'} a Record/Cover grade.<br><br>`
-                            + `It helps to add them after the price so the grade prints on the label. Record grade first, then cover:<br><br>`
+                            + `${ungraded === discogsCount ? 'None' : ungraded + ' of ' + discogsCount} of your lines ${ungraded === discogsCount ? 'have' : 'are missing'} a Media/Sleeve grade.<br><br>`
+                            + `It helps to add them after the price so the grade prints on the label. Media grade first, then sleeve:<br><br>`
                             + `<div style="font-family:monospace;font-size:15px;background:#f5f5f5;padding:8px 10px;border-radius:4px;">`
                             + `<div style="display:flex;align-items:flex-end;gap:6px;flex-wrap:wrap;">`
                             + `<span>https://www.discogs.com/release/1873085 19.99</span>`
-                            + `<span style="display:inline-flex;flex-direction:column;align-items:center;"><small style="font-family:sans-serif;font-weight:700;color:#1d4ed8;">Record</small><b style="color:#1d4ed8;">VG+</b></span>`
-                            + `<span style="display:inline-flex;flex-direction:column;align-items:center;"><small style="font-family:sans-serif;font-weight:700;color:#b45309;">Cover</small><b style="color:#b45309;">VG+</b></span>`
+                            + `<span style="display:inline-flex;flex-direction:column;align-items:center;"><small style="font-family:sans-serif;font-weight:700;color:#1d4ed8;">Media</small><b style="color:#1d4ed8;">VG+</b></span>`
+                            + `<span style="display:inline-flex;flex-direction:column;align-items:center;"><small style="font-family:sans-serif;font-weight:700;color:#b45309;">Sleeve</small><b style="color:#b45309;">VG+</b></span>`
                             + `</div></div><br>`
                             + `More examples:<br>`
                             + `<code>https://www.discogs.com/release/1873085 19.99 VG+ VG+</code><br>`
                             + `<code>https://www.discogs.com/release/1873085 12.99 G VG+</code><br>`
                             + `<code>https://www.discogs.com/release/249504 24.99 NM VG</code><br>`
                             + `<code>https://www.discogs.com/release/1873085 9.99 VG+ Generic</code><br><br>`
-                            + `<span style="color:#1d4ed8;font-weight:700;">Record</span> = the vinyl/CD/tape itself. <span style="color:#b45309;font-weight:700;">Cover</span> = the sleeve or case.</div>`
+                            + `<span style="color:#1d4ed8;font-weight:700;">Media</span> = the vinyl/CD/tape itself. <span style="color:#b45309;font-weight:700;">Sleeve</span> = the cover or case.</div>`
                     }
                 },
                 icon: 'info',
