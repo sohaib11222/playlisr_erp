@@ -783,11 +783,12 @@
                   // state, picked and can't find included (Sarah, 2026-10-21)
                   // Shipped / done orders too: nothing left to pull, so show it all
                   // with what happened to each item (Sarah, 2026-10-21).
-                  if (preg_match('/^[a-f0-9]{24}$/i', (string) request()->query('order', '')) || in_array($status, ['shipped', 'delivered', 'picked_up', 'email_sent'], true)) $lineShow = array_fill_keys(array_keys($lineShow), true);
+                  // Never compact an order: every item always shows with its pick
+                  // state, no "+N other items" (Sarah, 2026-10-29).
+                  $lineShow = array_fill_keys(array_keys($lineShow), true);
                   $rowPickLines = [];
                   foreach (($o['pick_progress']['lines'] ?? []) as $rpl) $rowPickLines[strtolower(trim((string) ($rpl['name'] ?? '')))] = $rpl;
                   $rowPickable = !empty($o['pick_progress']['order_id']) && in_array($activeTab, ['to_ship', 'ready_ship', 'preorder_ship', 'preorders', 'needs_action', 'cant_find', 'recheck_hw', 'pickup', 'ready_pickup'], true);
-                  $hiddenLines = count(array_filter($lineShow, fn($v) => !$v));
                 @endphp
                 <td>
                   @foreach($cancelLines as $line)
@@ -847,9 +848,6 @@
                       </div>
                     </div>
                   @endforeach
-                  @if($hiddenLines > 0)
-                    <div style="font-size:12px;color:#000;margin-top:4px;">+{{ $hiddenLines }} other {{ $hiddenLines === 1 ? 'item' : 'items' }} (other spot, picked, can't find or cancelled) <a href="{{ route('website-orders.index', ['order' => $o['_id']]) }}">Show all items</a></div>
-                  @endif
                 </td>
                 @php
                   // Pick buttons sit beside each item (Sarah, 2026-10-19: the
@@ -1389,9 +1387,8 @@
                     <div class="wo-buyer-email"><a href="{{ $d['url'] ?? '#' }}" target="_blank" rel="noopener">Order {{ $d['id'] }}</a></div>
                   </td>
                   @php
-                    // Need to Pull: only what's still to pull (Sarah, 2026-10-21)
-                    $dShow = function ($it) use ($activeTab, $d) { return $activeTab !== 'to_ship' || array_key_exists(strtolower(trim((string) ($it['name'] ?? ''))), $d['_left'] ?? []); };
-                    $dHidden = count(array_filter($d['items'] ?? [], fn($it) => !$dShow($it)));
+                    // Show every item, never "+N already picked" (Sarah, 2026-10-29)
+                    $dShow = fn($it) => true;
                   @endphp
                   <td>
                     @foreach(($d['items'] ?? []) as $it)
@@ -1422,7 +1419,6 @@
                         </div>
                       </div>
                     @endforeach
-                    @if($dHidden > 0)<div style="font-size:12px;color:#000;margin-top:4px;">+{{ $dHidden }} already picked</div>@endif
                   </td>
                   <td class="wo-loc @if(!empty($dPick['order_id'])) wo-pick @endif" @if(!empty($dPick['order_id'])) data-order="{{ $dPick['order_id'] }}" @endif>
                     @foreach(($d['items'] ?? []) as $it)
