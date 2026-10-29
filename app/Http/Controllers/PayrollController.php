@@ -174,6 +174,7 @@ class PayrollController extends Controller
 
     private function assemble($businessId, $start, $end)
     {
+        \App\Services\TimeClockService::sweepPendingCloses();
         $config   = $this->loadConfig();
         $hoursDoc = $this->loadHours($start, $end);
         $run      = $this->loadRun($start, $end);

@@ -229,6 +229,7 @@ class PhoneClockController extends Controller
         $userId = (int) $user->id;
         $businessId = (int) ($user->business_id ?: TC::businessId());
         $first = trim((string) $user->first_name) ?: TC::displayName($user);
+        TC::sweepPendingCloses(); // yesterday's forgotten clock-out must not become today's
         $open = TC::openPunch($userId);
         $time = TC::now()->format('g:i A');
 

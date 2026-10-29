@@ -1839,6 +1839,62 @@ class TimeClockService
      * For End Shift / register close: clock the user out. Never throws, and
      * costs two indexed queries at most.
      */
+    // Register close / End Shift no longer stop the clock (Sarah 10/29: people
+    // kept working 3-11 minutes after closing, e.g. Quenton 10/25 closed 1:35,
+    // left 1:43, and the ERP cut that time). They clock out themselves when
+    // they leave. If they never do, the punch is closed at the register-close
+    // time once it is 3 hours old, so a forgotten clock-out still pays the
+    // shift and nobody can stretch it by clocking out later from home.
+    const PENDING_CLOSE_FILE = 'time-clock-pending-close.json';
+    const PENDING_CLOSE_HOURS = 3;
+
+    public static function markShiftEnded($userId, string $source): void
+    {
+        try {
+            if (!$userId || !self::ready()) { return; }
+            $open = self::openPunch((int) $userId);
+            if (!$open) { return; }
+            $rows = self::pendingCloses();
+            $rows[(string) $open->id] = ['user_id' => (int) $userId, 'at' => self::nowString(), 'source' => $source];
+            Storage::disk('local')->put(self::PENDING_CLOSE_FILE, json_encode($rows));
+        } catch (\Throwable $e) {
+            \Log::warning('time clock ' . $source . ' mark failed: ' . $e->getMessage());
+        }
+    }
+
+    public static function pendingCloses(): array
+    {
+        if (!Storage::disk('local')->exists(self::PENDING_CLOSE_FILE)) { return []; }
+        $rows = json_decode(Storage::disk('local')->get(self::PENDING_CLOSE_FILE), true);
+        return is_array($rows) ? $rows : [];
+    }
+
+    // Close forgotten punches at their register-close time (3h+ old), and drop
+    // entries for punches the person already clocked out of.
+    public static function sweepPendingCloses(): void
+    {
+        try {
+            if (!self::ready()) { return; }
+            $rows = self::pendingCloses();
+            if (empty($rows)) { return; }
+            $cut = self::now()->subHours(self::PENDING_CLOSE_HOURS)->format('Y-m-d H:i:s');
+            $changed = false;
+            foreach ($rows as $id => $r) {
+                $p = DB::table('time_clock_punches')->where('id', (int) $id)->first(['id', 'clock_out_at', 'voided_at']);
+                if (!$p || $p->clock_out_at || $p->voided_at) { unset($rows[$id]); $changed = true; continue; }
+                if (($r['at'] ?? '') > $cut) { continue; }
+                DB::table('time_clock_punches')->where('id', (int) $id)->whereNull('clock_out_at')->update([
+                    'clock_out_at' => $r['at'], 'clock_out_source' => $r['source'] ?? 'register_close', 'updated_at' => self::nowString(),
+                ]);
+                unset($rows[$id]);
+                $changed = true;
+            }
+            if ($changed) { Storage::disk('local')->put(self::PENDING_CLOSE_FILE, json_encode($rows)); }
+        } catch (\Throwable $e) {
+            \Log::warning('time clock pending-close sweep failed: ' . $e->getMessage());
+        }
+    }
+
     public static function clockOutFromHook($userId, string $source, ?Request $request = null): void
     {
         try {
