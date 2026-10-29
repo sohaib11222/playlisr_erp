@@ -2553,6 +2553,7 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
             return;
         }
         
+        removeBlankMassRows();
         $('#bulk_parse_status').html(`<i class="fa fa-spinner fa-spin"></i> Adding ${products.length} products...`);
         $(this).prop('disabled', true);
         $('#preview_bulk_text').prop('disabled', true);
@@ -2621,6 +2622,20 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
     // Returns the next safe data-row-index across the WHOLE container.
     // Bug fix: previous version read .last() which after prepending always
     // returned the original tail row → every new index collided.
+    // Drop untouched blank rows (the page's starting row) before a bulk add,
+    // so "Parse & Add" / Discogs / preset adds don't leave an extra empty row.
+    function removeBlankMassRows() {
+        $('#product_rows_container .product-row').each(function() {
+            const $tr = $(this);
+            const filled = $tr.find('input[name$="[name]"], input[name$="[artist]"], input[name$="[sku]"], input[name$="[single_dsp_inc_tax]"], input[name$="[id]"]')
+                .filter(function() { return ($(this).val() || '').trim() !== ''; }).length;
+            if (filled) return;
+            const idx = $tr.attr('data-row-index');
+            if (idx !== undefined) $(`tr.discogs-sold-before-row[data-row-index="${idx}"]`).remove();
+            $tr.remove();
+        });
+    }
+
     function nextMassRowIndex() {
         let max = -1;
         $('#product_rows_container .product-row').each(function() {
@@ -3069,6 +3084,7 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
         if (!confirm(`About to ${promptParts.join(' and ')}. Continue?`)) {
             return;
         }
+        removeBlankMassRows();
 
         // Rows are appended to the bottom, so iterate in typed order
         // (first entry → highest existing row, last entry → very bottom).
@@ -3351,6 +3367,7 @@ Nevermind,Nirvana,Cassettes,Rock,,18.00,</pre>
         if (!confirm(`Add ${products.length} rows with the selected category?`)) {
             return;
         }
+        removeBlankMassRows();
 
         // Reverse so first-typed product ends up at the top after prepending.
         const queue = products.slice().reverse();
