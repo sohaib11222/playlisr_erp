@@ -1704,7 +1704,7 @@
         form.dataset.active = String(lines.filter(function (l) { return !l.cancelled; }).length);
         form.dataset.giftLeft = String(lines.filter(function (l) { return !l.cancelled && l.gift; }).length);
         var submitBtn = form.querySelector('button[type="submit"]');
-        if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Cancel & refund'; }
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Cancel & refund'; }
         lines.forEach(function (l) {
           var row = document.createElement('label');
           row.style.cssText = 'display:flex;gap:8px;align-items:flex-start;text-transform:none;font-weight:400;margin:0;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;';
