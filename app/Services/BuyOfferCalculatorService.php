@@ -567,7 +567,7 @@ class BuyOfferCalculatorService
         if (!$cfg || !in_array($cfg['mode'], ['ebay_margin', 'value_percent'], true)) {
             return false;
         }
-        if (preg_match('/vinyl|record|cassette/i', $itemType . ' ' . ($cfg['label'] ?? '') . ' ' . $genre)) {
+        if (preg_match('/vinyl|record|cassette|\b7"|45 ?rpm/i', $itemType . ' ' . ($cfg['label'] ?? '') . ' ' . $genre)) {
             return false;
         }
         return $value === null || (float) $value > self::EBAY_LINK_REQUIRED_OVER;

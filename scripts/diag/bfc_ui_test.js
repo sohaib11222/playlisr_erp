@@ -189,6 +189,8 @@ const fs = require('fs');
     ['BLOCK', 'VHS rare $25, Google link (not eBay)', { type: 'rare_vhs', value: 25, link: 'https://www.google.com/search?q=ebay+vhs' }],
     ['GO', 'Valuable item $50, category Vinyl, no link', { type: 'ebay_value', value: 50, cat: /^(vinyl|records?)\b/ }],
     ['GO', 'Valuable item $50, category Cassette, no link', { type: 'ebay_value', value: 50, cat: /^cassettes?\b/ }],
+    ['GO', 'Valuable item $50, category 7", no link', { type: 'ebay_value', value: 50, cat: /^7"$/ }],
+    ['GO', 'Valuable item $50, category 45 RPM, no link', { type: 'ebay_value', value: 50, cat: /^45 RPM$/ }],
     ['BLOCK', 'Valuable item $50, category Audio Gear record/cassette gear, no link', { type: 'ebay_value', value: 50, cat: /^audio gear.*(record|cassette)/ }],
     ['BLOCK', 'Valuable item $50, category non-music, no link', { type: 'ebay_value', value: 50, cat: /^(vhs|dvd|toys|trading cards|books?)\b/ }],
     ['BLOCK', 'Valuable item $50, no category, no link', { type: 'ebay_value', value: 50 }],
