@@ -19,7 +19,10 @@ DB::table('products')->where('business_id', $biz)
                 (int) $p->category_id, (int) $p->sub_category_id, (float) ($stock[$p->id] ?? 0), (int) $p->is_inactive, substr((string) $p->created_at, 0, 10)];
         }
     });
-$rules = DB::table('product_entry_rules')->where('business_id', $biz)->get(['id', 'title', 'category_id', 'sub_category_id', 'is_active'])->all();
+$rules = DB::table('product_entry_rules')->where('business_id', $biz)->get()->map(function ($r) {
+    $r = (array) $r;
+    return ['id' => $r['id'], 'title' => $r['title'] ?? ($r['trigger_value'] ?? ($r['label'] ?? '')), 'category_id' => (int) ($r['category_id'] ?? 0), 'sub_category_id' => (int) ($r['sub_category_id'] ?? 0)];
+})->all();
 $json = json_encode(['cats' => $cats, 'products' => $out, 'rules' => $rules]);
 echo "ROWS products=" . count($out) . " cats=" . count($cats) . " rules=" . count($rules) . "\n";
 echo "AUDIT_B64_START\n" . chunk_split(base64_encode(gzencode($json, 9)), 4000) . "AUDIT_B64_END\n";
