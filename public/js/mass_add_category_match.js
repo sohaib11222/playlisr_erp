@@ -217,14 +217,17 @@
         }
 
         // 2b. Pick the subcategory inside it.
+        var rowT = subT.concat(nameSubT);
+        var typeSub = function (sOpt) { return sOpt.tok.some(function (t) { return TYPES[t] && rowT.indexOf(t) !== -1; }); };
+        var anyType = g.subs.some(typeSub);
         var subs = g.subs.map(function (sOpt) {
             var f = sOpt.tok.filter(function (t) { return g.tok.indexOf(t) === -1; });
             var s = 5 * overlap(f, subT) + 4 * overlap(f, nameSubT) + 1 * overlap(f, catT);
             // Product-type words ("needle", "Funko") beat brand / title words,
             // and a subcategory the row names in full beats a partial one.
-            var rowT = subT.concat(nameSubT);
+            // (A brand-named one like "audio technica" loses to the type the row names.)
             f.forEach(function (t) { if (TYPES[t] && rowT.indexOf(t) !== -1) s += 4; });
-            if (s > 0 && f.length && f.every(function (t) { return rowT.indexOf(t) !== -1; })) s += 6;
+            if (s > 0 && f.length && f.every(function (t) { return rowT.indexOf(t) !== -1; }) && (!anyType || typeSub(sOpt))) s += 6;
             // Tie-break: the earlier word of the hint ("Latin Rock" -> Latin).
             var pos = subT.findIndex(function (t) { return f.indexOf(t) !== -1; });
             if (s > 0 && pos !== -1) s += 0.05 / (pos + 1);
