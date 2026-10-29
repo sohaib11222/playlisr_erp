@@ -62,21 +62,10 @@ jobs:
             php artisan tinker --no-ansi <<'PHP'
             $n = '%' . trim((string) getenv('DIAG_NAME')) . '%';
             $i = '%' . trim((string) getenv('DIAG_ITEM')) . '%';
-            $rows = \DB::table('transaction_sell_lines as l')
-              ->join('transactions as t', 't.id', '=', 'l.transaction_id')
-              ->join('contacts as c', 'c.id', '=', 't.contact_id')
-              ->join('products as p', 'p.id', '=', 'l.product_id')
-              ->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')
-              ->where('t.type', 'sell')
-              ->where(fn($q) => $q->where('c.name', 'like', $n)->orWhere('c.first_name', 'like', $n)->orWhere('c.supplier_business_name', 'like', $n))
-              ->where(fn($q) => $q->where('p.name', 'like', $i)->orWhere('p.artist', 'like', $i))
-              ->orderBy('t.transaction_date')
-              ->get(['c.id as cid', 'c.name', 'c.mobile', 'c.email', 't.id as tid', 't.invoice_no', 't.transaction_date', 't.status', 'bl.name as store', 'p.name as product', 'p.artist', 'l.quantity', 'l.unit_price_inc_tax']);
+            $rows = \DB::table('transaction_sell_lines as l') ->join('transactions as t', 't.id', '=', 'l.transaction_id') ->join('contacts as c', 'c.id', '=', 't.contact_id') ->join('products as p', 'p.id', '=', 'l.product_id') ->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id') ->where('t.type', 'sell') ->where(fn($q) => $q->where('c.name', 'like', $n)->orWhere('c.first_name', 'like', $n)->orWhere('c.supplier_business_name', 'like', $n)) ->where(fn($q) => $q->where('p.name', 'like', $i)->orWhere('p.artist', 'like', $i)) ->orderBy('t.transaction_date') ->get(['c.id as cid', 'c.name', 'c.mobile', 'c.email', 't.id as tid', 't.invoice_no', 't.transaction_date', 't.status', 'bl.name as store', 'p.name as product', 'p.artist', 'l.quantity', 'l.unit_price_inc_tax']);
             echo 'MATCHES ' . count($rows) . "\n";
             foreach ($rows as $r) echo 'ROW ' . json_encode($r) . "\n";
-            $buyers = \DB::table('transactions as t')->join('contacts as c', 'c.id', '=', 't.contact_id')
-              ->where('t.type', 'sell')->where(fn($q) => $q->where('c.name', 'like', $n)->orWhere('c.first_name', 'like', $n))
-              ->selectRaw('c.id, c.name, count(*) as sales')->groupBy('c.id', 'c.name')->get();
+            $buyers = \DB::table('transactions as t')->join('contacts as c', 'c.id', '=', 't.contact_id') ->where('t.type', 'sell')->where(fn($q) => $q->where('c.name', 'like', $n)->orWhere('c.first_name', 'like', $n)) ->selectRaw('c.id, c.name, count(*) as sales')->groupBy('c.id', 'c.name')->get();
             echo 'NAME_MATCH_BUYERS ' . count($buyers) . ' ' . json_encode($buyers) . "\n";
             PHP
             echo "=== done ==="
