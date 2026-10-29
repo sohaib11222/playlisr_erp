@@ -672,7 +672,7 @@ HTML;
                             <li>Look at what sold in the last few months and type the <strong>typical (middle) price</strong> in the value box, not the highest one.</li>
                             <li>Copy the link from the address bar of that sold-results page and paste it in the link box.</li>
                         </ol>
-                        <small>Not accepted: a single listing page (ebay.com/itm/…) or a search without the Sold items filter.</small>
+                        <small>The link is only required for items worth more than ${{ (int) \App\Services\BuyOfferCalculatorService::EBAY_LINK_REQUIRED_OVER }} (not records or cassettes). Any eBay link works.</small>
                     </details>
                     <div class="table-responsive">
                         <table class="table table-bordered" id="offer_lines_table">
@@ -1457,9 +1457,9 @@ HTML;
                 var title = $.trim($row.find('input[name$="[title]"]').val() || '');
                 if (type === 'individual_vinyl' && qty > 0 && (title || link || val > 0) && !$row.find('select.bfc-grade').val()) sanity.push('Line ' + (i + 1) + ': pick the record\'s condition grade.');
                 var tcfg = BFC_RULES.types[type] || {};
-                if (bfcNeedsEbaySold(tcfg) && qty > 0) {
-                    if (!link) sanity.push('Line ' + (i + 1) + ': paste the link to eBay SOLD listings for this item (click "Search eBay sold items", check the prices, copy that page\'s link).');
-                    else if (!bfcIsEbaySoldUrl(link)) sanity.push('Line ' + (i + 1) + ': that is not an eBay sold-items link. Search eBay, turn on the "Sold items" filter, and copy that results page link.');
+                if (bfcEbayLinkRequired(type + ' ' + ($row.find('select.bfc-genre').val() || ''), tcfg, val) && qty > 0) {
+                    if (!link) sanity.push('Line ' + (i + 1) + ': items worth more than ${{ (int) \App\Services\BuyOfferCalculatorService::EBAY_LINK_REQUIRED_OVER }} need an eBay link (paste the eBay page link).');
+                    else if (!bfcIsEbayUrl(link)) sanity.push('Line ' + (i + 1) + ': that is not an eBay link. Paste a link from ebay.com.');
                 }
                 if (tcfg.min_value && qty > 0 && val < tcfg.min_value) sanity.push('Line ' + (i + 1) + ': "' + $row.find('select[name$="[item_type]"] option:selected').text() + '" is for items worth $' + tcfg.min_value + '+ on eBay. Use the regular line for cheaper ones.');
                 if (type === 'individual_vinyl' && qty > 0 && val >= {{ (int) \App\Services\BuyOfferCalculatorService::LINK_REQUIRED_FROM }} && link === '') sanity.push('Line ' + (i + 1) + ': records with a median of ${{ (int) \App\Services\BuyOfferCalculatorService::LINK_REQUIRED_FROM }}+ need the Discogs link or release ID.');
@@ -1764,13 +1764,17 @@ HTML;
             }
             return qty + ' × ' + (parseFloat(t.unit_rate) || 0).toFixed(2) + (t.no_grading ? '' : ' × ' + gm);
         }
-        // eBay-value lines need the eBay SOLD results link (mirrors
-        // BuyOfferCalculatorService::isEbaySoldUrl: an ebay.* search with LH_Sold=1).
+        // eBay-value lines: an eBay link (any, sold filter or not) is required only
+        // above ${{ (int) \App\Services\BuyOfferCalculatorService::EBAY_LINK_REQUIRED_OVER }} and not for records / cassettes (mirrors
+        // BuyOfferCalculatorService::requiresEbaySoldLink / isEbayUrl).
         function bfcNeedsEbaySold(t) { return t.mode === 'ebay_margin' || t.mode === 'value_percent'; }
-        function bfcIsEbaySoldUrl(u) {
-            var m = $.trim(u || '').match(/^https?:\/\/([^\/?#]+)[^?#]*\?([^#]*)/i);
-            if (!m || !/(^|\.)ebay\.[a-z.]+$/i.test(m[1])) return false;
-            return m[2].split('&').some(function (kv) { var p = kv.split('='); return p[0].toLowerCase() === 'lh_sold' && p[1] === '1'; });
+        function bfcEbayLinkRequired(type, t, val) {
+            return bfcNeedsEbaySold(t) && !/vinyl|record|cassette/i.test((type || '') + ' ' + (t.label || '')) && val > {{ (int) \App\Services\BuyOfferCalculatorService::EBAY_LINK_REQUIRED_OVER }};
+        }
+        function bfcIsEbayUrl(u) {
+            u = $.trim(u || '');
+            var m = (/^https?:\/\//i.test(u) ? u : 'https://' + u).match(/^https?:\/\/([^\/?#:]+)/i);
+            return !!m && /(^|\.)ebay\.[a-z.]+$|^ebay\.us$/i.test(m[1]);
         }
         function bfcEbaySearchHref($row) {
             var q = $.trim($row.find('input[name$="[title]"]').val() || '');
@@ -1790,7 +1794,7 @@ HTML;
             var t = BFC_RULES.types[type] || {};
             var ebay = bfcNeedsEbaySold(t);
             // The link box only where a link means something: Discogs records and eBay lines.
-            $row.find('input[name$="[discogs_link]"]').attr('placeholder', ebay ? 'eBay recently sold link (required)' : 'Discogs release ID or URL')
+            $row.find('input[name$="[discogs_link]"]').attr('placeholder', ebay ? 'eBay link (required over ${{ (int) \App\Services\BuyOfferCalculatorService::EBAY_LINK_REQUIRED_OVER }})' : 'Discogs release ID or URL')
                 .toggle(ebay || t.mode === 'individual_discogs' || !!$.trim($row.find('input[name$="[discogs_link]"]').val()));
             $row.find('a.bfc-ebay-search').attr('href', bfcEbaySearchHref($row)).toggle(ebay);
             $row.find('a.bfc-ebay-howto').toggle(ebay);

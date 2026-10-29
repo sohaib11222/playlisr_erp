@@ -20,6 +20,8 @@ class BuyOfferCalculatorService
     // Jon 2026-10-25: "<format> - rare" lines are for items worth $15+, and pay
     // by how fast that category sells here (BuyDemandService speed tier).
     const RARE_MIN_VALUE = 15;
+    // Jon 2026-10-28: eBay link only required above this value (not for records / cassettes).
+    const EBAY_LINK_REQUIRED_OVER = 20;
     const RARE_SPEED_PAY = ['slow' => 0.15, 'normal' => 0.20, 'fast' => 0.22, 'super_fast' => 0.25];
     // Single records at this median or more need a Discogs link / ID.
     const LINK_REQUIRED_FROM = 20;
@@ -555,26 +557,27 @@ class BuyOfferCalculatorService
     }
 
     /**
-     * Jon 2026-10-26: lines priced off an eBay value need the link to eBay's
-     * sold results. eBay blocks our server from reading its pages, so a link
-     * counts as sold only when it's an eBay search with the "Sold items"
-     * filter on (LH_Sold=1); a single /itm/ page can't be proven sold.
+     * Jon 2026-10-28: lines priced off an eBay value need an eBay link, but only
+     * when the item is worth more than EBAY_LINK_REQUIRED_OVER and isn't a
+     * record / vinyl / cassette. Any eBay link is fine (sold filter or not).
      */
-    public function requiresEbaySoldLink($itemType)
+    public function requiresEbaySoldLink($itemType, $value = null, $genre = '')
     {
         $cfg = $this->getRules()['item_types'][$itemType] ?? null;
-        return $cfg && in_array($cfg['mode'], ['ebay_margin', 'value_percent'], true);
-    }
-
-    public static function isEbaySoldUrl($url)
-    {
-        $parts = parse_url(trim((string) $url));
-        if (empty($parts['host']) || !preg_match('/(^|\.)ebay\.[a-z.]+$/i', $parts['host'])) {
+        if (!$cfg || !in_array($cfg['mode'], ['ebay_margin', 'value_percent'], true)) {
             return false;
         }
-        parse_str($parts['query'] ?? '', $q);
-        $q = array_change_key_case($q, CASE_LOWER);
-        return (string) ($q['lh_sold'] ?? '') === '1';
+        if (preg_match('/vinyl|record|cassette/i', $itemType . ' ' . ($cfg['label'] ?? '') . ' ' . $genre)) {
+            return false;
+        }
+        return $value === null || (float) $value > self::EBAY_LINK_REQUIRED_OVER;
+    }
+
+    public static function isEbayUrl($url)
+    {
+        $url = trim((string) $url);
+        $parts = parse_url(preg_match('#^https?://#i', $url) ? $url : 'https://' . $url);
+        return !empty($parts['host']) && (bool) preg_match('/(^|\.)ebay\.[a-z.]+$|^ebay\.us$/i', $parts['host']);
     }
 
     /**
