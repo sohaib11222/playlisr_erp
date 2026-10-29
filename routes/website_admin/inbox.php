@@ -3,6 +3,10 @@
 // Website inbox: job applications, contact messages, buy/sell queries, chats,
 // and customer returns (Sarah, 2026-10-15). Required inside web.php's auth group.
 
+Route::get('/website-inbox', function () {
+    return redirect('/website-inbox/messages');
+});
+
 Route::get('/website-inbox/applications', 'WebsiteAdmin\ApplicationsController@index')->name('wa.inbox.applications');
 Route::post('/website-inbox/applications/archive-low/preview', 'WebsiteAdmin\ApplicationsController@archivePreview')->name('wa.inbox.applications.archive_preview');
 Route::post('/website-inbox/applications/archive-low', 'WebsiteAdmin\ApplicationsController@archiveLow')->name('wa.inbox.applications.archive_low');
