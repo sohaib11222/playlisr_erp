@@ -55,6 +55,19 @@ function topClass(t) {
   if (/^dvd/.test(s)) return 'dvd';
   return '';
 }
+// Words that, in a product name, really say what it is (checked on the raw
+// name: "album" / "record" / "guitar" / "book" are everyday title words).
+const STRONG = [
+  [/\bmagazines?\b/, /^magazines$/], [/\bposters?\b/, /^posters$/], [/\bvhs\b/, /^vhs$/], [/\bdvds?\b|\bblu-?ray\b/, /^dvd/],
+  [/\blaser ?discs?\b/, /^laser/], [/\bcds?\b(?!\s*player)/, /^cd /], [/\bcassettes?\b(?!\s*(?:deck|player|recorder))/, /^cassettes/],
+  [/\bvinyl\b(?!\s*(?:figure|toy))|\blps?\b|12"/, /^(vinyl|clearance vinyl)/], [/7"|\b7 ?inch\b|\b45 ?rpm\b/, /^7"/], [/\b8[- ]?track\b/, /^8 track/],
+  [/\bt-?shirt\b|\bhoodie\b|\bsweatshirt\b|\bjersey\b/, /^apparel/],
+  [/\bturntable\b|\brecord player\b/, /^(audio gear|electronics)$/], [/\bwalkman\b/, /^(audio gear|electronics)$/],
+  [/\bdiscman\b|\bcd player\b/, /^(audio gear|electronics)$/], [/\bcassette (?:deck|player|recorder)\b/, /^(audio gear|electronics)$/],
+  [/\bheadphones?\b|\bspeakers? \(|\bstereo receiver\b|\bstylus\b|\bphono cartridge\b/, /^audio gear$/],
+  [/\bfunko\b/, /^toys$/], [/\bplush\b/, /^toys$/], [/\bjigsaw\b|\bpuzzle\b/, /^toys$/], [/\bslipmat\b/, /^gift items$/],
+  [/\(a novel\)|\bhardcover\b|\bpaperback\b/, /^books$/], [/\bnintendo\b|\bplaystation\b|\bxbox\b|\bvideo ?game\b/, /^video games$/],
+];
 const CLASS_HINT = { sevenin: '7 inch', lp: 'Vinyl', cd: 'CD', cassette: 'Cassettes', vhs: 'VHS', dvd: 'DVD' };
 
 function decidedTop(name) {
@@ -97,18 +110,28 @@ for (const [id, name, sku, format, via, cid, sid, stock, inactive, created] of d
     suspects.push({ ...row, sug: labelOf(v) || CLASS_HINT[fc] + ' (pick genre)', reason: 'format is "' + format + '"' });
     continue;
   }
-  // B. The name clearly says another kind of product ("... VHS" filed under Vinyl).
+  // B. The name clearly says another kind of product ("... VHS" filed under
+  // Vinyl). Only unambiguous words count; "album", "record", "guitar", "book"
+  // are everyday title words. Discogs-imported names are album titles: trusted.
   const d = decidedTop(name);
-  if (d.top && d.score >= 8 && family(d.top) !== family(top) && !tokens(top).some(t => nameT.indexOf(t) !== -1)) {
-    suspects.push({ ...row, sug: labelOf(d.value) || d.top, reason: 'name says ' + d.top });
-    continue;
+  const lname = String(name).toLowerCase();
+  const hits = STRONG.filter(([w]) => w.test(lname));
+  const strong = hits.map(([w]) => (lname.match(w) || [''])[0].trim());
+  const strongTops = tops.map(t => catName[t]).filter(tn => hits.some(([, t]) => t.test(tn.toLowerCase())));
+  if (via !== 'discogs_inventory_import' && strongTops.length && !strongTops.some(tn => family(tn) === family(top))) {
+    const sugTop = d.top && strongTops.indexOf(d.top) !== -1 ? d.top : (strongTops.length === 1 ? strongTops[0] : '');
+    if (sugTop) {
+      const v = d.top === sugTop && d.value ? labelOf(d.value) : sugTop;
+      suspects.push({ ...row, sug: v, reason: 'name says "' + strong.join(', ') + '"' });
+      continue;
+    }
   }
   // C. Right category, wrong subcategory, and the name names the right one
   // ("Michael Jordan ..." under Trading Cards > Digimon Cards).
   const sl = labelOf(d.value);
   if (sub && sl && sl.split(' > ')[0] === top && sl !== cur) {
     const curD = distinct(sub, top), sugD = distinct(sl.split(' > ')[1] || '', top);
-    if (curD.length && !curD.some(t => nameT.indexOf(t) !== -1) && sugD.length && sugD.every(t => nameT.indexOf(t) !== -1)) {
+    if (!/^packs?$/i.test(sub) && curD.length && !curD.some(t => nameT.indexOf(t) !== -1) && sugD.length && sugD.every(t => nameT.indexOf(t) !== -1)) {
       suspects.push({ ...row, sug: sl, reason: 'name says ' + (sl.split(' > ')[1]) });
     }
   }
