@@ -11,8 +11,7 @@ use Illuminate\Support\Facades\DB;
  * items that obviously belong in them.
  *
  * Context: a scan of ~26k live product names found big groups with no
- * subcategory of their own — Christmas records spread across Rock/Jazz/none,
- * Sinatra-type vocal records crammed into Jazz, graded slabs mixed into
+ * subcategory of their own — Christmas cassettes spread across Rock/Jazz/none, graded slabs mixed into
  * Pokemon Cards, National Geographic / Nintendo Power lumped into
  * "Pop Culture", 500 comics in one "Comic Books" bucket, anime figures with
  * no subcategory.
@@ -40,16 +39,14 @@ class AddTopTierSubcategories extends Command
 
     protected $description = 'Create the top-tier missing subcategories and re-file matching items.';
 
-    // Vinyl - Used / Vinyl - Sealed keep their own genre list: no new subs
+    // Vinyl and CD (used + sealed) keep their own genre lists: no new subs
     // and no moves there (Sarah 2026-10-29). handle() also refuses them.
-    const MUSIC_ALL = ['CD - Used', 'CD - Sealed', 'Cassettes - Used', 'Cassettes - Sealed'];
+    const MUSIC_ALL = ['Cassettes - Used', 'Cassettes - Sealed'];
 
     /** Parent category => new subcategories under it. */
     public static function newSubs()
     {
         return [
-            'CD - Used' => ['Christmas / Holiday', 'Vocal Standards & Swing', 'Brazilian / MPB', 'Easy Listening / Lounge / Exotica'],
-            'CD - Sealed' => ['Christmas / Holiday', 'Vocal Standards & Swing', 'Brazilian / MPB'],
             'Cassettes - Used' => ['Christmas / Holiday'],
             'Cassettes - Sealed' => ['Christmas / Holiday'],
             'Toys' => ['Anime Figures'],
@@ -66,13 +63,9 @@ class AddTopTierSubcategories extends Command
      */
     public static function rules()
     {
-        $vocal = 'sinatra|dean martin|bing crosby|tony bennett|perry como|andy williams|nat king cole|johnny mathis|rosemary clooney|doris day|patti page|glenn miller|benny goodman|tommy dorsey|jimmy dorsey|harry james|lawrence welk|mitch miller|jo stafford|vic damone|frankie laine|eddie fisher|connie francis|steve lawrence|eydie gorme|robert goulet|jack jones|al martino|mel torm[eé]|bobby darin|andrews sisters|mills brothers|ink spots|guy lombardo|kay starr|julie london|keely smith|louis prima|matt monro|engelbert humperdinck|jerry vale';
-        $brazil = 'jobim|gilberto|caetano|gal costa|milton nascimento|jorge ben|elis regina|chico buarque|os mutantes|s[eé]rgio mendes|brasil ?66|marcos valle|tim maia|maria beth[aâ]nia|airto|flora purim|edu lobo|baden powell|luiz bonf[aá]|djavan|novos baianos|tom z[eé]|azymuth|ivan lins|joyce moreno|\bbrasil\b|\bbrazil|\bmpb\b';
-        $easy = 'exotica|easy listening|\blounge\b|herb alpert|tijuana brass|mantovani|ray conniff|percy faith|101 strings|james last|bert kaempfert|martin denny|arthur lyman|les baxter|living strings|hollyridge strings|jackie gleason|enoch light|esquivel|billy vaughn|kostelanetz|roger williams|ferrante (&|and) teicher|ray anthony|sounds orchestral';
         $marvel = 'marvel|spider-?\s?man|\bhulk\b|x-?men|x-?force|wolverine|avengers|iron man|\bthor\b|captain america|deadpool|punisher|fantastic four|daredevil|venom|carnage|black panther|wakanda|moon knight|ghost rider|doctor strange|guardians of the galaxy|silver surfer|galactus|conan|deathlok|werewolf by night|what if|amadeus cho|elektra|ant-man|namor|new mutants|web of spider|she-hulk|killmonger|thanos|kang\b';
         $dc = '\bdc\b|batman|superman|wonder woman|justice league|aquaman|\bflash\b|green lantern|green arrow|\barrow\b|nightwing|joker|harley quinn|catwoman|teen titans|outsiders|world\'?s finest|supergirl|swamp thing|sandman|constantine|hellblazer|shazam|doom patrol|watchmen|the authority|lobo\b|darkseid';
         $indie = '\bimage\b|spawn|invincible|walking dead|\bsaga\b|\bidw\b|dark horse|boom!? studios|cyber ?force|turok|valiant|godzilla|ninja turtles|\btmnt\b|hellboy|savage dragon|witchblade|the darkness|youngblood|wildc\.?a\.?t\.?s|bone\b|archie|vertigo';
-        $music = ['CD - Used', 'CD - Sealed'];
 
         return [
             [
@@ -82,30 +75,6 @@ class AddTopTierSubcategories extends Command
                 'to' => 'Christmas / Holiday',
                 'match' => 'christmas|x-?mas\b|navidad|hanukk?ah|chanukah|happy holidays|holiday (songs|album|music|favou?rites|classics|greetings|cheer|collection|wishes|season|sing|spirit|hits|magic)|santa claus|jingle bell|sleigh ride|silent night|yuletide',
                 'exclude' => 'billie holiday|david christmas',
-            ],
-            [
-                'label' => 'Vocal Standards & Swing',
-                'parents' => $music,
-                'from' => [null, 'Jazz', 'Pop', 'pop', 'Pop (New)', 'Rock'],
-                'to' => 'Vocal Standards & Swing',
-                'match' => $vocal,
-                'exclude' => 'christmas|x-?mas|holiday',
-            ],
-            [
-                'label' => 'Brazilian / MPB',
-                'parents' => $music,
-                'from' => [null, 'Jazz', 'Latin', 'World', 'world', 'Pop', 'Rock'],
-                'to' => 'Brazilian / MPB',
-                'match' => $brazil,
-                'exclude' => 'christmas|x-?mas|holiday',
-            ],
-            [
-                'label' => 'Easy Listening / Lounge / Exotica',
-                'parents' => ['CD - Used'],
-                'from' => [null, 'Jazz', 'Pop', 'pop', 'Rock', 'World', 'world', 'Soundtracks'],
-                'to' => 'Easy Listening / Lounge / Exotica',
-                'match' => $easy,
-                'exclude' => 'christmas|x-?mas|holiday',
             ],
             [
                 'label' => 'Anime Figures',
@@ -190,9 +159,9 @@ class AddTopTierSubcategories extends Command
         ];
     }
 
-    public static function isVinyl($parent)
+    public static function isOffLimits($parent)
     {
-        return stripos($parent, 'vinyl') !== false;
+        return (bool) preg_match('~vinyl|\bcds?\b~i', $parent);
     }
 
     /** Does a rule take this product? Pure, so it can be tested without a DB. */
@@ -240,7 +209,7 @@ class AddTopTierSubcategories extends Command
         // Step 1 — create the subcategories.
         $this->info('Step 1 — subcategories');
         foreach (self::newSubs() as $parent => $subs) {
-            if (self::isVinyl($parent)) { $this->warn("  ! {$parent} is off-limits — skipped"); continue; }
+            if (self::isOffLimits($parent)) { $this->warn("  ! {$parent} is off-limits — skipped"); continue; }
             $pid = $parentId[mb_strtolower($parent)] ?? null;
             if (!$pid) { $this->warn("  ! parent '{$parent}' not found — skipped"); continue; }
             foreach ($subs as $s) {
@@ -271,7 +240,7 @@ class AddTopTierSubcategories extends Command
         foreach (self::rules() as $rule) {
             $count = 0; $from = []; $examples = [];
             foreach ($rule['parents'] as $parent) {
-                if (self::isVinyl($parent)) continue;
+                if (self::isOffLimits($parent)) continue;
                 $pid = $parentId[mb_strtolower($parent)] ?? null;
                 if (!$pid) continue;
                 $targetId = $subId[$pid][mb_strtolower($rule['to'])] ?? null;
