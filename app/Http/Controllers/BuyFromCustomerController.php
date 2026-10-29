@@ -1065,7 +1065,13 @@ class BuyFromCustomerController extends Controller
             if ($type === 'individual_vinyl' && empty($line['signed']) && $qty > 0 && ($title !== '' || $link !== '' || $value > 0) && trim((string) ($line['condition_grade'] ?? '')) === '') {
                 $errors["lines.$i.condition_grade"] = sprintf('Line %s: pick the record\'s condition grade.', $n);
             }
-            if ($qty > 0 && $this->calculator->requiresEbaySoldLink($type, $value, (string) ($line['genre'] ?? ''))) {
+            // The Beta category pick posts an id (c:123); match on its name ("Vinyl › Rock").
+            $genre = (string) ($line['genre'] ?? '');
+            if (strpos($genre, 'c:') === 0) {
+                $cats = $cats ?? app(BuyDemandService::class)->categoryChoices((int) $request->session()->get('user.business_id'));
+                $genre .= ' ' . ($cats[$genre] ?? '');
+            }
+            if ($qty > 0 && $this->calculator->requiresEbaySoldLink($type, $value, $genre)) {
                 if ($link === '') {
                     $errors["lines.$i.discogs_link"] = sprintf('Line %s: items worth more than $%d need an eBay link (paste the eBay page link).', $n, BuyOfferCalculatorService::EBAY_LINK_REQUIRED_OVER);
                 } elseif (!BuyOfferCalculatorService::isEbayUrl($link)) {

@@ -60,6 +60,60 @@ echo "NUDGE vhs_used: " . App\Http\Controllers\BuyFromCustomerController::flatRa
 echo "NUDGE book_comic: " . App\Http\Controllers\BuyFromCustomerController::flatRateNudge([['item_type' => 'book_comic', 'quantity' => 5]], true) . "\n";
 echo "NUDGE dvd_player: " . App\Http\Controllers\BuyFromCustomerController::flatRateNudge([['item_type' => 'dvd_player', 'quantity' => 1]], true) . "\n";
 
+// Jon 2026-10-28: what makes a buy-form line go through vs get blocked
+// (server side, BuyFromCustomerController::validateLineSanity), one line per case.
+config(['session.driver' => 'array']);
+$vcats = $ds->categoryChoices($biz);
+$vinylCat = array_search(current(array_filter($vcats, function ($n) { return preg_match('/vinyl|record/i', $n); })), $vcats);
+$castCat = array_search(current(array_filter($vcats, function ($n) { return preg_match('/cassette/i', $n); })), $vcats);
+$otherCat = array_search(current(array_filter($vcats, function ($n) { return preg_match('/^(vhs|dvd|toys|trading cards|books?)\b/i', $n); })), $vcats);
+echo "CATS vinyl=$vinylCat " . ($vcats[$vinylCat] ?? '-') . " | cassette=$castCat " . ($vcats[$castCat] ?? '-') . " | other=$otherCat " . ($vcats[$otherCat] ?? '-') . "\n";
+$san = new ReflectionMethod($ctl, 'validateLineSanity');
+$san->setAccessible(true);
+$cases = [
+    ['GO',    'VHS rare $18, no link', ['item_type' => 'rare_vhs', 'discogs_median_price' => 18]],
+    ['GO',    'VHS rare $20, no link (not MORE than $20)', ['item_type' => 'rare_vhs', 'discogs_median_price' => 20]],
+    ['BLOCK', 'VHS rare $25, no link', ['item_type' => 'rare_vhs', 'discogs_median_price' => 25]],
+    ['GO',    'VHS rare $25, eBay single listing /itm/', ['item_type' => 'rare_vhs', 'discogs_median_price' => 25, 'discogs_link' => 'https://www.ebay.com/itm/123456789012']],
+    ['GO',    'VHS rare $25, eBay search WITHOUT sold filter', ['item_type' => 'rare_vhs', 'discogs_median_price' => 25, 'discogs_link' => 'https://www.ebay.com/sch/i.html?_nkw=faces+of+death']],
+    ['GO',    'VHS rare $25, eBay sold search', ['item_type' => 'rare_vhs', 'discogs_median_price' => 25, 'discogs_link' => 'https://www.ebay.com/sch/i.html?_nkw=x&LH_Sold=1']],
+    ['GO',    'VHS rare $25, eBay link without https://', ['item_type' => 'rare_vhs', 'discogs_median_price' => 25, 'discogs_link' => 'www.ebay.com/itm/123']],
+    ['GO',    'VHS rare $25, eBay app share link (ebay.us)', ['item_type' => 'rare_vhs', 'discogs_median_price' => 25, 'discogs_link' => 'https://ebay.us/m/AbC123']],
+    ['BLOCK', 'VHS rare $25, Google link (not eBay)', ['item_type' => 'rare_vhs', 'discogs_median_price' => 25, 'discogs_link' => 'https://www.google.com/search?q=ebay+vhs']],
+    ['GO',    'Valuable item $50, category Vinyl, no link', ['item_type' => 'ebay_value', 'discogs_median_price' => 50, 'genre' => $vinylCat]],
+    ['GO',    'Valuable item $50, category Cassette, no link', ['item_type' => 'ebay_value', 'discogs_median_price' => 50, 'genre' => $castCat]],
+    ['BLOCK', 'Valuable item $50, category non-music, no link', ['item_type' => 'ebay_value', 'discogs_median_price' => 50, 'genre' => $otherCat]],
+    ['BLOCK', 'Valuable item $50, no category, no link', ['item_type' => 'ebay_value', 'discogs_median_price' => 50]],
+    ['BLOCK', 'Camera $40, no link', ['item_type' => 'camera', 'discogs_median_price' => 40]],
+    ['GO',    'Camera $15, no link', ['item_type' => 'camera', 'discogs_median_price' => 15]],
+    ['BLOCK', 'Card packs $25, no link', ['item_type' => 'card_pack', 'discogs_median_price' => 25]],
+    ['BLOCK', 'Signed/rare poster $30, no link', ['item_type' => 'poster_value', 'discogs_median_price' => 30]],
+    ['GO',    'Signed item $150, no link', ['item_type' => 'signed_item', 'discogs_median_price' => 150]],
+    ['BLOCK', 'VHS rare $10 (rare lines are $15+)', ['item_type' => 'rare_vhs', 'discogs_median_price' => 10]],
+    ['BLOCK', 'Value $20,000 (typo guard)', ['item_type' => 'rare_vhs', 'discogs_median_price' => 20000, 'discogs_link' => 'https://www.ebay.com/itm/1']],
+    ['BLOCK', '1-9 vinyl, qty 25', ['item_type' => 'individual_vinyl', 'quantity' => 25, 'discogs_median_price' => 5, 'condition_grade' => 'VG+']],
+    ['BLOCK', '1-9 vinyl with title, no grade', ['item_type' => 'individual_vinyl', 'title' => 'LP', 'discogs_median_price' => 5]],
+    ['BLOCK', '1-9 vinyl $25 median, no Discogs link', ['item_type' => 'individual_vinyl', 'discogs_median_price' => 25, 'condition_grade' => 'VG+']],
+    ['GO',    '1-9 vinyl $25 median, Discogs ID', ['item_type' => 'individual_vinyl', 'discogs_median_price' => 25, 'condition_grade' => 'VG+', 'discogs_link' => '1234567']],
+    ['GO',    '1-9 vinyl $15 median, no link', ['item_type' => 'individual_vinyl', 'discogs_median_price' => 15, 'condition_grade' => 'VG+']],
+];
+foreach ($cases as $c) {
+    list($want, $name, $line) = $c;
+    $line += ['quantity' => 1, 'title' => 'Test item'];
+    $r = Illuminate\Http\Request::create('/buy-from-customer', 'POST', ['lines' => [$line]]);
+    $r->setLaravelSession(app('session')->driver('array'));
+    $r->session()->put('user.business_id', $biz);
+    $got = 'GO';
+    $why = '';
+    try {
+        $san->invoke($ctl, $r);
+    } catch (Illuminate\Validation\ValidationException $e) {
+        $got = 'BLOCK';
+        $why = implode(' | ', Illuminate\Support\Arr::flatten($e->errors()));
+    }
+    printf("SERVER %s want=%-5s got=%-5s %s%s\n", $got === $want ? 'PASS' : 'FAIL', $want, $got, $name, $why !== '' ? ' -> ' . $why : '');
+}
+
 // Render the page through the full HTTP stack as that user.
 Auth::setUser($user);
 $req = Illuminate\Http\Request::create('/buy-from-customer', 'GET');
