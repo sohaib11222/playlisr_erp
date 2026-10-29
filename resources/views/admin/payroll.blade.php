@@ -106,6 +106,7 @@
 .pr-log .pr-x { border:0; background:none; color:#8A3A2E; cursor:pointer; font-size:14px; padding:0 4px; }
 .pr-log tr.is-saving td { background:#FFFBE6; } .pr-log tr.is-saved td { background:#EAF6EC; } .pr-log tr.is-error td { background:#FBEAEA; }
 .pr-checks { background:#FFF9DB; border:1px solid #E6CE5A; border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:13px; color:#1F1B16; }
+.pr-flag { color:#B42318; font-size:12px; font-weight:600; padding:2px 4px; line-height:1.3; }
 .pr-checks ul { margin:4px 0 0 18px; padding:0; }
 </style>
 @php
@@ -115,8 +116,6 @@
   $mdY = function ($v) { return $v ? \Carbon::parse($v)->format('m/d/y') : ''; };
   $tm  = function ($v) { return $v ? \Carbon::parse($v)->format('g:i A') : ''; };
   $locOpts = ['pico' => 'pico', 'hollywood' => 'hw'];
-  $checkList = [];
-  foreach ($people as $p) { foreach ($p['checks'] ?? [] as $c) { $checkList[] = $p['first_name'] . ': ' . $c; } }
 @endphp
 
 <section class="content-header">
@@ -252,6 +251,17 @@
     @if (!empty($p['log']))
       @foreach ($p['log'] as $lg)
         @php $f = 'sh-' . $lg['idx']; @endphp
+        @if ($lg['idx'] === null)
+        <tr class="pr-shift" data-person="{{ $p['key'] }}">
+          <td class="rh">{{ ++$rn }}</td>
+          <td class="b">{{ $loop->first ? $p['first_name'] : '' }}</td>
+          <td class="n b pr-ptotal">@if ($loop->first)<strong>{{ number_format($p['one_hours'] + $p['two_hours'], 2) }}</strong>@endif</td>
+          <td class="n">{{ $mdY($lg['day']) }}</td><td></td><td></td><td></td><td></td><td></td>
+          <td style="min-width:180px;white-space:normal;"><div class="pr-flag">{{ implode('. ', $lg['flags']) }}</div></td>
+          <td></td>
+        </tr>
+        @continue
+        @endif
         <tr class="pr-shift" data-person="{{ $p['key'] }}" data-form="{{ $f }}">
           <td class="rh">{{ ++$rn }}</td>
           <td class="b">{{ $loop->first ? $p['first_name'] : '' }}</td>
@@ -262,7 +272,7 @@
           <td class="n"><input form="{{ $f }}" name="out_time" value="{{ $lg['out'] ? \Carbon::parse($lg['out'])->format('g:i:s A') : '' }}" style="width:88px;"></td>
           <td class="n pr-el">{{ number_format($lg['hours'], 2) }}</td>
           <td class="c"><select form="{{ $f }}" name="location">@foreach ($locOpts as $lv => $ll)<option value="{{ $lv }}" {{ ($lv === 'pico') === (stripos($lg['store'], 'pico') !== false) ? 'selected' : '' }}>{{ $ll }}</option>@endforeach</select></td>
-          <td style="min-width:180px;"><input form="{{ $f }}" name="comment" value="{{ $lg['comment'] }}"></td>
+          <td style="min-width:180px;white-space:normal;"><input form="{{ $f }}" name="comment" value="{{ $lg['comment'] }}">@if (!empty($lg['flags']))<div class="pr-flag">{{ implode('. ', $lg['flags']) }}</div>@endif</td>
           <td><button form="{{ $f }}" type="submit" name="action" value="delete" class="x" title="Delete this shift" onclick="return confirm('Delete this shift?');">&times;</button></td>
         </tr>
       @endforeach
@@ -285,12 +295,6 @@
 </table>
 
 <div class="gs-side">
-  @if (!empty($checkList))
-  <table class="gs">
-    <tr><td class="hd" style="text-align:left;">CHECK BEFORE PAYING</td></tr>
-    @foreach ($checkList as $c)<tr><td style="white-space:normal;max-width:340px;">{{ $c }}</td></tr>@endforeach
-  </table>
-  @endif
   @if (!empty($adjRows))
   <table class="gs">
     <tr><td class="hd">BACK PAY / ADJUSTMENTS</td><td class="hd">Amount</td><td class="hd">Store</td><td class="hd">Note</td></tr>
@@ -304,6 +308,7 @@
 
 @foreach ($people as $p)
   @foreach ($p['log'] ?? [] as $lg)
+    @continue($lg['idx'] === null)
     <form id="sh-{{ $lg['idx'] }}" method="POST" action="{{ url('/payroll/shift') }}">{{ csrf_field() }}<input type="hidden" name="start" value="{{ $start }}"><input type="hidden" name="end" value="{{ $end }}"><input type="hidden" name="idx" value="{{ $lg['idx'] }}">@if (isset($lg['idx2']))<input type="hidden" name="idx2" value="{{ $lg['idx2'] }}">@endif</form>
   @endforeach
 @endforeach

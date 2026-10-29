@@ -397,6 +397,10 @@ class PayrollController extends Controller
     // Cross-checks that caught real mistakes on the 10/1-10/14 run: punches
     // left open, a register opened well before the clock-in (Zak 10/9), a
     // register run with no clock-in at all, and a Sling shift nobody clocked.
+    // Since 10/29 (Sarah) they show in the shift log's Comments next to the
+    // shift they belong to, not in a separate box; a day with a problem but
+    // no shift (missing punch) gets its own comment-only row. Also flags
+    // shifts over 10 hours and shifts that aren't on the Sling schedule.
     private function attachChecks(array $people, $businessId, $start, $end)
     {
         $byUid = [];
@@ -405,6 +409,13 @@ class PayrollController extends Controller
         unset($p);
         if (empty($byUid)) { return $people; }
 
+        $today = now()->toDateString();
+        $dayFlags = [];
+        $add = function ($i, $day, $text) use (&$people, &$dayFlags) {
+            $dayFlags[$i][$day][] = $text;
+            $people[$i]['checks'][] = $text;
+        };
+
         try {
             if (\App\Services\TimeClockService::ready()) {
                 $open = DB::table('time_clock_punches')->where('business_id', $businessId)->whereNull('voided_at')
@@ -412,9 +423,10 @@ class PayrollController extends Controller
                     ->get(['user_id', 'clock_in_at']);
                 foreach ($open as $o) {
                     // Clocked in today = still on shift, not a problem yet.
-                    if (substr((string) $o->clock_in_at, 0, 10) >= now()->toDateString()) { continue; }
+                    if (substr((string) $o->clock_in_at, 0, 10) >= $today) { continue; }
                     if (isset($byUid[(int) $o->user_id])) {
-                        $people[$byUid[(int) $o->user_id]]['checks'][] = 'No clock-out on ' . \Carbon::parse($o->clock_in_at)->format('m/d/y g:ia') . ' (not counted until fixed on Timecards)';
+                        $add($byUid[(int) $o->user_id], substr((string) $o->clock_in_at, 0, 10),
+                            'Clocked in ' . \Carbon::parse($o->clock_in_at)->format('g:ia') . ' but never clocked out (not counted until fixed on Timecards)');
                     }
                 }
             }
@@ -429,31 +441,57 @@ class PayrollController extends Controller
                 if (!isset($byUid[$uid])) { continue; }
                 $i = $byUid[$uid];
                 $day = substr((string) $r->created_at, 0, 10);
-                if ($day >= now()->toDateString()) { continue; } // today's shift isn't finished yet
+                if ($day >= $today) { continue; } // today's shift isn't finished yet
                 $firstIn = $people[$i]['first_in'][$day] ?? null;
                 $openT = \Carbon::parse($r->created_at);
                 if (!$firstIn) {
-                    if (!empty($people[$i]['has_hours'])) {
-                        $people[$i]['checks'][] = 'Ran a register ' . $openT->format('m/d/y g:ia') . ($r->closed_at ? '-' . \Carbon::parse($r->closed_at)->format('g:ia') : '') . ' but has no hours that day';
-                    }
+                    // Also for people with no hours at all (Willy 10/16 ran a
+                    // register with no punch and never showed up here).
+                    $add($i, $day, 'Ran a register ' . $openT->format('g:ia') . ($r->closed_at ? '-' . \Carbon::parse($r->closed_at)->format('g:ia') : '') . ' but no hours that day');
                 } elseif ($openT->lt(\Carbon::parse($firstIn)->subMinutes(20))) {
-                    $people[$i]['checks'][] = $openT->format('m/d/y') . ': register opened ' . $openT->format('g:ia') . ', first clock-in ' . \Carbon::parse($firstIn)->format('g:ia');
+                    $add($i, $day, 'Register opened ' . $openT->format('g:ia') . ', first clock-in ' . \Carbon::parse($firstIn)->format('g:ia'));
                 }
             }
         } catch (\Throwable $e) { \Log::warning('payroll register check failed: ' . $e->getMessage()); }
 
-        $today = now()->toDateString();
         foreach ($byUid as $uid => $i) {
             foreach ($this->scheduleCache[$uid] ?? [] as $day => $s) {
                 if ($day > $end || $day >= $today) { continue; }
                 // Under an hour on Sling = a quick check-in (Zak's weekend
                 // 2:45-3:15), not a shift anyone clocks in for.
                 if (!empty($s['start']) && !empty($s['end']) && strtotime($s['end']) - strtotime($s['start']) < 3600) { continue; }
-                if (!isset($people[$i]['first_in'][$day]) && !empty($people[$i]['has_hours'])) {
-                    $people[$i]['checks'][] = \Carbon::parse($day)->format('m/d/y') . ': on the Sling schedule ' . \Carbon::parse($s['start'])->format('g:ia')
-                        . ($s['end'] ? '-' . \Carbon::parse($s['end'])->format('g:ia') : '') . ' but no hours';
+                if (!isset($people[$i]['first_in'][$day])) {
+                    $add($i, $day, 'On Sling ' . \Carbon::parse($s['start'])->format('g:ia')
+                        . ($s['end'] ? '-' . \Carbon::parse($s['end'])->format('g:ia') : '') . ' but no hours');
                 }
             }
+            foreach ($people[$i]['log'] ?? [] as $lg) {
+                if ((float) $lg['hours'] > 10) {
+                    $add($i, $lg['day'], 'Over 10 hours, check the clock-in/out');
+                }
+                if (!empty($lg['in']) && !isset($this->scheduleCache[$uid][$lg['day']])) {
+                    $add($i, $lg['day'], 'Not on Sling this day');
+                }
+            }
+        }
+
+        // Put each day's flags on that day's first shift row; a day with no
+        // shift gets a comment-only row, kept in date order.
+        foreach ($dayFlags as $i => $days) {
+            $log = $people[$i]['log'] ?? [];
+            foreach ($days as $day => $texts) {
+                $texts = array_values(array_unique($texts));
+                $hit = false;
+                foreach ($log as $k => $lg) {
+                    if ($lg['day'] === $day) { $log[$k]['flags'] = array_merge($log[$k]['flags'] ?? [], $texts); $hit = true; break; }
+                }
+                if (!$hit) {
+                    $log[] = ['idx' => null, 'day' => $day, 'in' => null, 'out' => null, 'hours' => 0, 'store' => '', 'company' => '', 'comment' => '', 'flags' => $texts];
+                }
+            }
+            $order = array_keys($log);
+            usort($order, function ($a, $b) use ($log) { return strcmp($log[$a]['day'], $log[$b]['day']) ?: $a <=> $b; });
+            $people[$i]['log'] = array_map(function ($k) use ($log) { return $log[$k]; }, $order);
         }
         return $people;
     }
