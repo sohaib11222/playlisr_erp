@@ -4110,13 +4110,10 @@ class ProductController extends Controller
             ->orderBy('id')
             ->get(['label', 'keywords', 'price', 'category_id', 'sub_category_id', 'artist']);
 
-        // Surface the cashier's currently-open register location so the
-        // bulk-Discogs flow can pre-select Hollywood/Pico in Business
-        // Locations without making the operator pick it on every row.
-        $current_register = \App\CashRegister::where('user_id', auth()->id())
-            ->where('status', 'open')
-            ->first();
-        $current_pos_location_id = $current_register->location_id ?? null;
+        // Pre-select the operator's store (open register / sign-in store) in
+        // Business Locations on every row, including bulk-Discogs adds.
+        $current_pos_location_id = self::massAddDefaultLocationId($business_locations);
+        $default_location = $current_pos_location_id ? [$current_pos_location_id] : [];
 
         // Default purchase price per category (Sarah's cost-price-rules table),
         // keyed by parent category id, so the row auto-fills the cost from the
@@ -4138,6 +4135,7 @@ class ProductController extends Controller
             'units',
             'manual_item_price_rules',
             'current_pos_location_id',
+            'default_location',
             'category_cost_defaults',
             'category_cost_rules'
         ));
@@ -4940,6 +4938,20 @@ class ProductController extends Controller
         }
     }
 
+    /**
+     * Store a Mass Add row defaults to: the open register's store, else the
+     * store picked at sign-in (POS duty), else the user's assigned store.
+     */
+    public static function massAddDefaultLocationId($business_locations)
+    {
+        $register = \App\CashRegister::where('user_id', auth()->id())->where('status', 'open')->first();
+        foreach ([$register->location_id ?? null, session('pos_duty_location_id'), session('user.business_location_id')] as $id) {
+            $id = (int) $id;
+            if ($id && isset($business_locations[$id])) return $id;
+        }
+        return null;
+    }
+
     public function getMassProductRow(Request $request)
     {
         $index = $request->get('index', 0);
@@ -4954,9 +4966,10 @@ class ProductController extends Controller
         $taxes = TaxRate::forBusinessDropdown($business_id, false)['tax_rates'];
 
         $business_locations = BusinessLocation::forDropdown($business_id);
+        $default_location = array_filter([self::massAddDefaultLocationId($business_locations)]);
 
         return view('product.partials.mass_product_row')
-            ->with(compact('index', 'categories', 'category_combos', 'brands', 'taxes', 'business_locations'))
+            ->with(compact('index', 'categories', 'category_combos', 'brands', 'taxes', 'business_locations', 'default_location'))
             ->render();
     }
 
