@@ -268,33 +268,54 @@ class TimeClockController extends Controller
             $rows = $rows->filter(function ($p) { return $p->stayed_min; })->values();
         }
         $filename = 'timecards-' . $f['start'] . '_to_' . $f['end'] . '.csv';
+        // Same columns as the payroll sheet's shift log (Sarah 10/29) so it
+        // pastes straight in: one block per person, oldest shift first,
+        // mm/dd/yy dates, times WITH seconds (minute-only times made the
+        // sheet's hours drift), and Elapsed/Total as formulas so a fixed time
+        // recalculates. The formulas use relative R1C1 refs, so they work
+        // wherever the block is pasted. Detail columns come after Comments.
+        $rows = $rows->sortBy(function ($p) { return strtolower($p->name) . '|' . $p->clock_in_at; })->groupBy('name');
         return response()->stream(function () use ($rows) {
             $out = fopen('php://output', 'w');
-            fputcsv($out, ['Name', 'Store', 'Date', 'Clock In', 'Clock Out', 'Hours', 'Flags', 'Clock-in check', 'Clock-out check', 'Clocked out by', 'Clock In IP', 'Clock Out IP', 'Clock In Lat', 'Clock In Lng', 'Accuracy (m)', 'Distance to store (m)']);
-            // Text cells starting with = + - @ would run as formulas in Excel.
+            fputcsv($out, ['Name', 'Total Hours', 'Clock In Date', 'Clock In Time', 'Clock Out Date', 'Clock Out Time', 'Elapsed Hours', 'Location', 'Comments',
+                'Clock-in check', 'Clock-out check', 'Clocked out by', 'Clock In IP', 'Clock Out IP', 'Clock In Lat', 'Clock In Lng', 'Accuracy (m)', 'Distance to store (m)']);
+            // Text cells starting with = + - @ would run as formulas.
             $safe = function ($v) {
                 $v = (string) $v;
                 return ($v !== '' && strpos('=+-@', $v[0]) !== false) ? "'" . $v : $v;
             };
-            foreach ($rows as $p) {
-                fputcsv($out, [
-                    $safe($p->name),
-                    $safe($p->store),
-                    substr($p->clock_in_at, 0, 10),
-                    \Carbon::parse($p->clock_in_at)->format('g:i A'),
-                    $p->clock_out_at ? \Carbon::parse($p->clock_out_at)->format('Y-m-d g:i A') : '',
-                    $p->hours === null ? '' : number_format($p->hours, 2, '.', ''),
-                    $safe(implode('; ', $p->flags)),
-                    TC::verifyLabel($p->in_verify),
-                    TC::verifyLabel($p->out_verify),
-                    TC::sourceLabel($p->clock_out_source),
-                    $p->clock_in_ip,
-                    $p->clock_out_ip,
-                    $p->in_lat,
-                    $p->in_lng,
-                    $p->in_accuracy_m,
-                    $p->in_distance_m,
-                ]);
+            $cell = function ($c) { return 'INDIRECT("RC[' . $c . ']",FALSE)'; };
+            $elapsed = '=IF(OR(' . $cell(-4) . '="",' . $cell(-2) . '=""),"",ROUND((' . $cell(-2) . '+' . $cell(-1) . '-' . $cell(-4) . '-' . $cell(-3) . ')*24,2))';
+            foreach ($rows as $name => $list) {
+                $n = count($list);
+                $i = 0;
+                foreach ($list as $p) {
+                    $in = \Carbon::parse($p->clock_in_at);
+                    $outAt = $p->clock_out_at ? \Carbon::parse($p->clock_out_at) : null;
+                    $store = TC::shortStoreName((string) $p->location_name);
+                    fputcsv($out, [
+                        $i === 0 ? $safe($name) : '',
+                        $i === 0 ? '=SUM(INDIRECT("R[0]C[5]:R[' . ($n - 1) . ']C[5]",FALSE))' : '',
+                        $in->format('m/d/y'),
+                        $in->format('g:i:s A'),
+                        $outAt ? $outAt->format('m/d/y') : '',
+                        $outAt ? $outAt->format('g:i:s A') : '',
+                        $elapsed,
+                        stripos($store, 'pico') !== false ? 'pico' : (stripos($store, 'holly') !== false ? 'hw' : $store),
+                        $safe(implode('; ', $p->flags)),
+                        TC::verifyLabel($p->in_verify),
+                        TC::verifyLabel($p->out_verify),
+                        TC::sourceLabel($p->clock_out_source),
+                        $p->clock_in_ip,
+                        $p->clock_out_ip,
+                        $p->in_lat,
+                        $p->in_lng,
+                        $p->in_accuracy_m,
+                        $p->in_distance_m,
+                    ]);
+                    $i++;
+                }
+                fputcsv($out, []);
             }
             fclose($out);
         }, 200, ['Content-Type' => 'text/csv', 'Content-Disposition' => 'attachment; filename="' . $filename . '"']);
