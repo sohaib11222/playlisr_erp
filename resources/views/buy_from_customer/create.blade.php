@@ -1769,7 +1769,7 @@ HTML;
         // BuyOfferCalculatorService::requiresEbaySoldLink / isEbayUrl).
         function bfcNeedsEbaySold(t) { return t.mode === 'ebay_margin' || t.mode === 'value_percent'; }
         function bfcEbayLinkRequired(type, t, val) {
-            return bfcNeedsEbaySold(t) && !/vinyl|record|cassette/i.test((type || '') + ' ' + (t.label || '')) && val > {{ (int) \App\Services\BuyOfferCalculatorService::EBAY_LINK_REQUIRED_OVER }};
+            return bfcNeedsEbaySold(t) && !/vinyl|record|cassette|\b7"|45 ?rpm/i.test((type || '') + ' ' + (t.label || '')) && val > {{ (int) \App\Services\BuyOfferCalculatorService::EBAY_LINK_REQUIRED_OVER }};
         }
         function bfcIsEbayUrl(u) {
             u = $.trim(u || '');
