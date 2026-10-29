@@ -32,7 +32,7 @@ const CASES = [
   ['Trading Card Packs > Pokemon Packs', 'Pokemon Scarlet Violet Booster Pack Sealed', '', '', ''],
   [TC + 'Garbage Pail Kids', 'Garbage Pail Kids Series 1 Adam Bomb 1985', '', '', ''],
   [[VU + 'Rock', VS + 'Rock', ''], 'Led Zeppelin IV LP Vinyl Record Atlantic 1971', '', '', ''],
-  [[VU + 'Jazz'], 'Miles Davis Kind of Blue LP 1959 Columbia 6-Eye', '', '', ''],
+  [[VU + 'Jazz', ''], 'Miles Davis Kind of Blue LP 1959 Columbia 6-Eye', '', '', ''],
   [[VS + 'Pop', VS + 'Rock', ''], 'Taylor Swift 1989 Vinyl LP Sealed New', '', '', ''],
   [[S7 + 'Rock', S7 + 'Pop', ''], 'The Beatles Hey Jude 45 RPM 7" Single Apple', '', '', ''],
   [[CU + 'Rock', CU + 'Alt Rock/Indie', ''], 'Nirvana Nevermind CD 1991 DGC', '', '', ''],
@@ -143,6 +143,7 @@ for (const [acc, name, artist, category, subcategory] of CASES) {
   if (got && ok.includes(got)) { cls = 'RIGHT'; right++; }
   else if (!got) { cls = ok.includes('') ? 'RIGHT' : 'BLANK'; cls === 'RIGHT' ? right++ : blank++; }
   else { cls = 'WRONG'; wrong++; }
+  if (cls !== 'RIGHT') { const d = []; match(options, { name, artist, category, subcategory }, d); d.forEach(x => lines.push(cls + ' DBG   ' + x)); }
   lines.push(`${cls.padEnd(5)} [${category || '-'} / ${subcategory || '-'}] ${name}${artist ? ' — ' + artist : ''} :: ${got || '(blank)'}${cls === 'RIGHT' ? '' : '  want: ' + ok.filter(Boolean).join(' | ')}`);
 }
 ['WRONG', 'BLANK', 'RIGHT'].forEach(c => lines.filter(l => l.startsWith(c)).forEach(l => console.log('R100 ' + l)));

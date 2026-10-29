@@ -39,6 +39,8 @@
         [/\brecord\s+players?\b/g, ' turntable '],
         [/\b(?:record|vinyl)\s+(?:accessor(?:y|ies)|care|cleaning|cleaner|brush|sleeves?|storage|crates?)\b/g, ' recordcare '],
         [/\bcassette\s+(?:decks?|recorders?)\b/g, ' cassettedeck '],
+        [/\bvhs\s+tapes?\b/g, ' vhs '],
+        [/\b(?:phono|turntable)\s+cartridges?\b/g, ' needle '],
         [/\bnon\s*-?\s*music\b/g, ' nonmusic '],
         [/\bvideo\s*games?\b/g, ' videogame '],
         [/\bboard\s*games?\b/g, ' boardgame '],
@@ -61,7 +63,7 @@
         electronica: 'electronic', edm: 'electronic', techno: 'electronic', house: 'electronic',
         alternative: 'alt', ost: 'soundtrack', score: 'soundtrack', soundtrack: 'soundtrack',
         turntable: 'turntable', pokémon: 'pokemon', yugioh: 'yu',
-        stylus: 'needle', cartridge: 'needle', needle: 'needle',
+        stylus: 'needle', needle: 'needle',
         band: 'music', tour: 'music', concert: 'music', merch: 'music',
         clothing: 'apparel', clothes: 'apparel',
         rookie: 'card', rc: 'card', psa: 'card', bgs: 'card', topps: 'card', fleer: 'card', bowman: 'card', panini: 'card', prizm: 'card',
@@ -91,7 +93,7 @@
     // don't pick a subcategory ("Kind of Blue", "Star Wars", "Just Kids").
     var GENRE = {};
     ('war drama comedy love blue blues soul rock pop jazz country metal punk world classical action adventure family kid ' +
-     'romance horror music fantasy thriller western animation musical folk gospel latin disco house dance electronic reggae ' +
+     'romance horror fantasy thriller western animation musical folk gospel latin disco house dance electronic reggae ' +
      'new wave alt indie hiphop rnb funk hardcore soundtrack christmas children sci fi tv drink candy art').split(' ').forEach(function (w) { GENRE[w] = 1; });
     // Words that say nothing about the category.
     var STOP = { and: 1, the: 1, of: 1, a: 1, an: 1, for: 1, with: 1, other: 1, misc: 1, item: 1, items: 1, general: 1 };
@@ -218,6 +220,11 @@
         var subs = g.subs.map(function (sOpt) {
             var f = sOpt.tok.filter(function (t) { return g.tok.indexOf(t) === -1; });
             var s = 5 * overlap(f, subT) + 4 * overlap(f, nameSubT) + 1 * overlap(f, catT);
+            // Product-type words ("needle", "Funko") beat brand / title words,
+            // and a subcategory the row names in full beats a partial one.
+            var rowT = subT.concat(nameSubT);
+            f.forEach(function (t) { if (TYPES[t] && rowT.indexOf(t) !== -1) s += 4; });
+            if (s > 0 && f.length && f.every(function (t) { return rowT.indexOf(t) !== -1; })) s += 6;
             // Tie-break: the earlier word of the hint ("Latin Rock" -> Latin).
             var pos = subT.findIndex(function (t) { return f.indexOf(t) !== -1; });
             if (s > 0 && pos !== -1) s += 0.05 / (pos + 1);
