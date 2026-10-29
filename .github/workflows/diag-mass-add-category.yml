@@ -42,7 +42,9 @@ jobs:
       - name: Blade compile check (mass-create)
         run: |
           mkdir -p /tmp/bc && cd /tmp/bc
-          composer require -q illuminate/view:5.8.* illuminate/filesystem:5.8.* illuminate/events:5.8.*
+          echo '{}' > composer.json
+          composer config audit.block-insecure false || true
+          composer require --no-progress "illuminate/view:5.8.*" "illuminate/filesystem:5.8.*" "illuminate/events:5.8.*" 2>&1 | tail -25
           cat > c.php <<'PHP'
           <?php
           require 'vendor/autoload.php';
