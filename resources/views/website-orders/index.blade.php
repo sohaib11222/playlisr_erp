@@ -1570,19 +1570,21 @@
         <input type="hidden" name="item_select" id="wo-cancel-item-select" value="0">
         <div id="wo-cancel-sum" style="margin:-4px 0 12px;font-size:14px;font-weight:700;color:#000;">Nothing ticked yet.</div>
         <label>2. Reason (goes in the customer's email)</label>
-        <select name="reason" required>
+        <select name="reason" required onchange="woCancelReady()">
           <option value="">Choose a reason…</option>
           @foreach($reasons as $key => $label)
             <option value="{{ $key }}">{{ $label }}</option>
           @endforeach
         </select>
         <label>3. Note (required if Other, shown to the customer)</label>
-        <input type="text" name="note" placeholder="Optional detail for the customer email">
+        <input type="text" name="note" placeholder="Optional detail for the customer email" oninput="woCancelReady()">
         <label>4. Reason for Jon (internal, NOT sent to the customer)</label>
         <textarea name="internal_note" id="wo-cancel-internal" rows="3" placeholder="What happened and why we refunded, e.g. couldn't find it at Pico after checking the bins twice" oninput="woCancelReady()" style="width:100%;font-size:14px;padding:8px;border:1px solid #d1d5db;border-radius:6px;color:#000;"></textarea>
         <input type="hidden" name="item_names" id="wo-cancel-item-names" value="">
         <label>5. Type CANCEL to confirm</label>
         <input type="text" id="wo-cancel-typed" autocomplete="off" placeholder="Type the word CANCEL here" oninput="woCancelReady()">
+        {{-- Live checklist: always says what's done and what's still needed (Sarah, 2026-10-29) --}}
+        <div id="wo-cancel-checklist" style="margin-top:12px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:14px;line-height:1.6;color:#000;"></div>
         <div id="wo-cancel-missing" style="display:none;margin-top:8px;font-size:14px;font-weight:700;color:#b91c1c;"></div>
         <div class="wo-dialog-actions">
           <button type="button" class="wo-btn" onclick="document.getElementById('wo-cancel-dialog').close()">Keep the order</button>
@@ -1665,14 +1667,11 @@
         var active = parseInt(form.dataset.active || '0', 10);
         var giftLeft = parseInt(form.dataset.giftLeft || '0', 10);
         // Typed CANCEL replaces the browser pop-up (Sarah, 2026-10-16)
-        var ok = (document.getElementById('wo-cancel-typed').value || '').trim().toUpperCase() === 'CANCEL';
         // Say what's missing right in the box instead of a dead button (Nick, 2026-10-26)
-        var miss = [];
-        if (!form.querySelector('select[name="reason"]').value) miss.push('pick a reason in step 2');
-        if ((document.getElementById('wo-cancel-internal').value || '').trim().length < 10) miss.push('write the reason for Jon in step 4 (a full sentence)');
-        if (!ok) miss.push('type the word CANCEL in step 5');
+        var miss = woCancelChecks(form).filter(function (c) { return !c.ok; }).map(function (c) { return c.text; });
+        var ok = !miss.length;
         var missEl = document.getElementById('wo-cancel-missing');
-        if (miss.length) { missEl.textContent = 'Before this works: ' + miss.join(', ') + '.'; missEl.style.display = 'block'; return false; }
+        if (miss.length) { missEl.textContent = 'Not yet: ' + miss.join(' · '); missEl.style.display = 'block'; return false; }
         missEl.style.display = 'none';
         document.getElementById('wo-cancel-item-names').value = Array.prototype.map.call(picked, function (cb) { return cb.parentNode.querySelector('span').childNodes[0].textContent.trim(); }).join('||');
         if (ok) {
@@ -2077,6 +2076,30 @@
 </script>
 <script>
   // Cancel box: plain-words refund summary, button only after CANCEL is typed
+  // Each thing the cancel needs, with where it stands. Same rules as the
+  // server: reason picked, a note if reason is Other, 10+ characters for Jon.
+  function woCancelChecks(form) {
+    var picked = form.querySelectorAll('input[name="item_ids[]"]:checked:not(:disabled)').length;
+    var reason = form.querySelector('select[name="reason"]').value;
+    var note = (form.querySelector('input[name="note"]').value || '').trim();
+    var jon = (document.getElementById('wo-cancel-internal').value || '').trim().length;
+    var typedRaw = (document.getElementById('wo-cancel-typed').value || '').trim();
+    var checks = [
+      picked ? { ok: true, text: 'Step 1: ' + picked + ' item' + (picked > 1 ? 's' : '') + ' ticked' }
+             : { ok: false, text: 'Step 1: tick at least one item' },
+      reason ? { ok: true, text: 'Step 2: reason picked' }
+             : { ok: false, text: 'Step 2: pick a reason' }
+    ];
+    if (reason === 'other') {
+      checks.push(note ? { ok: true, text: 'Step 3: note for the customer written' }
+                       : { ok: false, text: 'Step 3: reason is Other, so write a note for the customer' });
+    }
+    checks.push(jon >= 10 ? { ok: true, text: 'Step 4: reason for Jon written' }
+      : { ok: false, text: 'Step 4: ' + (jon ? jon + ' of 10 characters, ' + (10 - jon) + ' more needed' : 'reason for Jon is empty (needs at least 10 characters)') });
+    checks.push(typedRaw.toUpperCase() === 'CANCEL' ? { ok: true, text: 'Step 5: CANCEL typed' }
+      : { ok: false, text: 'Step 5: ' + (typedRaw ? '"' + typedRaw + '" is not CANCEL' : 'type the word CANCEL') });
+    return checks;
+  }
   function woCancelReady() {
     var form = document.getElementById('wo-cancel-form');
     var picked = form.querySelectorAll('input[name="item_ids[]"]:checked:not(:disabled)');
@@ -2099,11 +2122,23 @@
       el.textContent = 'Part of the order: ' + picked.length + ' item(s), $' + sum.toFixed(2) + ' plus their tax goes back. ' +
         (storeOut.length ? 'The ' + storeOut.join(' and ') + ' package no longer ships, so its shipping (if they paid any) is refunded too. The rest still ships.' : 'Shipping stays, since the rest still ships.');
     }
-    var typed = (document.getElementById('wo-cancel-typed').value || '').trim().toUpperCase() === 'CANCEL';
+    var checks = woCancelChecks(form);
+    var allOk = checks.every(function (c) { return c.ok; });
+    var list = document.getElementById('wo-cancel-checklist');
+    list.innerHTML = '';
+    var head = document.createElement('div');
+    head.style.cssText = 'font-weight:800;margin-bottom:2px;color:' + (allOk ? '#15803d' : '#b91c1c') + ';';
+    head.textContent = allOk ? 'Ready: Cancel & refund will go through.' : 'Still needed before Cancel & refund works:';
+    list.appendChild(head);
+    checks.forEach(function (c) {
+      var line = document.createElement('div');
+      line.style.cssText = 'color:' + (c.ok ? '#15803d' : '#b91c1c') + ';font-weight:' + (c.ok ? '400' : '700') + ';';
+      line.textContent = (c.ok ? '\u2713 ' : '\u2717 ') + c.text;
+      list.appendChild(line);
+    });
     var btn = form.querySelector('button[type="submit"]');
-    var why = (document.getElementById('wo-cancel-internal').value || '').trim().length >= 10;
-    if (btn && btn.textContent !== 'Cancelling...') btn.style.opacity = (typed && picked.length && why) ? '1' : '.55';
-    if (typed && picked.length && why) document.getElementById('wo-cancel-missing').style.display = 'none';
+    if (btn && btn.textContent !== 'Cancelling...') btn.style.opacity = allOk ? '1' : '.55';
+    if (allOk) document.getElementById('wo-cancel-missing').style.display = 'none';
   }
 </script>
 
