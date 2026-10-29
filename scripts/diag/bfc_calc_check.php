@@ -68,8 +68,7 @@ $vinylCat = array_search(current(array_filter($vcats, function ($n) { return pre
 $castCat = array_search(current(array_filter($vcats, function ($n) { return preg_match('/^cassettes?\b/i', $n); })), $vcats);
 $gearCat = array_search(current(array_filter($vcats, function ($n) { return preg_match('/^audio gear.*(record|cassette)/i', $n); })), $vcats);
 $sevenCat = array_search(current(array_filter($vcats, function ($n) { return preg_match('/^7\W/', $n) && strpos($n, '›') === false; })), $vcats);
-$rpmCat = array_search(current(array_filter($vcats, function ($n) { return preg_match('/^45 ?rpm/i', $n) && strpos($n, '›') === false; })), $vcats);
-echo "CATS 7in=$sevenCat " . ($vcats[$sevenCat] ?? '-') . " | 45=$rpmCat " . ($vcats[$rpmCat] ?? '-') . "\n";
+echo "CATS 7in=$sevenCat " . ($vcats[$sevenCat] ?? '-') . "\n";
 $otherCat = array_search(current(array_filter($vcats, function ($n) { return preg_match('/^(vhs|dvd|toys|trading cards|books?)\b/i', $n); })), $vcats);
 echo "FORMATS " . implode(', ', array_filter($vcats, function ($n) { return strpos($n, '›') === false; })) . "\n";
 echo "CATS gear=$gearCat " . ($vcats[$gearCat] ?? '-') . " | vinyl=$vinylCat " . ($vcats[$vinylCat] ?? '-') . " | cassette=$castCat " . ($vcats[$castCat] ?? '-') . " | other=$otherCat " . ($vcats[$otherCat] ?? '-') . "\n";
@@ -87,8 +86,7 @@ $cases = [
     ['BLOCK', 'VHS rare $25, Google link (not eBay)', ['item_type' => 'rare_vhs', 'discogs_median_price' => 25, 'discogs_link' => 'https://www.google.com/search?q=ebay+vhs']],
     ['GO',    'Valuable item $50, category Vinyl, no link', ['item_type' => 'ebay_value', 'discogs_median_price' => 50, 'genre' => $vinylCat]],
     ['GO',    'Valuable item $50, category Cassette, no link', ['item_type' => 'ebay_value', 'discogs_median_price' => 50, 'genre' => $castCat]],
-    ['GO',    'Valuable item $50, category 7", no link', ['item_type' => 'ebay_value', 'discogs_median_price' => 50, 'genre' => $sevenCat]],
-    ['GO',    'Valuable item $50, category 45 RPM, no link', ['item_type' => 'ebay_value', 'discogs_median_price' => 50, 'genre' => $rpmCat]],
+    ['GO',    'Valuable item $50, category 7" / 45 RPM, no link', ['item_type' => 'ebay_value', 'discogs_median_price' => 50, 'genre' => $sevenCat]],
     ['BLOCK', 'Valuable item $50, category Audio Gear record/cassette gear, no link', ['item_type' => 'ebay_value', 'discogs_median_price' => 50, 'genre' => $gearCat]],
     ['BLOCK', 'Valuable item $50, category non-music, no link', ['item_type' => 'ebay_value', 'discogs_median_price' => 50, 'genre' => $otherCat]],
     ['BLOCK', 'Valuable item $50, no category, no link', ['item_type' => 'ebay_value', 'discogs_median_price' => 50]],
