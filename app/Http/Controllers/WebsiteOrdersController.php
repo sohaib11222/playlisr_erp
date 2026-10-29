@@ -2243,6 +2243,13 @@ class WebsiteOrdersController extends Controller
             'items' => array_values(array_filter(array_map('trim', explode('||', (string) $request->input('item_names', ''))))),
         ]);
 
+        // Show it on the ERP sale(s) for this order right away.
+        try {
+            if (is_array($resp['data'] ?? null)) \App\Services\WebOrderErpStatus::applyWebsiteOrder($resp['data']);
+        } catch (\Throwable $e) {
+            \Log::warning('web order ERP status after cancel failed: ' . $e->getMessage());
+        }
+
         // Say what happened to the money, not just "cancelled".
         $refundLine = (string) ($resp['refundSummary'] ?? '');
         $refundReason = (string) ($resp['refund']['reason'] ?? '');

@@ -105,6 +105,9 @@
           {{$sell->service_staff->user_full_name ?? ''}}<br>
       @endif
 
+      @if(!empty($sell->web_order_status))
+        <strong>Website order:</strong> {!! \App\Services\WebOrderErpStatus::pill($sell->web_order_status) !!}<br>
+      @endif
       <strong>@lang('sale.shipping'):</strong>
       <span class="label @if(!empty($shipping_status_colors[$sell->shipping_status])) {{$shipping_status_colors[$sell->shipping_status]}} @else {{'bg-gray'}} @endif">{{$shipping_statuses[$sell->shipping_status] ?? '' }}</span><br>
       @if(!empty($sell->shipping_address()))

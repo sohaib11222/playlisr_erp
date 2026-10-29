@@ -316,6 +316,10 @@ class SellController extends Controller
                 }
             }
 
+            if (\App\Services\WebOrderErpStatus::enabled()) {
+                $sells->addSelect('transactions.web_order_status');
+            }
+
             $only_pending_shipments = request()->only_pending_shipments == 'true' ? true : false;
             if ($only_pending_shipments) {
                 $sells->where('transactions.shipping_status', '!=', 'delivered')
@@ -577,7 +581,9 @@ class SellController extends Controller
                     'payment_status',
                     function ($row) {
                         $payment_status = Transaction::getPaymentStatus($row);
-                        return (string) view('sell.partials.payment_status', ['payment_status' => $payment_status, 'id' => $row->id]);
+                        // Website / Discogs order cancelled or refunded on /website-orders
+                        return (string) view('sell.partials.payment_status', ['payment_status' => $payment_status, 'id' => $row->id])
+                            . (!empty($row->web_order_status) ? ' ' . \App\Services\WebOrderErpStatus::pill($row->web_order_status) : '');
                     }
                 )
                 ->editColumn(
