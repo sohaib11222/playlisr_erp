@@ -32,8 +32,8 @@ jobs:
           D=/www/playlist.nivessa.com/app/storage/ops_category_moves
           for i in 1 2 3 4 5; do
             ssh -o ConnectTimeout=30 -i ~/.ssh/id -p $P "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p $D/scripts/ops" && \
-            scp -o ConnectTimeout=30 -i ~/.ssh/id -P $P scripts/ops/nfl_packs.php "$DEPLOY_USER@$DEPLOY_HOST:$D/scripts/ops/" && break
+            scp -o ConnectTimeout=30 -i ~/.ssh/id -P $P scripts/ops/pack_subcats.php "$DEPLOY_USER@$DEPLOY_HOST:$D/scripts/ops/" && break
             sleep 20
           done
           # One attempt only for the real run (no retry after it may have started).
-          ssh -o ConnectTimeout=30 -o ServerAliveInterval=15 -i ~/.ssh/id -p $P "$DEPLOY_USER@$DEPLOY_HOST" "cd /www/playlist.nivessa.com/app && sed -i \"s#__DIR__ . '/../../#'\$(pwd)/#g\" $D/scripts/ops/nfl_packs.php && MODE=$MODE php $D/scripts/ops/nfl_packs.php" 2>&1 | tee out.txt | grep -v -E '^[A-Za-z0-9+/=]{200,}$'
+          ssh -o ConnectTimeout=30 -o ServerAliveInterval=15 -i ~/.ssh/id -p $P "$DEPLOY_USER@$DEPLOY_HOST" "cd /www/playlist.nivessa.com/app && sed -i \"s#__DIR__ . '/../../#'\$(pwd)/#g\" $D/scripts/ops/pack_subcats.php && MODE=$MODE php $D/scripts/ops/pack_subcats.php" 2>&1 | tee out.txt | grep -v -E '^[A-Za-z0-9+/=]{200,}$'
