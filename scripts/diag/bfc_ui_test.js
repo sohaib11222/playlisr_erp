@@ -49,6 +49,18 @@ const fs = require('fs');
     placeholder: $(sel).find('input[name$="[discogs_median_price]"]').attr('placeholder'),
   }), row(rowN));
 
+  // Seller gate: no name / no phone blocks Calculate.
+  const gate = await page.evaluate(() => {
+    $('#seller_mode').val('phone').trigger('change');
+    const click = () => { $('#bfc_calc_error').hide().empty(); $('#buy_offer_form').triggerHandler('submit'); return $('#bfc_calc_error').text(); };
+    const noName = click();
+    $('#buy_offer_form input[name="seller_first_name"]').val('Test').trigger('input');
+    const noPhone = click();
+    $('#buy_offer_form input[name="seller_first_name"]').val('').trigger('input');
+    return { noName, noPhone };
+  });
+  console.log('MATRIX ' + (/first name/.test(gate.noName) ? 'PASS' : 'FAIL') + ' want=BLOCK no seller first name -> ' + gate.noName);
+  console.log('MATRIX ' + (/phone/.test(gate.noPhone) ? 'PASS' : 'FAIL') + ' want=BLOCK no seller phone -> ' + gate.noPhone);
   // Lines unlock once a seller is entered.
   await page.evaluate(() => {
     $('#seller_mode').val('phone').trigger('change');
@@ -84,16 +96,7 @@ const fs = require('fs');
   const ebayUi = await page.evaluate(sel => { const $r = $(sel); $r.find('input[name$="[title]"]').val('Faces of Death VHS').trigger('input'); return { ph: $r.find('input[name$="[discogs_link]"]').attr('placeholder'), btn: $r.find('a.bfc-ebay-search').is(':visible'), href: $r.find('a.bfc-ebay-search').attr('href') }; }, row(2));
   const help = await page.evaluate(sel => ({ box: $('#bfc_ebay_help').is(':visible'), howto: $(sel).find('a.bfc-ebay-howto').is(':visible'), steps: $('#bfc_ebay_help li').length }), row(2));
   ok('eBay how-to box + "How?" link show for eBay lines', help.box && help.howto && help.steps === 5, help);
-  ok('VHS - rare shows eBay SOLD link box + search button', ebayUi.ph === 'eBay recently sold link (required)' && ebayUi.btn && /LH_Sold=1/.test(ebayUi.href) && /Faces%20of%20Death/.test(ebayUi.href), ebayUi);
-  await setLink(2, '');
-  let err = await calcErr();
-  ok('no eBay link -> blocked', /Line 2: paste the link to eBay SOLD/.test(err), err.slice(0, 300));
-  await setLink(2, 'https://www.ebay.com/itm/123456789012');
-  err = await calcErr();
-  ok('eBay item link (not sold search) -> blocked', /Line 2: that is not an eBay sold-items link/.test(err), err.slice(0, 300));
-  await setLink(2, 'https://www.ebay.com/sch/i.html?_nkw=faces+of+death+vhs&_sacat=0&LH_Sold=1&LH_Complete=1');
-  err = await calcErr();
-  ok('eBay sold search link -> accepted', !/Line 2:/.test(err), err.slice(0, 300));
+  ok('VHS - rare shows eBay link box + search button', ebayUi.ph === 'eBay link (required over $20)' && ebayUi.btn && /Faces%20of%20Death/.test(ebayUi.href), ebayUi);
   const recUi = await page.evaluate(sel => ({ ph: $(sel).find('input[name$="[discogs_link]"]').attr('placeholder'), btn: $(sel).find('a.bfc-ebay-search').is(':visible') }), row(4));
   ok('record line keeps Discogs link box, no eBay button', recUi.ph === 'Discogs release ID or URL' && !recUi.btn, recUi);
 
@@ -145,6 +148,65 @@ const fs = require('fs');
   const want = Math.max(1, Math.round(tot * 0.95));
   ok('suggested final is whole dollars = round(95% of total)', lad.fin === '$' + want.toFixed(2) && (!lad.finalCash || parseFloat(lad.finalCash) === want), lad);
   ok('ladder cash offers are whole dollars', [lad.start, lad.second, lad.finalCash].every(v => !v || /\.00$/.test(v)), lad);
+  // Jon 2026-10-28: go vs blocked, one line on the form at a time.
+  await page.evaluate(() => $('#offer_lines_table tbody tr').not(':first').remove());
+  async function tryLine(want, name, o) {
+    const r = await page.evaluate(o => {
+      const $r = $('#offer_lines_table tbody tr').first();
+      const $t = $r.find('select[name$="[item_type]"]');
+      if (!$t.find('option[value="' + o.type + '"]').length) return { skip: 'type not in this form' };
+      $t.val(o.type).trigger('change');
+      $r.find('input[name$="[quantity]"]').val(o.qty || 1).trigger('input');
+      $r.find('input[name$="[title]"]').val(o.title === undefined ? 'Test item' : o.title).trigger('input');
+      $r.find('input[name$="[discogs_median_price]"]').val(o.value).trigger('input');
+      $r.find('input[name$="[discogs_link]"]').val(o.link || '').trigger('input');
+      $r.find('select.bfc-grade').val(o.grade || '').trigger('change');
+      let cat = '';
+      const $g = $r.find('select.bfc-genre');
+      if (o.cat && $g.length) {
+        const opt = $g.find('option').filter(function () { return this.value && o.cat.test ? new RegExp(o.cat.src, 'i').test(this.text) : false; }).first();
+        $g.val(opt.val() || '').trigger('change');
+        cat = opt.text();
+        if (!opt.length) return { skip: 'no category matching ' + o.cat.src };
+      } else if ($g.length) { $g.val('').trigger('change'); }
+      $('#bfc_calc_error').hide().empty();
+      $('#buy_offer_form').triggerHandler('submit');
+      return { err: $.trim($('#bfc_calc_error').text()), cat };
+    }, o.cat ? Object.assign({}, o, { cat: { src: o.cat.source, test: true } }) : o);
+    if (r.skip) return console.log('MATRIX SKIP want=' + want + ' ' + name + ' -> ' + r.skip);
+    const got = r.err ? 'BLOCK' : 'GO';
+    console.log('MATRIX ' + (got === want ? 'PASS' : 'FAIL') + ' want=' + want + ' got=' + got + ' ' + name + (r.cat ? ' [' + r.cat + ']' : '') + (r.err ? ' -> ' + r.err.replace(/\s+/g, ' ').slice(0, 220) : ''));
+  }
+  await page.evaluate(() => { $('#buy_offer_form input[name="seller_first_name"]').val('Test').trigger('input'); $('#buy_offer_form input[name="seller_phone"]').val('3105550100').trigger('input'); });
+  const M = [
+    ['GO', 'VHS rare $18, no link', { type: 'rare_vhs', value: 18 }],
+    ['GO', 'VHS rare $20, no link (not MORE than $20)', { type: 'rare_vhs', value: 20 }],
+    ['BLOCK', 'VHS rare $25, no link', { type: 'rare_vhs', value: 25 }],
+    ['GO', 'VHS rare $25, eBay single listing /itm/', { type: 'rare_vhs', value: 25, link: 'https://www.ebay.com/itm/123456789012' }],
+    ['GO', 'VHS rare $25, eBay search WITHOUT sold filter', { type: 'rare_vhs', value: 25, link: 'https://www.ebay.com/sch/i.html?_nkw=faces+of+death' }],
+    ['GO', 'VHS rare $25, eBay link without https://', { type: 'rare_vhs', value: 25, link: 'www.ebay.com/itm/123' }],
+    ['GO', 'VHS rare $25, eBay app share link (ebay.us)', { type: 'rare_vhs', value: 25, link: 'https://ebay.us/m/AbC123' }],
+    ['BLOCK', 'VHS rare $25, Google link (not eBay)', { type: 'rare_vhs', value: 25, link: 'https://www.google.com/search?q=ebay+vhs' }],
+    ['GO', 'Valuable item $50, category Vinyl, no link', { type: 'ebay_value', value: 50, cat: /^(vinyl|records?)\b/ }],
+    ['GO', 'Valuable item $50, category Cassette, no link', { type: 'ebay_value', value: 50, cat: /^cassettes?\b/ }],
+    ['BLOCK', 'Valuable item $50, category Audio Gear record/cassette gear, no link', { type: 'ebay_value', value: 50, cat: /^audio gear.*(record|cassette)/ }],
+    ['BLOCK', 'Valuable item $50, category non-music, no link', { type: 'ebay_value', value: 50, cat: /^(vhs|dvd|toys|trading cards|books?)\b/ }],
+    ['BLOCK', 'Valuable item $50, no category, no link', { type: 'ebay_value', value: 50 }],
+    ['BLOCK', 'Camera $40, no link', { type: 'camera', value: 40 }],
+    ['GO', 'Camera $15, no link', { type: 'camera', value: 15 }],
+    ['BLOCK', 'Card packs $25, no link', { type: 'card_pack', value: 25 }],
+    ['BLOCK', 'Signed/rare poster $30, no link', { type: 'poster_value', value: 30 }],
+    ['GO', 'Signed item $150, no link', { type: 'signed_item', value: 150 }],
+    ['BLOCK', 'VHS rare $10 (rare lines are $15+)', { type: 'rare_vhs', value: 10 }],
+    ['BLOCK', 'Value $20,000 (typo guard)', { type: 'rare_vhs', value: 20000, link: 'https://www.ebay.com/itm/1' }],
+    ['BLOCK', '1-9 vinyl, qty 25', { type: 'individual_vinyl', qty: 25, value: 5, grade: 'VG+' }],
+    ['BLOCK', '1-9 vinyl with title, no grade', { type: 'individual_vinyl', value: 5 }],
+    ['BLOCK', '1-9 vinyl, no median price', { type: 'individual_vinyl', value: '', grade: 'VG+' }],
+    ['BLOCK', '1-9 vinyl $25 median, no Discogs link', { type: 'individual_vinyl', value: 25, grade: 'VG+' }],
+    ['GO', '1-9 vinyl $25 median, Discogs ID', { type: 'individual_vinyl', value: 25, grade: 'VG+', link: '1234567' }],
+    ['GO', '1-9 vinyl $15 median, no link', { type: 'individual_vinyl', value: 15, grade: 'VG+' }],
+  ];
+  for (const [w, n, o] of M) await tryLine(w, n, o);
   ok('no JS errors', errors.length === 0, errors.slice(0, 5));
   await browser.close();
 })().catch(e => { console.log('FAIL crashed: ' + e.message); process.exit(1); });

@@ -1457,7 +1457,7 @@ HTML;
                 var title = $.trim($row.find('input[name$="[title]"]').val() || '');
                 if (type === 'individual_vinyl' && qty > 0 && (title || link || val > 0) && !$row.find('select.bfc-grade').val()) sanity.push('Line ' + (i + 1) + ': pick the record\'s condition grade.');
                 var tcfg = BFC_RULES.types[type] || {};
-                if (bfcEbayLinkRequired(type + ' ' + ($row.find('select.bfc-genre').val() || ''), tcfg, val) && qty > 0) {
+                if (bfcEbayLinkRequired(type + ' ' + ($row.find('select.bfc-genre').val() ? $row.find('select.bfc-genre option:selected').text().split(' › ')[0] : ''), tcfg, val) && qty > 0) {
                     if (!link) sanity.push('Line ' + (i + 1) + ': items worth more than ${{ (int) \App\Services\BuyOfferCalculatorService::EBAY_LINK_REQUIRED_OVER }} need an eBay link (paste the eBay page link).');
                     else if (!bfcIsEbayUrl(link)) sanity.push('Line ' + (i + 1) + ': that is not an eBay link. Paste a link from ebay.com.');
                 }
