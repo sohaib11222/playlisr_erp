@@ -67,5 +67,9 @@ jobs:
             foreach ($rows as $r) echo 'ROW ' . json_encode($r) . "\n";
             $buyers = \DB::table('transactions as t')->join('contacts as c', 'c.id', '=', 't.contact_id') ->where('t.type', 'sell')->where(fn($q) => $q->where('c.name', 'like', $n)->orWhere('c.first_name', 'like', $n)) ->selectRaw('c.id, c.name, count(*) as sales')->groupBy('c.id', 'c.name')->get();
             echo 'NAME_MATCH_BUYERS ' . count($buyers) . ' ' . json_encode($buyers) . "\n";
+            echo 'NAME_CONTACTS ' . json_encode(\DB::table('contacts')->where(fn($q) => $q->where('name', 'like', $n)->orWhere('first_name', 'like', $n))->get(['id', 'name', 'type', 'mobile', 'email', 'created_at'])) . "\n";
+            echo 'NAME_BUYER_ITEMS ' . json_encode(\DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')->join('contacts as c', 'c.id', '=', 't.contact_id')->join('products as p', 'p.id', '=', 'l.product_id')->where('t.type', 'sell')->where('c.name', 'like', $n)->get(['c.name', 't.transaction_date', 'p.name'])) . "\n";
+            echo 'ITEM_BUYERS ' . json_encode(\DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')->join('contacts as c', 'c.id', '=', 't.contact_id')->join('products as p', 'p.id', '=', 'l.product_id')->where('t.type', 'sell')->where('c.is_default', 0)->where(fn($q) => $q->where('p.name', 'like', $i)->orWhere('p.artist', 'like', $i))->selectRaw('c.id, c.name, count(*) as n, max(t.transaction_date) as last')->groupBy('c.id', 'c.name')->get()) . "\n";
+            echo 'ITEM_LINES_TOTAL ' . \DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')->join('products as p', 'p.id', '=', 'l.product_id')->where('t.type', 'sell')->where(fn($q) => $q->where('p.name', 'like', $i)->orWhere('p.artist', 'like', $i))->count() . "\n";
             PHP
             echo "=== done ==="
