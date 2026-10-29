@@ -1,0 +1,74 @@
+# Creates the top-tier missing subcategories (Christmas / Holiday, Vocal
+# Standards & Swing, Brazilian / MPB, Anime Figures, Graded Slabs, Marvel/DC
+# comics, magazine splits…) and re-files matching items.
+#
+# Runs `php artisan nivessa:add-top-tier-subcategories`. DRY RUN by default —
+# it lists every item that WOULD move. Tick "commit" to write.
+
+name: Add top-tier subcategories
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: 'Actually write? (leave unchecked for a dry run)'
+        type: boolean
+        default: false
+      create_only:
+        description: 'Only create the subcategories, move nothing'
+        type: boolean
+        default: false
+      show:
+        description: 'Example moves to print per rule'
+        default: "40"
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1 && exit 0
+            sleep 3
+          done
+          exit 0
+
+      - name: Run nivessa:add-top-tier-subcategories
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 15m
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app || { echo "cd failed"; exit 0; }
+            ARGS="--show=${{ github.event.inputs.show }}"
+            [ "${{ github.event.inputs.commit }}" = "true" ] && ARGS="$ARGS --commit"
+            [ "${{ github.event.inputs.create_only }}" = "true" ] && ARGS="$ARGS --create-only"
+            echo "=== php artisan nivessa:add-top-tier-subcategories $ARGS ==="
+            php artisan nivessa:add-top-tier-subcategories $ARGS 2>&1
+            code=$?
+            echo "=== artisan exit code: $code ==="
+            if [ "$code" != "0" ]; then
+              LOG="$(ls -t storage/logs/laravel-*.log 2>/dev/null | head -1)"
+              tail -n 40 "$LOG" 2>&1
+            fi
+            exit 0

@@ -1,0 +1,13 @@
+# Runs the rule test for nivessa:add-top-tier-subcategories (no DB).
+name: Diag top-tier subcategory rules
+
+on:
+  push:
+    branches: ['feat/top-tier-subcategories', 'diag-subcats/**']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: php -v | head -1 && php scripts/diag/top_tier_subcats_test.php

@@ -31,6 +31,8 @@
         [/\bcompact\s+discs?\b/g, ' cd '],
         [/\b8\s*-?\s*tracks?\b/g, ' eighttrack '],
         [/\bfunko\s+pops?\b/g, ' funko '],
+        // "Billie Holiday" is a person, not a Christmas / Holiday record.
+        [/\bbillie\s+holiday\b/g, ' billieholiday '],
         [/\bpre\s*-?\s*owned\b|\bsecond\s*hand\b/g, ' used '],
         [/\bfactory\s+sealed\b|\bbrand\s+new\b/g, ' sealed '],
     ];
