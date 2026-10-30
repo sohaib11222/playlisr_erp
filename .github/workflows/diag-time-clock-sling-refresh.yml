@@ -1,0 +1,55 @@
+# 2026-10-30: check the same-day Sling refresh is live. Writes sling_shifts only (same as a sync).
+name: Diag time clock Sling refresh
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+
+      - name: Check
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 180s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            for f in app/Http/Controllers/PhoneClockController.php app/Services/TimeClockService.php app/Console/Kernel.php; do php -l $f; done
+            php artisan schedule:list 2>/dev/null | grep -i sling
+            php artisan tinker --no-ansi <<'PHP'
+            \Cache::forget('time_clock_sling_refresh');
+            $t = microtime(true);
+            echo 'REFRESH ' . json_encode(\App\Services\TimeClockService::refreshScheduleNow()) . ' secs=' . round(microtime(true) - $t, 1) . "\n";
+            echo 'AGAIN ' . json_encode(\App\Services\TimeClockService::refreshScheduleNow()) . "\n";
+            echo 'LAST ' . \DB::table('sling_shifts')->max('last_synced_at') . "\n";
+            PHP
