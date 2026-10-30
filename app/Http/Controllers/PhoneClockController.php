@@ -299,6 +299,11 @@ class PhoneClockController extends Controller
             $where = $where ?? TC::resolveStore($businessId, TC::clientIp($request), TC::geoFrom($request));
             try {
                 $sched = TC::scheduleAllows($userId, $where['location_id'] ?? null, $businessId);
+                // Shift moved in Sling since the last sync (Zella 10/30: moved
+                // to 11:45, ERP still had 1pm): pull today from Sling and look again.
+                if (!$sched['ok'] && TC::refreshScheduleNow()) {
+                    $sched = TC::scheduleAllows($userId, $where['location_id'] ?? null, $businessId);
+                }
             } catch (\Throwable $e) {
                 \Log::warning('time clock schedule check failed: ' . $e->getMessage());
                 $sched = ['ok' => true, 'no_data' => true, 'late_min' => null, 'sched_start' => null];

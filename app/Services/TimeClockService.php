@@ -307,6 +307,24 @@ class TimeClockService
     }
 
     /**
+     * Pull today's and tomorrow's Sling shifts right now, for a clock-in the
+     * schedule check refused. At most once a minute across everyone so a
+     * person tapping again and again doesn't hammer Sling. True if it ran.
+     */
+    public static function refreshScheduleNow(): bool
+    {
+        if (!\Cache::add('time_clock_sling_refresh', 1, 60)) {
+            return false;
+        }
+        try {
+            return \Artisan::call('sling:sync-shifts', ['--past-days' => 0, '--future-days' => 1]) === 0;
+        } catch (\Throwable $e) {
+            \Log::warning('time clock Sling refresh failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Buddy-punch guard (Sarah 10/13, late rule 10/13 evening): may this
      * person clock in now at this store? Their Sling shifts (type shift;
      * times are LA) are merged into blocks when back to back (gap <= 15

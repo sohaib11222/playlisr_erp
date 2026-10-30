@@ -285,6 +285,14 @@ class Kernel extends ConsoleKernel
             ->timezone('America/Los_Angeles')
             ->withoutOverlapping(60);
 
+        // Same-day schedule changes (shift moved after 03:30) reach the
+        // time clock within 15 minutes: today + tomorrow, during the day.
+        $schedule->command('sling:sync-shifts --past-days=0 --future-days=1')
+            ->everyFifteenMinutes()
+            ->between('6:00', '22:00')
+            ->timezone('America/Los_Angeles')
+            ->withoutOverlapping(10);
+
         // Task/project assignment texts — queued at creation, sent here a
         // few minutes before the assignee's next Sling shift starts (see
         // SendPendingAssignmentTexts). No live API calls, just reads
