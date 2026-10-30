@@ -1,0 +1,65 @@
+# Pull Sling shifts into the ERP now (same as the nightly 03:30 run), then
+# show the schedule check for one person. Writes sling_shifts only.
+name: Sling sync now
+
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "Employee first name contains"
+        required: true
+        default: "zella"
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+
+      - name: Sync Sling and re-check
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DIAG_NAME: ${{ github.event.inputs.name }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 300s
+          envs: DIAG_NAME
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            export DIAG_NAME
+            php artisan sling:sync-shifts
+            php artisan tinker --no-ansi <<'PHP'
+            $n = '%' . trim((string) getenv('DIAG_NAME')) . '%';
+            $TC = \App\Services\TimeClockService::class;
+            $ids = \DB::table('users')->where('first_name', 'like', $n)->pluck('id')->all();
+            echo 'SLING ' . json_encode(\DB::table('sling_shifts')->whereIn('erp_user_id', $ids)->whereBetween('dtstart', [$TC::now()->toDateString() . ' 00:00:00', $TC::now()->toDateString() . ' 23:59:59'])->get(['erp_user_id', 'location_name', 'dtstart', 'dtend', 'last_synced_at'])) . "\n";
+            foreach ($ids as $id) echo 'ALLOWS ' . $id . ' ' . json_encode($TC::scheduleAllows($id, 2, 1)) . "\n";
+            PHP
+            echo "=== done ==="
