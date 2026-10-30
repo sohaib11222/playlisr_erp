@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 
 $mode = getenv('MODE') ?: 'dry';
 $run = getenv('RUN') ?: 'audit-2026-10-29';
+$movesFile = __DIR__ . '/' . (getenv('MOVES') ?: 'category_moves_2026_10_29.json');
 $logPath = storage_path('app/category_moves/' . $run . '.json');
 $user = App\User::where('username', 'admin')->first() ?: App\User::orderBy('id')->first();
 $biz = (int) $user->business_id;
@@ -32,8 +33,29 @@ $idsOf = function ($label) use ($cats) {
     return $sub ? [(int) $top->id, (int) $sub->id] : null;
 };
 
+
+if ($mode === 'lookup') {
+    // Gift Items products whose names look like records/magazines/gear, plus
+    // where same-named products are filed, to pick the right category.
+    $gift = $cats->first(function ($c) { return (int) $c->parent_id === 0 && stripos($c->name, 'gift item') !== false; });
+    $rows = DB::table('products')->where('business_id', $biz)->where('category_id', $gift->id)
+        ->where(function ($q) { foreach (['%playboy%', '%rudy ray%', '%atom heart%', '%black veil%', '%pink floyd%', '%pinkpantheress%', '%amplifier%', '%biscuit%'] as $l) $q->orWhere('name', 'like', $l); $q->orWhereIn('name', ['M', 's', 'UNQ']); })
+        ->get(['id', 'name', 'sku', 'category_id', 'sub_category_id', 'added_via', 'created_at']);
+    foreach ($rows as $r) {
+        $qty = DB::table('variation_location_details as v')->join('variations as va', 'va.id', '=', 'v.variation_id')->where('va.product_id', $r->id)->sum('v.qty_available');
+        echo "ITEM #{$r->id} | {$r->name} | sku={$r->sku} | now=" . $labelOf($r->category_id, $r->sub_category_id) . " | qty=" . (float) $qty . " | via={$r->added_via} | {$r->created_at}\n";
+        $key = trim(preg_replace('/\(.*$/', '', $r->name));
+        if (strlen($key) < 4) continue;
+        $sib = DB::table('products')->where('business_id', $biz)->where('id', '!=', $r->id)->where('category_id', '!=', $gift->id)->where('name', 'like', '%' . $key . '%')->limit(6)->get(['id', 'name', 'category_id', 'sub_category_id']);
+        foreach ($sib as $x) echo "     sib #{$x->id} {$x->name} :: " . $labelOf($x->category_id, $x->sub_category_id) . "\n";
+    }
+    $amp = $cats->filter(function ($c) use ($name) { return preg_match('/audio|magazine|vinyl|cassette/i', $name[(int) $c->parent_id] ?? $c->name); });
+    foreach ($amp as $c) echo "CAT " . $labelOf($c->parent_id ?: $c->id, $c->parent_id ? $c->id : 0) . "\n";
+    exit;
+}
+
 if ($mode === 'verify') {
-    $moves = json_decode(file_get_contents(__DIR__ . '/category_moves_2026_10_29.json'), true);
+    $moves = json_decode(file_get_contents($movesFile), true);
     $ok = 0; $bad = [];
     foreach ($moves as $m) {
         $p = DB::table('products')->where('business_id', $biz)->where('id', $m['id'])->first(['id', 'name', 'category_id', 'sub_category_id', 'updated_at']);
@@ -60,7 +82,7 @@ if ($mode === 'undo') {
     exit;
 }
 
-$moves = json_decode(file_get_contents(__DIR__ . '/category_moves_2026_10_29.json'), true);
+$moves = json_decode(file_get_contents($movesFile), true);
 $plan = []; $stats = ['ok' => 0, 'changed_since' => 0, 'missing' => 0, 'bad_target' => 0];
 foreach ($moves as $m) {
     $p = DB::table('products')->where('business_id', $biz)->where('id', $m['id'])->first(['id', 'name', 'category_id', 'sub_category_id']);
