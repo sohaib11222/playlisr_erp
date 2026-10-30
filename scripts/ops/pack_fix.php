@@ -26,12 +26,12 @@ if ($mode === 'undo') {
 // First match wins.
 $rules = [
     'Playboy' => '/playboy|adult vintage magazines/i',
-    'Rolling Stone' => '/rolling ?stones? magazine|rollingstone/i',
-    'Mad & Humor' => '/\bmad magazine|\bmad #|cracked magazine|harvard lampoon|the snark/i',
+    'Rolling Stone' => '/rolling ?stones?\b/i',
+    'Mad & Humor' => '/^mad\b|\bmad magazine|\bmad #|cracked magazine|harvard lampoon|the snark/i',
     'National Geographic' => '/national geographic|nat geo/i',
     'Adult' => '/hustler|penthouse|juggs|\btight\b|leg world|nugget|\boui\b|cheri\b|lingerie|torrid letters|one night stand|asian nude|asian fever|gents \d|tease \w+ \d{4}|rear view|hot & horny|midori|nerve: think about sex|adult crash|stuff for men|\bfhm\b/i',
     'Video Games' => '/nintendo|game ?informer|game players/i',
-    'Music' => '/down ?beat|db mag|billboard|alternative press|^ap |\bspin\b|guitar|bass player|jazziz|record collector|blender|seconds magazine|razorcake|skratch|right on magazine|musicians exchange|wings over america|cabaret voltaire|punk "the original"|dig yr own grave|apmas|the descendants|company a musical comedy/i',
+    'Music' => '/down ?beat|uncut magazine|vibe magazine|db mag|billboard|alternative press|^ap |\bspin\b|guitar|bass player|jazziz|record collector|blender|seconds magazine|razorcake|skratch|right on magazine|musicians exchange|wings over america|cabaret voltaire|punk "the original"|dig yr own grave|apmas|the descendants|company a musical comedy/i',
     'Film, TV & Horror' => '/video watchdog|horrorhound|fangoria|creepy|eerie|filmfax|little shoppe|star trek|laser video guide|laserworks|films and filming|photoplay|movieland|screenland|cemetery dance|godzilla|hollywood studio|tv guide|100 greatest tv|movie directors|the a-team|toxic!|variety|vintage hollywood posters|justice league|tattooed teenage/i',
     'Sports' => '/sports illustrated|dodgers|kobe|pel[eé]|thrasher|\bsport\b|trading cards (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i',
     'News & Celebrity' => '/\btime\b|\blife\b|people|\bjet\b|ebony|vanity fair|entertainment weekly|newspaper|nixon resigns|world war|wwii|military heritage|michael jackson|michal jackson|goodbye michael|celebrity|elle magazine|kennedy|diana|brad & jen|the day they marched|times of the seventies|this fabulous century|john wayne|holiday –|pride life|parade/i',
@@ -57,20 +57,22 @@ $classify = function ($n) use ($rules, $books, $comics) {
 $byId = []; foreach ($rows as $p) $byId[(int) $p->id] = $p;
 $ids = array_keys($byId);
 $plan = []; $counts = []; $dateLog = [];
-foreach ($rows as $i => $p) {
+$isDate = function ($n) use ($bareDate) { $n = trim($n); return preg_match($bareDate, $n) || preg_match('/^(19|20)\d\d$/', $n); };
+// Date-only names come in runs entered together: use the named item just before / after the run.
+$runCl = [];
+for ($i = 0; $i < count($ids); $i++) {
+    if (!$isDate($byId[$ids[$i]]->name)) continue;
+    $j = $i; while ($j + 1 < count($ids) && $isDate($byId[$ids[$j + 1]]->name)) $j++;
+    $before = $i > 0 ? $byId[$ids[$i - 1]] : null; $after = $j + 1 < count($ids) ? $byId[$ids[$j + 1]] : null;
+    $cb = $before ? $classify($before->name) : null; $ca = $after ? $classify($after->name) : null;
+    $pick = ($cb && $cb[1] !== 'Pop Culture') ? $cb : (($ca && $ca[1] !== 'Pop Culture') ? $ca : ['mag', 'Pop Culture']);
+    $dateLog[] = "run #{$ids[$i]}-#{$ids[$j]} (" . ($j - $i + 1) . ") before='" . ($before->name ?? '') . "' #" . ($before->id ?? '') . " after='" . ($after->name ?? '') . "' #" . ($after->id ?? '') . " -> {$pick[1]}";
+    for ($k = $i; $k <= $j; $k++) $runCl[$ids[$k]] = $pick;
+    $i = $j;
+}
+foreach ($rows as $p) {
     $n = trim($p->name);
-    if (preg_match($bareDate, $n) || preg_match('/^(19|20)\d\d$/', $n)) {
-        // Name is just a date: take the series from the nearest named neighbour (by id).
-        $guess = null;
-        for ($d = 1; $d <= 6 && !$guess; $d++) foreach ([$i - $d, $i + $d] as $j) {
-            if (!isset($ids[$j]) || $guess) continue;
-            $nn = trim($byId[$ids[$j]]->name);
-            if (preg_match($bareDate, $nn)) continue;
-            $c = $classify($nn); if ($c[0] === 'mag' && $c[1] !== 'Pop Culture') $guess = $c;
-        }
-        $cl = $guess ?: ['mag', 'Pop Culture'];
-        $dateLog[] = "#{$p->id} '$n' -> " . ($cl[1] ?? $cl[0]);
-    } else $cl = $classify($n);
+    $cl = $runCl[(int) $p->id] ?? $classify($n);
     if ($cl[0] === 'books') { $to = [$BOOKS, null, 'Books']; }
     elseif ($cl[0] === 'comics') { $to = [$BOOKS, $COMICS, 'Books > Comic Books']; }
     else { $to = [$MAG, $subId[mb_strtolower($cl[1])] ?? 'NEW:' . $cl[1], 'Magazines > ' . $cl[1]]; }
@@ -81,8 +83,8 @@ foreach ($rows as $i => $p) {
 ksort($counts);
 echo "PLAN products=" . count($rows) . " to_move=" . count($plan) . " mode=$mode\n";
 foreach ($counts as $k => $v) echo "  $k: $v\n";
-echo "Date-only names resolved by neighbours:\n"; foreach ($dateLog as $l) echo "  $l\n";
-echo "Left in Pop Culture:\n"; foreach ($rows as $p) { $c = $classify($p->name); if ($c[1] === 'Pop Culture' && !preg_match($bareDate, trim($p->name))) echo "  #{$p->id} {$p->name}\n"; }
+echo "Date-only runs:\n"; foreach ($dateLog as $l) echo "  $l\n";
+echo "Left in Pop Culture:\n"; foreach ($rows as $p) { $c = $classify($p->name); if ($c[1] === 'Pop Culture' && !$isDate($p->name)) echo "  #{$p->id} {$p->name}\n"; }
 echo "To Books/Comics:\n"; foreach ($plan as $e) if ($e['to'][0] === $BOOKS) echo "  #{$e['id']} {$e['name']} -> {$e['to'][2]}\n";
 
 if ($mode !== 'apply') { echo "DRY RUN: nothing changed\n"; exit; }
