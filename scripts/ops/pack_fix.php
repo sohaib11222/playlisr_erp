@@ -31,7 +31,7 @@ $rules = [
     'National Geographic' => '/national geographic|nat geo/i',
     'Adult' => '/hustler|penthouse|juggs|\btight\b|leg world|nugget|\boui\b|cheri\b|lingerie|torrid letters|one night stand|asian nude|asian fever|gents \d|tease \w+ \d{4}|rear view|hot & horny|midori|nerve: think about sex|adult crash|stuff for men|\bfhm\b/i',
     'Video Games' => '/nintendo|game ?informer|game players/i',
-    'Music' => '/down ?beat|uncut magazine|vibe magazine|db mag|billboard|alternative press|^ap |\bspin\b|guitar|bass player|jazziz|record collector|blender|seconds magazine|razorcake|skratch|right on magazine|musicians exchange|wings over america|cabaret voltaire|punk "the original"|dig yr own grave|apmas|the descendants|company a musical comedy/i',
+    'Music' => '/down ?beat|bunbury|uncut magazine|vibe magazine|db mag|billboard|alternative press|^ap |\bspin\b|guitar|bass player|jazziz|record collector|blender|seconds magazine|razorcake|skratch|right on magazine|musicians exchange|wings over america|cabaret voltaire|punk "the original"|dig yr own grave|apmas|the descendants|company a musical comedy/i',
     'Film, TV & Horror' => '/video watchdog|horrorhound|fangoria|creepy|eerie|filmfax|little shoppe|star trek|laser video guide|laserworks|films and filming|photoplay|movieland|screenland|cemetery dance|godzilla|hollywood studio|tv guide|100 greatest tv|movie directors|the a-team|toxic!|variety|vintage hollywood posters|justice league|tattooed teenage/i',
     'Sports' => '/sports illustrated|dodgers|kobe|pel[eé]|thrasher|\bsport\b|trading cards (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i',
     'News & Celebrity' => '/\btime\b|\blife\b|people|\bjet\b|ebony|vanity fair|entertainment weekly|newspaper|nixon resigns|world war|wwii|military heritage|michael jackson|michal jackson|goodbye michael|celebrity|elle magazine|kennedy|diana|brad & jen|the day they marched|times of the seventies|this fabulous century|john wayne|holiday –|pride life|parade/i',
@@ -65,7 +65,8 @@ for ($i = 0; $i < count($ids); $i++) {
     $j = $i; while ($j + 1 < count($ids) && $isDate($byId[$ids[$j + 1]]->name)) $j++;
     $before = $i > 0 ? $byId[$ids[$i - 1]] : null; $after = $j + 1 < count($ids) ? $byId[$ids[$j + 1]] : null;
     $cb = $before ? $classify($before->name) : null; $ca = $after ? $classify($after->name) : null;
-    $pick = ($cb && $cb[1] !== 'Pop Culture') ? $cb : (($ca && $ca[1] !== 'Pop Culture') ? $ca : ['mag', 'Pop Culture']);
+    $ok = function ($c) { return $c && $c[0] === 'mag' && $c[1] !== 'Pop Culture'; };
+    $pick = $ok($cb) ? $cb : ($ok($ca) ? $ca : ['mag', 'Pop Culture']);
     $dateLog[] = "run #{$ids[$i]}-#{$ids[$j]} (" . ($j - $i + 1) . ") before='" . ($before->name ?? '') . "' #" . ($before->id ?? '') . " after='" . ($after->name ?? '') . "' #" . ($after->id ?? '') . " -> {$pick[1]}";
     for ($k = $i; $k <= $j; $k++) $runCl[$ids[$k]] = $pick;
     $i = $j;
