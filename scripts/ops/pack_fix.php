@@ -22,6 +22,8 @@ if ($mode === 'undo') {
 $cats = DB::table('categories')->where('business_id', $biz)->whereNull('deleted_at')->get(['id', 'name', 'parent_id']);
 $name = []; foreach ($cats as $c) $name[(int) $c->id] = trim($c->name);
 $sub = []; foreach ($cats as $c) if ((int) $c->parent_id === $PACKS) $sub[trim($c->name)] = (int) $c->id;
+if ($mode === 'apply' && !isset($sub['Soccer Packs'])) { $sub['Soccer Packs'] = (int) App\Category::create(['business_id' => $biz, 'name' => 'Soccer Packs', 'category_type' => 'product', 'parent_id' => $PACKS, 'created_by' => 1])->id; echo "  + created Soccer Packs #{$sub['Soccer Packs']}\n"; }
+if (!isset($sub['Soccer Packs'])) $sub['Soccer Packs'] = 'NEW';
 echo "Pack subs: " . json_encode($sub) . "\n";
 
 $isPack = '/\bpacks?\b|booster|blister|elite trainer|\betb\b|\bbox\b|bundle|\btin\b|sealed|collection box|premium collection|build (&|and) battle|starter deck|theme deck|hobby|\bblaster\b|\bretail\b|mystery/i';
@@ -36,7 +38,8 @@ $subFor = function ($n, $curSub) use ($name) {
     if (preg_match('/\bnhl\b|hockey/i', $t)) return 'NHL Packs';
     if (preg_match('/\bmlb\b|baseball/i', $t)) return 'MLB Packs';
     if (preg_match('/college|ncaa/i', $t)) return 'College Packs';
-    if (preg_match('/soccer|\bufc\b|wrestling|\bwwe\b|f1\b|racing|golf/i', $t)) return null; // other sport: top-level packs
+    if (preg_match('/soccer|fifa|world cup|\bmls\b/i', $t)) return 'Soccer Packs';
+    if (preg_match('/\bufc\b|wrestling|\bwwe\b|f1\b|racing|golf/i', $t)) return null; // other sport: top-level packs
     return 'Non-Sports Packs';
 };
 
