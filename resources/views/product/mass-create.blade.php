@@ -387,7 +387,8 @@
                             <tr><td>VHS</td><td class="text-right">$0.10</td></tr>
                             <tr><td>7", 45 RPM</td><td class="text-right">$0.15</td></tr>
                             <tr><td>8 track</td><td class="text-right">$0.25</td></tr>
-                            <tr><td>DVD/Blu Ray</td><td class="text-right">$0.25</td></tr>
+                            <tr><td>DVD</td><td class="text-right">$0.25</td></tr>
+                            <tr><td>Blu-ray</td><td class="text-right">$0.25</td></tr>
                             <tr><td>Movies</td><td class="text-right">$0.25</td></tr>
                             <tr><td>Laser Disc</td><td class="text-right">$0.20</td></tr>
                         </tbody>
