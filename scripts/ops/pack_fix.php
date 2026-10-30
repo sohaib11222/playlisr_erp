@@ -1,34 +1,112 @@
 <?php
-// Read-only: magazine category tree, counts, and product names (for the subcategory cleanup).
+// Magazines subcategory cleanup (Sarah 10/30): every product in Magazines (in stock or sold)
+// gets a specific subcategory; real books/comics filed under Magazines move to Books.
+// MODE=dry | apply | undo. Log: storage/app/category_moves/magazines-2026-10-30.json
 require __DIR__ . '/../../vendor/autoload.php';
 $app = require __DIR__ . '/../../bootstrap/app.php';
 $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 use Illuminate\Support\Facades\DB;
 
-$cats = DB::table('categories')->where('business_id', 1)->where('category_type', 'product')->whereNull('deleted_at')->get(['id', 'name', 'parent_id']);
-$name = []; foreach ($cats as $c) $name[(int) $c->id] = trim($c->name);
-$magTops = $cats->filter(function ($c) { return preg_match('/magazine|playboy|book/i', $c->name); });
-echo "Matching categories:\n";
-foreach ($magTops as $c) echo "  #{$c->id} " . ($c->parent_id ? ($name[(int) $c->parent_id] ?? '?') . ' > ' : '') . $c->name . "\n";
+$mode = trim(@file_get_contents(__DIR__ . '/mag_mode.txt')) ?: 'dry';
+$biz = 1; $MAG = 114; $BOOKS = 120; $COMICS = 134;
+$logPath = storage_path('app/category_moves/magazines-2026-10-30.json');
 
-$tops = $cats->filter(function ($c) { return (int) $c->parent_id === 0 && preg_match('/magazine/i', $c->name); });
-foreach ($tops as $t) {
-    echo "\n=== #{$t->id} {$t->name} ===\n";
-    $groups = DB::table('products')->where('business_id', 1)->where('category_id', $t->id)
-        ->select('sub_category_id', DB::raw('count(*) n'))->groupBy('sub_category_id')->orderByDesc('n')->get();
-    foreach ($groups as $g) {
-        $label = $g->sub_category_id ? ($name[(int) $g->sub_category_id] ?? "#{$g->sub_category_id}") : '(no sub)';
-        echo "-- $label: {$g->n}\n";
-        $names = DB::table('products')->where('business_id', 1)->where('category_id', $t->id)
-            ->where(function ($q) use ($g) { $g->sub_category_id ? $q->where('sub_category_id', $g->sub_category_id) : $q->whereNull('sub_category_id'); })
-            ->select('name', DB::raw('count(*) n'))->groupBy('name')->orderByDesc('n')->limit(400)->get();
-        foreach ($names as $r) echo "     {$r->n}x {$r->name}\n";
-    }
-    foreach ($cats as $c) if ((int) $c->parent_id === (int) $t->id && !$groups->contains('sub_category_id', $c->id)) echo "-- {$c->name} (#{$c->id}): 0 items\n";
+if ($mode === 'undo') {
+    $log = json_decode(@file_get_contents($logPath), true) ?: [];
+    $n = 0;
+    DB::transaction(function () use ($log, $biz, &$n) {
+        foreach ($log['moves'] ?? [] as $e) {
+            $n += DB::table('products')->where('business_id', $biz)->where('id', $e['id'])->where('category_id', $e['new_cat'])->where('sub_category_id', $e['new_sub'])
+                ->update(['category_id' => $e['old_cat'], 'sub_category_id' => $e['old_sub'], 'updated_at' => now()]);
+        }
+    });
+    echo "UNDO restored=$n (new subcategories left in place)\n"; exit;
 }
-// magazine-ish items filed elsewhere
-echo "\n=== magazine-looking items outside Magazines ===\n";
-$out = DB::table('products')->where('business_id', 1)
-    ->where(function ($q) { foreach (['%magazine%', '%playboy%', '%rolling stone%', '%mad #%', '%vogue%', '%penthouse%', '%national geographic%', '%life magazine%', '%time magazine%', '%spin magazine%'] as $l) $q->orWhere('name', 'like', $l); })
-    ->get(['id', 'name', 'category_id', 'sub_category_id']);
-foreach ($out as $p) { $cat = $name[(int) $p->category_id] ?? '(none)'; if (preg_match('/magazine/i', $cat)) continue; echo "  #{$p->id} {$p->name} :: $cat" . ($p->sub_category_id ? ' > ' . ($name[(int) $p->sub_category_id] ?? '?') : '') . "\n"; }
+
+// First match wins.
+$rules = [
+    'Playboy' => '/playboy|adult vintage magazines/i',
+    'Rolling Stone' => '/rolling ?stones? magazine|rollingstone/i',
+    'Mad & Humor' => '/\bmad magazine|\bmad #|cracked magazine|harvard lampoon|the snark/i',
+    'National Geographic' => '/national geographic|nat geo/i',
+    'Adult' => '/hustler|penthouse|juggs|\btight\b|leg world|nugget|\boui\b|cheri\b|lingerie|torrid letters|one night stand|asian nude|asian fever|gents \d|tease \w+ \d{4}|rear view|hot & horny|midori|nerve: think about sex|adult crash|stuff for men|\bfhm\b/i',
+    'Video Games' => '/nintendo|game ?informer|game players/i',
+    'Music' => '/down ?beat|db mag|billboard|alternative press|^ap |\bspin\b|guitar|bass player|jazziz|record collector|blender|seconds magazine|razorcake|skratch|right on magazine|musicians exchange|wings over america|cabaret voltaire|punk "the original"|dig yr own grave|apmas|the descendants|company a musical comedy/i',
+    'Film, TV & Horror' => '/video watchdog|horrorhound|fangoria|creepy|eerie|filmfax|little shoppe|star trek|laser video guide|laserworks|films and filming|photoplay|movieland|screenland|cemetery dance|godzilla|hollywood studio|tv guide|100 greatest tv|movie directors|the a-team|toxic!|variety|vintage hollywood posters|justice league|tattooed teenage/i',
+    'Sports' => '/sports illustrated|dodgers|kobe|pel[eé]|thrasher|\bsport\b|trading cards (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i',
+    'News & Celebrity' => '/\btime\b|\blife\b|people|\bjet\b|ebony|vanity fair|entertainment weekly|newspaper|nixon resigns|world war|wwii|military heritage|michael jackson|michal jackson|goodbye michael|celebrity|elle magazine|kennedy|diana|brad & jen|the day they marched|times of the seventies|this fabulous century|john wayne|holiday –|pride life|parade/i',
+];
+$books = '/^(the catcher in the rye|the electric kool-aid acid test|love is a do from hell|monkey mind|naked lunch|the american night|desperately seeking warhol|the coddling of the american mind|journals|crystal for healing|the only astrology book|journey through madness|andy rooney|extremely loud|a matter of days|just for the summer|saturday the rabbi|pool of dreams|an alchemy of mind|truly tyler|fifty shades|butcher and blackbird|spoon river|big little lies|pax|the book of joe|wisdom of eleanor roosevelt|little girl lost|my lucky stars|fallen angels|accidentally on purpose|the time of your life|the fifty year decline|survival of the savvy|alicia en el pa|business notes by|adventures in eating|guns n. roses appetite.*tablature|sex pistols never mind.*tablature|art book seven deadly sins|witches: discover)/i';
+$comics = '/amazing spider-man|adventures of superman|youngblood force|spawn \w+ \d+ magazine/i';
+$bareDate = '/^`?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? \d{4}$/i';
+
+$cats = DB::table('categories')->where('business_id', $biz)->whereNull('deleted_at')->get(['id', 'name', 'parent_id']);
+$name = []; foreach ($cats as $c) $name[(int) $c->id] = trim($c->name);
+$subId = []; foreach ($cats as $c) if ((int) $c->parent_id === $MAG) $subId[mb_strtolower(trim($c->name))] = (int) $c->id;
+// Existing "Mad Magazine" sub becomes "Mad & Humor" (rename, same id).
+if (isset($subId['mad magazine']) && !isset($subId['mad & humor'])) $subId['mad & humor'] = $subId['mad magazine'];
+
+$rows = DB::table('products')->where('business_id', $biz)->where('category_id', $MAG)->orderBy('id')->get(['id', 'name', 'category_id', 'sub_category_id']);
+$classify = function ($n) use ($rules, $books, $comics) {
+    $n = trim($n);
+    if (preg_match($books, $n)) return ['books', null];
+    if (preg_match($comics, $n)) return ['comics', null];
+    foreach ($rules as $sub => $re) if (preg_match($re, $n)) return ['mag', $sub];
+    return ['mag', 'Pop Culture'];
+};
+$byId = []; foreach ($rows as $p) $byId[(int) $p->id] = $p;
+$ids = array_keys($byId);
+$plan = []; $counts = []; $dateLog = [];
+foreach ($rows as $i => $p) {
+    $n = trim($p->name);
+    if (preg_match($bareDate, $n) || preg_match('/^(19|20)\d\d$/', $n)) {
+        // Name is just a date: take the series from the nearest named neighbour (by id).
+        $guess = null;
+        for ($d = 1; $d <= 6 && !$guess; $d++) foreach ([$i - $d, $i + $d] as $j) {
+            if (!isset($ids[$j]) || $guess) continue;
+            $nn = trim($byId[$ids[$j]]->name);
+            if (preg_match($bareDate, $nn)) continue;
+            $c = $classify($nn); if ($c[0] === 'mag' && $c[1] !== 'Pop Culture') $guess = $c;
+        }
+        $cl = $guess ?: ['mag', 'Pop Culture'];
+        $dateLog[] = "#{$p->id} '$n' -> " . ($cl[1] ?? $cl[0]);
+    } else $cl = $classify($n);
+    if ($cl[0] === 'books') { $to = [$BOOKS, null, 'Books']; }
+    elseif ($cl[0] === 'comics') { $to = [$BOOKS, $COMICS, 'Books > Comic Books']; }
+    else { $to = [$MAG, $subId[mb_strtolower($cl[1])] ?? 'NEW:' . $cl[1], 'Magazines > ' . $cl[1]]; }
+    $counts[$to[2]] = ($counts[$to[2]] ?? 0) + 1;
+    $cur = (int) $p->category_id === $to[0] && (string) $p->sub_category_id === (string) $to[1];
+    if (!$cur) $plan[] = ['id' => (int) $p->id, 'name' => $n, 'old_cat' => (int) $p->category_id, 'old_sub' => $p->sub_category_id ? (int) $p->sub_category_id : null, 'to' => $to];
+}
+ksort($counts);
+echo "PLAN products=" . count($rows) . " to_move=" . count($plan) . " mode=$mode\n";
+foreach ($counts as $k => $v) echo "  $k: $v\n";
+echo "Date-only names resolved by neighbours:\n"; foreach ($dateLog as $l) echo "  $l\n";
+echo "Left in Pop Culture:\n"; foreach ($rows as $p) { $c = $classify($p->name); if ($c[1] === 'Pop Culture' && !preg_match($bareDate, trim($p->name))) echo "  #{$p->id} {$p->name}\n"; }
+echo "To Books/Comics:\n"; foreach ($plan as $e) if ($e['to'][0] === $BOOKS) echo "  #{$e['id']} {$e['name']} -> {$e['to'][2]}\n";
+
+if ($mode !== 'apply') { echo "DRY RUN: nothing changed\n"; exit; }
+if (file_exists($logPath)) { echo "ABORT: log exists\n"; exit(1); }
+@mkdir(dirname($logPath), 0775, true);
+$log = ['moves' => [], 'created' => []];
+DB::transaction(function () use (&$log, &$subId, $plan, $biz, $MAG) {
+    if (isset($subId['mad magazine'])) DB::table('categories')->where('id', $subId['mad magazine'])->update(['name' => 'Mad & Humor']);
+    foreach ($plan as $e) {
+        [$cat, $sub] = $e['to'];
+        if (is_string($sub) && strpos($sub, 'NEW:') === 0) {
+            $nm = substr($sub, 4);
+            if (!isset($subId[mb_strtolower($nm)])) {
+                $c = App\Category::create(['business_id' => $biz, 'name' => $nm, 'category_type' => 'product', 'parent_id' => $MAG, 'created_by' => 1]);
+                $subId[mb_strtolower($nm)] = (int) $c->id; $log['created'][] = (int) $c->id; echo "  + created Magazines > $nm (#{$c->id})\n";
+            }
+            $sub = $subId[mb_strtolower($nm)];
+        }
+        DB::table('products')->where('business_id', $biz)->where('id', $e['id'])->update(['category_id' => $cat, 'sub_category_id' => $sub, 'updated_at' => now()]);
+        $log['moves'][] = ['id' => $e['id'], 'old_cat' => $e['old_cat'], 'old_sub' => $e['old_sub'], 'new_cat' => $cat, 'new_sub' => $sub];
+    }
+});
+file_put_contents($logPath, json_encode($log, JSON_PRETTY_PRINT));
+echo "APPLIED moved=" . count($log['moves']) . " created=" . count($log['created']) . "\n";
+foreach (DB::table('categories')->where('parent_id', $MAG)->whereNull('deleted_at')->get(['id', 'name']) as $s)
+    echo "  now Magazines > {$s->name}: " . DB::table('products')->where('category_id', $MAG)->where('sub_category_id', $s->id)->count() . "\n";
+echo "  now Magazines (no sub): " . DB::table('products')->where('category_id', $MAG)->whereNull('sub_category_id')->count() . "\n";
