@@ -4499,6 +4499,13 @@ class ProductController extends Controller
                     $sku = $product->sku;  // Теперь SKU определё
 
                     // Создание вариации для одиночного продукта
+                    // Comic books never cost less than the comic floor (Sarah 10/30:
+                    // bulk lots were landing at $0.04-$0.40 a book).
+                    if ($product->sub_category_id && (float) ($productData['single_dpp_inc_tax'] ?? 0) < \App\Http\Controllers\CostPriceRulesController::COMIC_MIN_COST
+                        && preg_match('/comic/i', (string) DB::table('categories')->where('id', $product->sub_category_id)->value('name'))) {
+                        $productData['single_dpp_inc_tax'] = \App\Http\Controllers\CostPriceRulesController::COMIC_MIN_COST;
+                    }
+
                     // single_dpp_inc_tax (purchase price) is not validated, so a
                     // row without it would otherwise feed null into the variation.
                     $purchasePrice = $productData['single_dpp_inc_tax'] ?? 0;
