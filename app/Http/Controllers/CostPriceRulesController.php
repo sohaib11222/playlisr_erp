@@ -52,6 +52,10 @@ class CostPriceRulesController extends Controller
      *
      * @return array<int,float>  [parent_category_id => default cost]
      */
+    // Comic book subcategories (Books > Comic Books / Marvel Comics / DC Comics):
+    // default and minimum cost per book.
+    const COMIC_MIN_COST = 0.75;
+
     public static function defaultCostsByCategoryId(int $businessId): array
     {
         $parents = DB::table('categories')
@@ -72,6 +76,18 @@ class CostPriceRulesController extends Controller
                     break;
                 }
             }
+        }
+
+        // Comic subcategories override their parent (Books = 0.40), keyed "<parentId>_<subId>"
+        // like the mass-create category combo value.
+        $comicSubs = DB::table('categories')
+            ->where('business_id', $businessId)
+            ->where('parent_id', '>', 0)
+            ->where('name', 'like', '%comic%')
+            ->whereNull('deleted_at')
+            ->get(['id', 'parent_id']);
+        foreach ($comicSubs as $sub) {
+            $map[$sub->parent_id . '_' . $sub->id] = self::COMIC_MIN_COST;
         }
 
         return $map;

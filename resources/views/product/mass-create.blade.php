@@ -865,9 +865,13 @@ Nevermind,Nirvana,Cassettes - Used,Rock,,18.00,</pre>
 
         // 1) Precise: combo value is "<parentCategoryId>_<subId>"; cost keys on
         //    the parent category id.
-        var parentId = String($combo.val() || '').split('_')[0];
+        var comboVal = String($combo.val() || '');
+        var parentId = comboVal.split('_')[0];
         var defaults = window.categoryCostDefaults || {};
-        if (parentId && Object.prototype.hasOwnProperty.call(defaults, parentId)) {
+        if (comboVal && Object.prototype.hasOwnProperty.call(defaults, comboVal)) {
+            // Subcategory override (comic books = $0.75 instead of Books' $0.40).
+            cost = Number(defaults[comboVal]);
+        } else if (parentId && Object.prototype.hasOwnProperty.call(defaults, parentId)) {
             cost = Number(defaults[parentId]);
         } else {
             // 2) Fallback: match the parent name in the option label (the part
