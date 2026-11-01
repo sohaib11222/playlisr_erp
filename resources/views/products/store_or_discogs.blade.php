@@ -81,7 +81,7 @@
     var input = document.getElementById('sdIn'), go = document.getElementById('sdGo'), status = document.getElementById('sdStatus');
     var out = document.getElementById('sdOut'), summary = document.getElementById('sdSummary'), copyBtn = document.getElementById('sdCopy');
     var catSel = document.getElementById('sdCat'), minIn = document.getElementById('sdMin');
-    var rows = [], filter = 'all', mode = 'music', runCat = '', runId = 0;
+    var rows = [], filter = 'all', mode = 'music', runCat = '', runId = 0, otherStore = 'Other';
     var LABEL = { store: 'Store', discogs: 'Discogs', ebay: 'eBay', never_sold: 'Never sold', never_had: 'Never had for sale', cheap: 'Bargain bin', unknown: '?' };
     var ONLINE = { discogs: 1, ebay: 1, never_sold: 1, never_had: 1 };
 
@@ -155,7 +155,7 @@
         out.innerHTML = '<table class="sd-table"><thead><tr><th>' + (music ? 'Album' : 'Item') + '</th><th>Verdict</th><th>Why</th>'
             + (music ? '<th>Format</th>' : '')
             + '<th class="sd-num">' + (music ? 'Title sold' : 'Sold') + '</th><th class="sd-num">Value</th>'
-            + '<th class="sd-num">Pico for sale</th><th class="sd-num">Hollywood for sale</th>'
+            + '<th class="sd-num">Pico for sale</th><th class="sd-num">Hollywood for sale</th><th class="sd-num">' + esc(otherStore) + ' for sale</th>'
             + (music ? '<th class="sd-num">Artist sold</th><th class="sd-num">Artist 12 mo</th><th class="sd-num">Artist on hand</th>'
                      : '<th class="sd-num">Sold 12 mo</th><th class="sd-num">Listings</th>')
             + '<th></th></tr></thead><tbody>'
@@ -172,6 +172,7 @@
                     + '<td class="sd-num">' + valueCell(r) + '</td>'
                     + '<td class="sd-num">' + num(r.for_sale.pico) + '</td>'
                     + '<td class="sd-num">' + num(r.for_sale.hollywood) + '</td>'
+                    + '<td class="sd-num">' + num(r.for_sale.other) + '</td>'
                     + (music
                         ? '<td class="sd-num">' + num(sum(r.artist_sold)) + split(r.artist_sold) + '</td>'
                           + '<td class="sd-num">' + num(r.artist_sold_12m) + '</td>'
@@ -207,6 +208,7 @@
             post('/store-or-discogs/check', { lines: b, category_id: runCat }).then(function (j) {
                 if (myRun !== runId) return;
                 mode = j.mode || 'music';
+                if (j.other_store) otherStore = j.other_store;
                 rows = rows.concat(j.rows); done += b.length; render(); next();
             }).catch(function (e) {
                 go.disabled = false;
@@ -254,11 +256,11 @@
     });
 
     copyBtn.addEventListener('click', function () {
-        var head = ['Artist', 'Title', 'Verdict', 'Format', 'Why', 'Sold', 'Our last price', 'Online price', 'Pico for sale', 'Hollywood for sale', 'Artist sold', 'Artist 12 mo', 'Artist on hand', 'On hand', 'Listings'];
+        var head = ['Artist', 'Title', 'Verdict', 'Format', 'Why', 'Sold', 'Our last price', 'Online price', 'Pico for sale', 'Hollywood for sale', otherStore + ' for sale', 'Artist sold', 'Artist 12 mo', 'Artist on hand', 'On hand', 'Listings'];
         var tsv = [head.join('\t')].concat(rows.filter(function (r) { return filter === 'all' || fin(r).v === filter; }).map(function (r) {
             var f = fin(r);
             return [r.artist, r.title, f.where, fmtList(Object.keys(r.title_fmt || {}).length ? r.title_fmt : r.artist_fmt), f.why, sum(r.title_sold), r.title_last_price == null ? '' : r.title_last_price,
-                r.dv && r.dv.price != null ? r.dv.price : '', r.for_sale.pico, r.for_sale.hollywood,
+                r.dv && r.dv.price != null ? r.dv.price : '', r.for_sale.pico, r.for_sale.hollywood, r.for_sale.other,
                 sum(r.artist_sold), r.artist_sold_12m, sum(r.artist_have), r.title_have, mode === 'music' ? r.artist_listed : r.title_listed].join('\t');
         })).join('\n');
         navigator.clipboard.writeText(tsv).then(function () { status.textContent = 'Copied — paste into a spreadsheet.'; });

@@ -118,17 +118,19 @@ class StoreOrDiscogsController extends Controller
         }
         if (!$raws) return response()->json(['rows' => [], 'mode' => $music ? 'music' : 'item']);
 
-        // ---- Store name → pico / hollywood
+        // ---- Store name → pico / hollywood / other (everything else, named for the page's third column)
         $storeOf = [];
+        $otherNames = [];
         foreach (\DB::table('business_locations')->where('business_id', $business_id)->pluck('name', 'id') as $id => $name) {
             $n = mb_strtolower((string) $name);
             $storeOf[(int) $id] = strpos($n, 'hollywood') !== false ? 'hollywood' : (strpos($n, 'pico') !== false ? 'pico' : 'other');
+            if ($storeOf[(int) $id] === 'other') $otherNames[] = trim((string) $name);
         }
 
         $rows = $music
             ? $this->checkMusic($business_id, $raws, $storeOf, $cat)
             : $this->checkItems($business_id, $raws, $storeOf, $cat);
-        return response()->json(['rows' => $rows, 'mode' => $music ? 'music' : 'item']);
+        return response()->json(['rows' => $rows, 'mode' => $music ? 'music' : 'item', 'other_store' => implode(' / ', $otherNames)]);
     }
 
     // ===================================================================
