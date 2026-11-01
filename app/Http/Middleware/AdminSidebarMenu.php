@@ -395,7 +395,7 @@ class AdminSidebarMenu
                         if (auth()->user()->can('product.view') || auth()->user()->can('product.update')) {
                             $sub->url(
                                 url('/store-or-discogs'),
-                                'Store or Discogs?',
+                                'Store or Online?',
                                 ['icon' => 'fa fas fa-balance-scale', 'active' => request()->segment(1) == 'store-or-discogs']
                             );
                         }
