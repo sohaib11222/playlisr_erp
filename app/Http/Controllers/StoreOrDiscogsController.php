@@ -36,6 +36,8 @@ class StoreOrDiscogsController extends Controller
     const MIN_SELL_THROUGH = 0.2;
     /** Default "too cheap to list on Discogs" cutoff; editable on the page. */
     const MIN_DISCOGS_VALUE = 10;
+    /** Lines whose artist has less history than this (copies sold + on hand) also get tried as Title - Artist. */
+    const SWAP_CHECK_BELOW = 10;
 
     protected function allowed()
     {
@@ -102,18 +104,28 @@ class StoreOrDiscogsController extends Controller
 
         [$soldBy, $haveBy] = $this->gather($business_id, $items, $storeOf);
 
-        // Lines pasted the other way round ("Rumours - Fleetwood Mac"): if the
-        // artist side found nothing, try the title side as the artist.
+        // Lines pasted the other way round ("Rumours - Fleetwood Mac"): when the
+        // artist side has little history, also try the title side as the artist
+        // and keep whichever reading has clearly more. (Some products have the
+        // album typed in the artist field, so a weak hit isn't proof.)
+        $activity = function ($soldBy, $haveBy, $key) {
+            $n = 0;
+            foreach ($soldBy[$key] ?? [] as $x) $n += $x['qty'];
+            foreach ($haveBy[$key] ?? [] as $x) $n += $x['qty'];
+            return $n;
+        };
         $flipped = [];
         foreach ($items as $i => $it) {
-            if ($it['title'] === '' || isset($soldBy[$it['akey']]) || isset($haveBy[$it['akey']])) continue;
+            if ($it['title'] === '' || $activity($soldBy, $haveBy, $it['akey']) >= self::SWAP_CHECK_BELOW) continue;
             $flipped[$i] = ['line' => $it['line'], 'artist' => $it['title'], 'title' => $it['artist'],
                 'akey' => $this->norm($it['title']), 'tkey' => $this->normTitle($it['artist'])];
         }
         if ($flipped) {
             [$soldBy2, $haveBy2] = $this->gather($business_id, array_values($flipped), $storeOf);
             foreach ($flipped as $i => $f) {
-                if (!isset($soldBy2[$f['akey']]) && !isset($haveBy2[$f['akey']])) continue;
+                $was = $activity($soldBy, $haveBy, $items[$i]['akey']);
+                $now = $activity($soldBy2, $haveBy2, $f['akey']);
+                if ($now < 3 || $now < $was * 3) continue;
                 $items[$i] = $f + ['swapped' => true];
                 if (isset($soldBy2[$f['akey']])) $soldBy[$f['akey']] = $soldBy2[$f['akey']];
                 if (isset($haveBy2[$f['akey']])) $haveBy[$f['akey']] = $haveBy2[$f['akey']];
