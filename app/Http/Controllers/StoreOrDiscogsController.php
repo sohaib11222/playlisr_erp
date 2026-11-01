@@ -222,7 +222,11 @@ class StoreOrDiscogsController extends Controller
         };
 
         if ($titleSold > 0) {
-            return ['store', $best($r['title_sold']), 'Sold this title ' . $this->n($titleSold) . 'x'];
+            $why = 'Sold this title ' . $this->n($titleSold) . 'x';
+            if ($have > max(1, $r['artist_sold_12m']) * self::OVERSTOCK_RATIO) {
+                $why .= ' (but we have ' . $this->n($have) . ' of the artist)';
+            }
+            return ['store', $best($r['title_sold']), $why];
         }
         if ($artistSold > 0) {
             if ($have > max(1, $r['artist_sold_12m']) * self::OVERSTOCK_RATIO) {
@@ -244,6 +248,9 @@ class StoreOrDiscogsController extends Controller
     /** "Artist - Title" (also tab, en/em dash). No separator = the whole line is the artist. */
     protected function splitLine($raw)
     {
+        // Discogs copy/paste carries invisible direction marks ("Artist \u{200E}– Title").
+        $raw = trim(preg_replace('/[\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}\x{FEFF}]/u', '', (string) $raw));
+        $raw = preg_replace('/\s+/u', ' ', str_replace("\t", ' - ', $raw));
         foreach (["\t", ' - ', ' – ', ' — ', ' -- '] as $sep) {
             $pos = strpos($raw, $sep);
             if ($pos !== false) {
