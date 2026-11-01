@@ -125,6 +125,23 @@
         return bits.join('<br>');
     }
 
+    // {Vinyl: 120, CD: 21} → "Vinyl 120 · CD 21"
+    function fmtList(o) { return Object.keys(o || {}).map(function (k) { return k + ' ' + Math.round(o[k] * 100) / 100; }).join(' · '); }
+    // The format that clearly sells for this line: title sales first, else the artist's.
+    function mainFormat(r) {
+        var o = Object.keys(r.title_fmt || {}).length ? r.title_fmt : r.artist_fmt, keys = Object.keys(o || {});
+        if (!keys.length) return '';
+        var total = keys.reduce(function (a, k) { return a + o[k]; }, 0);
+        return o[keys[0]] / total >= 0.6 ? keys[0] : '';
+    }
+    function formatCell(r) {
+        var bits = [];
+        if (Object.keys(r.title_fmt || {}).length) bits.push('<b>' + esc(fmtList(r.title_fmt)) + '</b><div class="sd-sub">this title sold</div>');
+        else if (Object.keys(r.artist_fmt || {}).length) bits.push(esc(fmtList(r.artist_fmt)) + '<div class="sd-sub">artist sold</div>');
+        if (Object.keys(r.title_have_fmt || {}).length) bits.push('<div class="sd-sub">on hand: ' + esc(fmtList(r.title_have_fmt)) + '</div>');
+        return bits.join('');
+    }
+
     function render() {
         var counts = { all: rows.length };
         rows.forEach(function (r) { var v = fin(r).v; counts[v] = (counts[v] || 0) + 1; });
@@ -136,6 +153,7 @@
         copyBtn.style.display = '';
         var music = mode === 'music';
         out.innerHTML = '<table class="sd-table"><thead><tr><th>' + (music ? 'Album' : 'Item') + '</th><th>Verdict</th><th>Why</th>'
+            + (music ? '<th>Format</th>' : '')
             + '<th class="sd-num">' + (music ? 'Title sold' : 'Sold') + '</th><th class="sd-num">Value</th>'
             + (music ? '<th class="sd-num">Artist sold</th><th class="sd-num">Artist 12 mo</th><th class="sd-num">Artist on hand</th><th class="sd-num">This title on hand</th>'
                      : '<th class="sd-num">Sold 12 mo</th><th class="sd-num">On hand</th><th class="sd-num">Listings</th>')
@@ -144,9 +162,11 @@
                 var q = encodeURIComponent((r.artist + ' ' + r.title).trim()), f = fin(r);
                 var name = r.artist ? '<b>' + esc(r.artist) + '</b>' + (r.title ? '<div>' + esc(r.title) + '</div>' : '') : '<b>' + esc(r.title) + '</b>';
                 return '<tr><td>' + name + '</td>'
-                    + '<td><span class="sd-v ' + f.v + '">' + esc(f.where) + '</span></td>'
+                    + '<td><span class="sd-v ' + f.v + '">' + esc(f.where) + '</span>'
+                    + (music && mainFormat(r) ? '<div class="sd-sub">mostly ' + esc(mainFormat(r)) + '</div>' : '') + '</td>'
                     + '<td>' + esc(f.why) + (r.artist_last_at ? '<div class="sd-sub">artist last sold ' + esc(r.artist_last_at) + '</div>' : '')
                     + (!music && r.title_last_at ? '<div class="sd-sub">last sold ' + esc(r.title_last_at) + '</div>' : '') + '</td>'
+                    + (music ? '<td>' + formatCell(r) + '</td>' : '')
                     + '<td class="sd-num">' + num(sum(r.title_sold)) + split(r.title_sold) + '</td>'
                     + '<td class="sd-num">' + valueCell(r) + '</td>'
                     + (music
@@ -233,10 +253,10 @@
     });
 
     copyBtn.addEventListener('click', function () {
-        var head = ['Artist', 'Title', 'Verdict', 'Why', 'Sold', 'Our last price', 'Online price', 'Artist sold', 'Artist 12 mo', 'Artist on hand', 'On hand', 'Listings'];
+        var head = ['Artist', 'Title', 'Verdict', 'Format', 'Why', 'Sold', 'Our last price', 'Online price', 'Artist sold', 'Artist 12 mo', 'Artist on hand', 'On hand', 'Listings'];
         var tsv = [head.join('\t')].concat(rows.filter(function (r) { return filter === 'all' || fin(r).v === filter; }).map(function (r) {
             var f = fin(r);
-            return [r.artist, r.title, f.where, f.why, sum(r.title_sold), r.title_last_price == null ? '' : r.title_last_price,
+            return [r.artist, r.title, f.where, fmtList(Object.keys(r.title_fmt || {}).length ? r.title_fmt : r.artist_fmt), f.why, sum(r.title_sold), r.title_last_price == null ? '' : r.title_last_price,
                 r.dv && r.dv.price != null ? r.dv.price : '',
                 sum(r.artist_sold), r.artist_sold_12m, sum(r.artist_have), r.title_have, mode === 'music' ? r.artist_listed : r.title_listed].join('\t');
         })).join('\n');
