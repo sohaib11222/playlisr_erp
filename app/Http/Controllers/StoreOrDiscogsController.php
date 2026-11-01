@@ -189,12 +189,14 @@ class StoreOrDiscogsController extends Controller
             $priceSum = 0;
             foreach ($soldBy[$it['akey']] ?? [] as $s) {
                 $r['artist_sold'][$s['store']] += $s['qty'];
+                $this->addFmt($r['artist_fmt'], $s['fmt'], $s['qty']);
                 if ($s['at'] >= $yearAgo) $r['artist_sold_12m'] += $s['qty'];
                 if ($s['at'] >= $recentFrom) $r['artist_sold_recent'] += $s['qty'];
                 $priceSum += $s['price'] * $s['qty'];
                 if ($s['at'] > (string) $r['artist_last_at']) $r['artist_last_at'] = $s['at'];
                 if ($it['tkey'] !== '' && $this->sameTitle($it['tkey'], $s['t'])) {
                     $r['title_sold'][$s['store']] += $s['qty'];
+                    $this->addFmt($r['title_fmt'], $s['fmt'], $s['qty']);
                     if ($s['at'] > (string) $r['title_last_at']) { $r['title_last_at'] = $s['at']; $r['title_last_price'] = round($s['price'], 2); }
                 }
             }
@@ -202,7 +204,10 @@ class StoreOrDiscogsController extends Controller
             if ($artistQty > 0 && $priceSum > 0) $r['artist_avg_price'] = round($priceSum / $artistQty, 2);
             foreach ($haveBy[$it['akey']] ?? [] as $h) {
                 $r['artist_have'][$h['store']] += $h['qty'];
-                if ($it['tkey'] !== '' && $this->sameTitle($it['tkey'], $h['t'])) $r['title_have'] += $h['qty'];
+                if ($it['tkey'] !== '' && $this->sameTitle($it['tkey'], $h['t'])) {
+                    $r['title_have'] += $h['qty'];
+                    $this->addFmt($r['title_have_fmt'], $h['fmt'], $h['qty']);
+                }
             }
             [$r['verdict'], $r['where'], $r['why']] = $this->musicVerdict($it, $r, $recentFrom);
             if (!empty($it['swapped'])) {
@@ -288,10 +293,11 @@ class StoreOrDiscogsController extends Controller
                     }
                 });
             };
-            $pq = \DB::table('products as p')->where('p.business_id', $business_id)->where('p.sku', '!=', 'NIV-LEGACY-HIST');
+            $pq = \DB::table('products as p')->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+                ->where('p.business_id', $business_id)->where('p.sku', '!=', 'NIV-LEGACY-HIST');
             if ($cat) $pq->where('p.category_id', $cat->id);
             $likeAny($pq, 'p.artist');
-            $products = $pq->get(['p.id', 'p.artist', 'p.name'])->filter(function ($p) use ($wanted) {
+            $products = $pq->get(['p.id', 'p.artist', 'p.name', 'c.name as cat'])->filter(function ($p) use ($wanted) {
                 return isset($wanted[$this->norm($p->artist)]);
             })->keyBy('id');
 
@@ -329,6 +335,7 @@ class StoreOrDiscogsController extends Controller
             $p = $products[$s->product_id];
             if ((float) $s->qty <= 0) continue;
             $soldBy[$this->norm($p->artist)][] = ['t' => $this->normTitle($this->stripArtistPrefix($p->name, $p->artist)),
+                'fmt' => $this->formatOf($p->cat),
                 'store' => $storeOf[(int) $s->location_id] ?? 'other', 'qty' => (float) $s->qty,
                 'price' => (float) $s->price, 'at' => (string) $s->sold_at];
         }
@@ -337,12 +344,14 @@ class StoreOrDiscogsController extends Controller
             $k = $this->norm($l->artist);
             $listedBy[$k] = ($listedBy[$k] ?? 0) + 1;
             $soldBy[$k][] = ['t' => $this->normTitle((string) $l->title),
+                'fmt' => $this->formatOf($l->format),
                 'store' => $storeOf[(int) $l->location_id] ?? 'other', 'qty' => (float) $l->qty,
                 'price' => (float) $l->price, 'at' => (string) $l->sold_at];
         }
         foreach ($stock as $v) {
             $p = $products[$v->product_id];
             $haveBy[$this->norm($p->artist)][] = ['t' => $this->normTitle($this->stripArtistPrefix($p->name, $p->artist)),
+                'fmt' => $this->formatOf($p->cat),
                 'store' => $storeOf[(int) $v->location_id] ?? 'other', 'qty' => (float) $v->qty_available];
         }
 
@@ -510,13 +519,33 @@ class StoreOrDiscogsController extends Controller
         return ['line' => $line, 'artist' => $artist, 'title' => $title,
             'title_sold' => $z, 'title_last_price' => null, 'title_last_at' => null, 'title_have' => 0, 'title_listed' => 0, 'title_sold_12m' => 0,
             'artist_sold' => $z, 'artist_sold_12m' => 0, 'artist_sold_recent' => 0, 'artist_last_at' => null, 'artist_avg_price' => null,
-            'artist_have' => $z, 'artist_listed' => 0];
+            'artist_have' => $z, 'artist_listed' => 0,
+            // Music only: copies by format (Vinyl / CD / Cassette / Other), most first.
+            'title_fmt' => [], 'artist_fmt' => [], 'title_have_fmt' => []];
     }
 
     protected function finishRow($r)
     {
+        foreach (['title_fmt', 'artist_fmt', 'title_have_fmt'] as $k) arsort($r[$k]);
         foreach (['title_last_at', 'artist_last_at'] as $k) { if ($r[$k]) $r[$k] = substr($r[$k], 0, 10); }
         return $r;
+    }
+
+    /** Vinyl / CD / Cassette / Other from a category name or an old-sheet format ("Vinyl 33", "CD"); null if unknown. */
+    protected function formatOf($s)
+    {
+        $s = mb_strtolower(trim((string) $s));
+        if ($s === '') return null;
+        if (preg_match('/vinyl|\blp\b|\b33\b|45|7"|12"|record/', $s)) return 'Vinyl';
+        if (preg_match('/\bcds?\b|compact disc/', $s)) return 'CD';
+        if (preg_match('/cass|tape|8 track/', $s)) return 'Cassette';
+        return 'Other';
+    }
+
+    protected function addFmt(&$bucket, $fmt, $qty)
+    {
+        if ($fmt === null) return;
+        $bucket[$fmt] = ($bucket[$fmt] ?? 0) + $qty;
     }
 
     protected function bestStore($counts)
