@@ -100,6 +100,69 @@ class StoreOrDiscogsController extends Controller
             $storeOf[(int) $id] = strpos($n, 'hollywood') !== false ? 'hollywood' : (strpos($n, 'pico') !== false ? 'pico' : 'other');
         }
 
+        [$soldBy, $haveBy] = $this->gather($business_id, $items, $storeOf);
+
+        // Lines pasted the other way round ("Rumours - Fleetwood Mac"): if the
+        // artist side found nothing, try the title side as the artist.
+        $flipped = [];
+        foreach ($items as $i => $it) {
+            if ($it['title'] === '' || isset($soldBy[$it['akey']]) || isset($haveBy[$it['akey']])) continue;
+            $flipped[$i] = ['line' => $it['line'], 'artist' => $it['title'], 'title' => $it['artist'],
+                'akey' => $this->norm($it['title']), 'tkey' => $this->normTitle($it['artist'])];
+        }
+        if ($flipped) {
+            [$soldBy2, $haveBy2] = $this->gather($business_id, array_values($flipped), $storeOf);
+            foreach ($flipped as $i => $f) {
+                if (!isset($soldBy2[$f['akey']]) && !isset($haveBy2[$f['akey']])) continue;
+                $items[$i] = $f + ['swapped' => true];
+                if (isset($soldBy2[$f['akey']])) $soldBy[$f['akey']] = $soldBy2[$f['akey']];
+                if (isset($haveBy2[$f['akey']])) $haveBy[$f['akey']] = $haveBy2[$f['akey']];
+            }
+        }
+
+        $yearAgo = now()->subYear()->toDateTimeString();
+        $recentFrom = now()->subYears(self::RECENT_YEARS)->toDateTimeString();
+        $rows = [];
+        foreach ($items as $it) {
+            $r = ['line' => $it['line'], 'artist' => $it['artist'], 'title' => $it['title'],
+                'title_sold' => ['pico' => 0, 'hollywood' => 0, 'other' => 0], 'title_last_price' => null, 'title_last_at' => null,
+                'artist_sold' => ['pico' => 0, 'hollywood' => 0, 'other' => 0], 'artist_sold_12m' => 0, 'artist_sold_recent' => 0, 'artist_last_at' => null, 'artist_avg_price' => null,
+                'artist_have' => ['pico' => 0, 'hollywood' => 0, 'other' => 0], 'title_have' => 0];
+            $priceSum = 0;
+            foreach ($soldBy[$it['akey']] ?? [] as $s) {
+                $r['artist_sold'][$s['store']] += $s['qty'];
+                if ($s['at'] >= $yearAgo) $r['artist_sold_12m'] += $s['qty'];
+                if ($s['at'] >= $recentFrom) $r['artist_sold_recent'] += $s['qty'];
+                $priceSum += $s['price'] * $s['qty'];
+                if ($s['at'] > (string) $r['artist_last_at']) $r['artist_last_at'] = $s['at'];
+                if ($it['tkey'] !== '' && $this->sameTitle($it['tkey'], $s['t'])) {
+                    $r['title_sold'][$s['store']] += $s['qty'];
+                    if ($s['at'] > (string) $r['title_last_at']) { $r['title_last_at'] = $s['at']; $r['title_last_price'] = round($s['price'], 2); }
+                }
+            }
+            $artistQty = array_sum($r['artist_sold']);
+            if ($artistQty > 0 && $priceSum > 0) $r['artist_avg_price'] = round($priceSum / $artistQty, 2);
+            foreach ($haveBy[$it['akey']] ?? [] as $h) {
+                $r['artist_have'][$h['store']] += $h['qty'];
+                if ($it['tkey'] !== '' && $this->sameTitle($it['tkey'], $h['t'])) $r['title_have'] += $h['qty'];
+            }
+            [$r['verdict'], $r['where'], $r['why']] = $this->verdict($it, $r, $recentFrom);
+            if (!empty($it['swapped'])) {
+                $r['swapped'] = true;
+                $r['why'] = 'Read as Title - Artist. ' . $r['why'];
+            }
+            foreach (['title_last_at', 'artist_last_at'] as $k) { if ($r[$k]) $r[$k] = substr($r[$k], 0, 10); }
+            $rows[] = $r;
+        }
+        return response()->json(['rows' => $rows]);
+    }
+
+    /**
+     * Sales (ERP + pre-ERP sheets) and on-hand stock for the items' artists,
+     * as [soldBy, haveBy], each keyed by normalized artist.
+     */
+    protected function gather($business_id, $items, $storeOf)
+    {
         // ---- One LIKE per artist on its longest word, then exact match on the normalized key in PHP.
         // Very short names ("M", "U2") match too much as a LIKE, so those go by exact name.
         $needles = [];
@@ -170,8 +233,6 @@ class StoreOrDiscogsController extends Controller
         }
 
         // ---- Fold everything into per-artist buckets of {artist key, title key, store, qty, price, date}
-        $yearAgo = now()->subYear()->toDateTimeString();
-        $recentFrom = now()->subYears(self::RECENT_YEARS)->toDateTimeString();
         $soldBy = [];
         $haveBy = [];
         foreach ($sales as $s) {
@@ -193,35 +254,7 @@ class StoreOrDiscogsController extends Controller
                 'store' => $storeOf[(int) $v->location_id] ?? 'other', 'qty' => (float) $v->qty_available];
         }
 
-        $rows = [];
-        foreach ($items as $it) {
-            $r = ['line' => $it['line'], 'artist' => $it['artist'], 'title' => $it['title'],
-                'title_sold' => ['pico' => 0, 'hollywood' => 0, 'other' => 0], 'title_last_price' => null, 'title_last_at' => null,
-                'artist_sold' => ['pico' => 0, 'hollywood' => 0, 'other' => 0], 'artist_sold_12m' => 0, 'artist_sold_recent' => 0, 'artist_last_at' => null, 'artist_avg_price' => null,
-                'artist_have' => ['pico' => 0, 'hollywood' => 0, 'other' => 0], 'title_have' => 0];
-            $priceSum = 0;
-            foreach ($soldBy[$it['akey']] ?? [] as $s) {
-                $r['artist_sold'][$s['store']] += $s['qty'];
-                if ($s['at'] >= $yearAgo) $r['artist_sold_12m'] += $s['qty'];
-                if ($s['at'] >= $recentFrom) $r['artist_sold_recent'] += $s['qty'];
-                $priceSum += $s['price'] * $s['qty'];
-                if ($s['at'] > (string) $r['artist_last_at']) $r['artist_last_at'] = $s['at'];
-                if ($it['tkey'] !== '' && $this->sameTitle($it['tkey'], $s['t'])) {
-                    $r['title_sold'][$s['store']] += $s['qty'];
-                    if ($s['at'] > (string) $r['title_last_at']) { $r['title_last_at'] = $s['at']; $r['title_last_price'] = round($s['price'], 2); }
-                }
-            }
-            $artistQty = array_sum($r['artist_sold']);
-            if ($artistQty > 0 && $priceSum > 0) $r['artist_avg_price'] = round($priceSum / $artistQty, 2);
-            foreach ($haveBy[$it['akey']] ?? [] as $h) {
-                $r['artist_have'][$h['store']] += $h['qty'];
-                if ($it['tkey'] !== '' && $this->sameTitle($it['tkey'], $h['t'])) $r['title_have'] += $h['qty'];
-            }
-            [$r['verdict'], $r['where'], $r['why']] = $this->verdict($it, $r, $recentFrom);
-            foreach (['title_last_at', 'artist_last_at'] as $k) { if ($r[$k]) $r[$k] = substr($r[$k], 0, 10); }
-            $rows[] = $r;
-        }
-        return response()->json(['rows' => $rows]);
+        return [$soldBy, $haveBy];
     }
 
     /** [verdict: store|discogs|lean_discogs|unknown, where: Pico|Hollywood|Discogs, why] */
