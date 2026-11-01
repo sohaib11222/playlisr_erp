@@ -392,6 +392,13 @@ class AdminSidebarMenu
                                 ['icon' => 'fa fas fa-search', 'active' => request()->segment(1) == 'stock-lookup']
                             );
                         }
+                        if (auth()->user()->can('product.view') || auth()->user()->can('product.update')) {
+                            $sub->url(
+                                url('/store-or-discogs'),
+                                'Store or Discogs?',
+                                ['icon' => 'fa fas fa-balance-scale', 'active' => request()->segment(1) == 'store-or-discogs']
+                            );
+                        }
                         // Bulk store-to-store move; same permission as stock transfers (purchase.create).
                         // One entry for all of /transfers/*; Receive + Log are tabs on the page.
                         if (auth()->user()->can('purchase.create')) {
