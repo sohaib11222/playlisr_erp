@@ -882,6 +882,74 @@ class ListingCommissionController extends Controller
         return round((float) $sales, 2);
     }
 
+    // What the party's checked-in guests (and checked-in +1s) bought at this
+    // store on the party date, matched to POS receipts by the customer's email
+    // or phone. Whole day, since guests often shop before the start time.
+    private function partyGuestSales($businessId, $locationId, $locKey, $date, $eventName, $eventId)
+    {
+        $out = ['sales' => 0.0, 'checked_in' => 0, 'buyers' => 0, 'ready' => false];
+        try {
+            $bridge = app(\App\Http\Controllers\EventsController::class)->partyBridgeRsvps($eventName, $eventId);
+        } catch (\Throwable $e) {
+            \Log::warning('party guest sales: bridge failed: ' . $e->getMessage());
+            return $out;
+        }
+        if ($bridge === null) { return $out; }
+        $out['ready'] = true;
+
+        $emails = []; $phones = [];
+        $add = function ($email, $phone) use (&$emails, &$phones, &$out) {
+            $out['checked_in']++;
+            $em = strtolower(trim((string) $email));
+            if ($em !== '') { $emails[$em] = true; }
+            $ph = substr(preg_replace('/\D/', '', (string) $phone), -10);
+            if (strlen($ph) === 10) { $phones[$ph] = true; }
+        };
+        foreach ($bridge as $r) {
+            $loc = (string) ($r['eventLocationKey'] ?? '');
+            if ($loc !== '' && $loc !== $locKey) { continue; }
+            if (!empty($r['checkedIn'])) { $add($r['email'] ?? '', $r['phone'] ?? ''); }
+            foreach ((array) ($r['additionalGuests'] ?? []) as $g) {
+                if (is_array($g) && !empty($g['checkedIn'])) { $add($g['email'] ?? '', $g['phone'] ?? ''); }
+            }
+        }
+        if (empty($emails) && empty($phones)) { return $out; }
+
+        $contactIds = [];
+        $emailList = array_keys($emails);
+        foreach (array_chunk($emailList, 200) as $chunk) {
+            foreach (DB::table('contacts')->where('business_id', $businessId)
+                ->whereIn(DB::raw('LOWER(TRIM(email))'), $chunk)->pluck('id') as $cid) { $contactIds[(int) $cid] = true; }
+        }
+        if (!empty($phones)) {
+            $rows = DB::table('contacts')->where('business_id', $businessId)
+                ->whereNotNull('mobile')->where('mobile', '!=', '')->get(['id', 'mobile']);
+            foreach ($rows as $c) {
+                $ph = substr(preg_replace('/\D/', '', (string) $c->mobile), -10);
+                if (isset($phones[$ph])) { $contactIds[(int) $c->id] = true; }
+            }
+        }
+        if (empty($contactIds)) { return $out; }
+
+        $rows = DB::table('transactions as t')
+            ->join('transaction_sell_lines as tsl', 'tsl.transaction_id', '=', 't.id')
+            ->where('t.business_id', $businessId)
+            ->where('t.location_id', $locationId)
+            ->where('t.type', 'sell')->where('t.status', 'final')->whereNull('t.import_source')
+            ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
+            ->whereIn('t.contact_id', array_keys($contactIds))
+            ->whereDate('t.transaction_date', $date)
+            ->groupBy('t.contact_id')
+            ->selectRaw('t.contact_id, COALESCE(SUM(' . self::PARTY_NET_PRETAX . '), 0) as net')
+            ->get();
+        foreach ($rows as $r) {
+            $out['sales'] += (float) $r->net;
+            if ((float) $r->net > 0) { $out['buyers']++; }
+        }
+        $out['sales'] = round($out['sales'], 2);
+        return $out;
+    }
+
     // The store's normal EXPECTED take for this exact window - the same
     // trailing-12-week (weekday x hour) rate ReportController's sales-bonus
     // goal already uses, prorated for whatever fraction of each hour the
@@ -1121,7 +1189,12 @@ class ListingCommissionController extends Controller
                     $sC = \Carbon::parse($edate . ' ' . $winFrom . ':00');
                     $eC = $sC->copy()->addMinutes($durationMin);
 
-                    $sales = $this->windowSales($businessId, $locId, $sC, $eC);
+                    // Pay is 4% of what CHECKED-IN guests bought that day at
+                    // this store, not everything the register rang (Sarah
+                    // 2026-10-31: parties paid out on normal store traffic
+                    // when nobody showed up). No check-ins = $0.
+                    $guest = $this->partyGuestSales($businessId, $locId, $locKey, $edate, (string) ($it['name'] ?? ''), $it['id'] ?? null);
+                    $sales = $guest['sales'];
                     $salesGoal = $this->windowSalesGoal($businessId, $locId, $sC, $eC);
                     // Live Sling floor-position shift is the real signal
                     // (Sarah 2026-09-25) - falls back to who rang a sale only
@@ -1153,6 +1226,9 @@ class ListingCommissionController extends Controller
                         'percent' => self::PARTY_DEFAULT_PERCENT,
                         'sales' => $sales,
                         'sales_goal' => $salesGoal,
+                        'checked_in' => $guest['checked_in'],
+                        'buyers' => $guest['buyers'],
+                        'guest_ready' => $guest['ready'],
                         'pool' => $pool,
                         'staff' => $estStaff,
                         'solo' => $solo,
@@ -1697,7 +1773,7 @@ class ListingCommissionController extends Controller
                     'amount' => $amt,
                     'label'  => $u['name'] . ' - ' . ($u['location_name'] ?: '?') . ' - '
                         . \Carbon::parse($u['date'])->format('M j') . ', ' . ($u['estimate']['window'] ?? '')
-                        . ' - $' . number_format($u['estimate']['sales'] ?? 0, 2) . ' sales (goal $' . number_format($u['estimate']['sales_goal'] ?? 0, 2) . ')',
+                        . ' - ' . (int) ($u['estimate']['checked_in'] ?? 0) . ' checked in, ' . (int) ($u['estimate']['buyers'] ?? 0) . ' bought $' . number_format($u['estimate']['sales'] ?? 0, 2),
                 ];
             }
         }

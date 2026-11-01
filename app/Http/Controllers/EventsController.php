@@ -732,6 +732,17 @@ class EventsController extends Controller
      * per-store 'attending' count to size the RSVP-scaled sales window
      * (Sarah 2026-09-25).
      */
+    // Raw RSVP rows (with checkedIn / email / phone / +1s) for one event, or
+    // null if the website bridge is unreachable. Used by party pay.
+    public function partyBridgeRsvps(string $eventName, ?string $eventId): ?array
+    {
+        $bridge = $this->bridgeData($eventName, $eventId);
+        if (!($bridge['ready'] ?? false)) {
+            return null;
+        }
+        return (array) ($bridge['rsvps'] ?? []);
+    }
+
     public function liveEventCounts(string $eventName, ?string $eventId): ?array
     {
         $bridge = $this->bridgeData($eventName, $eventId);

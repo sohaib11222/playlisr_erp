@@ -106,11 +106,11 @@
                                 @if (!$est)
                                     <span class="text-muted">Pick a store to calculate</span>
                                 @elseif (count($est['staff']) === 0)
-                                    <span class="text-muted">${{ number_format($est['sales'], 2) }} rung {{ $est['window'] }}, but nobody had a floor shift on file then - nothing to split</span>
+                                    <span class="text-muted">Nobody had a floor shift on file {{ $est['window'] }} - nothing to split</span>
                                 @elseif ($est['solo'])
                                     <span class="text-muted">Only {{ $est['staff'][0]['name'] }} was on the floor {{ $est['window'] }} - no pool, they're already covered by their normal sales commission</span>
                                 @else
-                                    <div class="text-muted" style="font-size:11px; margin-bottom:2px;">{{ $est['window'] }} &middot; ${{ number_format($est['sales'], 2) }} sales (goal ${{ number_format($est['sales_goal'] ?? 0, 2) }}) &middot; ${{ number_format($est['pool'], 2) }} pool</div>
+                                    <div class="text-muted" style="font-size:11px; margin-bottom:2px;">@if(empty($est['guest_ready']))Could not reach RSVPs, try again later @else{{ $est['checked_in'] ?? 0 }} checked in &middot; {{ $est['buyers'] ?? 0 }} bought ${{ number_format($est['sales'], 2) }} &middot; 4% = ${{ number_format($est['pool'], 2) }}@endif</div>
                                     @foreach ($est['staff'] as $s)
                                         {{ $s['name'] }}: ${{ number_format($s['amount'], 2) }}@if(!$loop->last), @endif
                                     @endforeach
