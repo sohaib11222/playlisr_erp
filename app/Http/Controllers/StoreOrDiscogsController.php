@@ -606,6 +606,8 @@ class StoreOrDiscogsController extends Controller
         $ebayCat = trim(explode(',', (string) ($cat->ebay_category_ids ?? ''))[0]);
         try {
             $items = $ebay->getProductPrice($q, null, $ebayCat !== '' ? $ebayCat : null);
+            // Some categories' eBay ids are too narrow (or stale); try all of eBay.
+            if (!$items && $ebayCat !== '') $items = $ebay->getProductPrice($q);
         } catch (\Throwable $e) {
             return response()->json(['found' => false, 'error' => 'eBay: ' . substr($e->getMessage(), 0, 80)]);
         }
@@ -684,6 +686,12 @@ class StoreOrDiscogsController extends Controller
         if ($a === $b) return true;
         // "abbey road" vs "abbey road 2019 remaster": shorter is a whole-word prefix of the longer.
         [$s, $l] = mb_strlen($a) <= mb_strlen($b) ? [$a, $b] : [$b, $a];
-        return mb_strlen($s) >= 4 && strpos($l . ' ', $s . ' ') === 0;
+        if (mb_strlen($s) >= 4 && strpos($l . ' ', $s . ' ') === 0) return true;
+        // Spelling slips ("rumors" / "rumours", "theese"): 1 letter off per 6, for titles of 5+ letters.
+        // Never across different numbers ("vol 1" / "vol 2") or roman numerals ("ii" / "iii").
+        $marks = function ($t) { return preg_replace('/[^0-9]/', '', $t) . '|' . implode(' ', preg_grep('/^[ivx]+$/', explode(' ', $t))); };
+        if ($marks($a) !== $marks($b)) return false;
+        return mb_strlen($s) >= 5 && abs(strlen($a) - strlen($b)) <= 2
+            && levenshtein($a, $b) <= max(1, intdiv(strlen($s), 6));
     }
 }
