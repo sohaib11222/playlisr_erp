@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 
 /**
- * "Store or Discogs?" (Sarah 2026-11-01: searching the products page one
+ * "Store or Online?" (was "Store or Discogs?"; Sarah 2026-11-01: searching the products page one
  * album at a time is too slow when deciding where a big stack should go).
  *
  * Paste many items, one per line, pick what they are, and get per line what

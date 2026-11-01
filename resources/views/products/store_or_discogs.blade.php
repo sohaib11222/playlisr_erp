@@ -1,5 +1,5 @@
 @extends('layouts.app')
-@section('title', 'Store or Discogs?')
+@section('title', 'Store or Online?')
 
 @section('content')
 <style>
@@ -34,7 +34,7 @@
 .sd-scroll { overflow-x: auto; }
 </style>
 <div class="sd-wrap">
-    <h1>Store or Discogs?</h1>
+    <h1>Store or Online?</h1>
     <p class="sd-help">Paste one item per line. For music: <b>Artist - Title</b> (or two spreadsheet columns, or just "artist title"). For anything else, the item's name. Checks every line against everything we've ever sold.</p>
     <div class="sd-type">
         <b>What are these?</b>
@@ -208,7 +208,9 @@
             post('/store-or-discogs/check', { lines: b, category_id: runCat }).then(function (j) {
                 if (myRun !== runId) return;
                 mode = j.mode || 'music';
-                if (j.other_store) otherStore = j.other_store;
+                // The Discogs Warehouse holds what we sell online (Discogs and eBay); the ERP
+                // location keeps its name because imports and syncs look it up by name.
+                if (j.other_store) otherStore = /warehouse/i.test(j.other_store) ? 'Online warehouse' : j.other_store;
                 rows = rows.concat(j.rows); done += b.length; render(); next();
             }).catch(function (e) {
                 go.disabled = false;
