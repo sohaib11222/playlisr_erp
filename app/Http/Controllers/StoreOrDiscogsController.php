@@ -151,7 +151,7 @@ class StoreOrDiscogsController extends Controller
         }
         unset($it);
 
-        [$soldBy, $haveBy, $listedBy] = $this->gather($business_id, $items, $storeOf, $cat);
+        [$soldBy, $haveBy, $listedBy, $hadAt, $idsBy] = $this->gather($business_id, $items, $storeOf, $cat);
 
         // Lines pasted the other way round ("Rumours - Fleetwood Mac"): when the
         // artist side has little history, also try the title side as the artist
@@ -170,7 +170,7 @@ class StoreOrDiscogsController extends Controller
                 'akey' => $this->norm($it['title']), 'tkey' => $this->normTitle($it['artist'])];
         }
         if ($flipped) {
-            [$soldBy2, $haveBy2, $listedBy2] = $this->gather($business_id, array_values($flipped), $storeOf, $cat);
+            [$soldBy2, $haveBy2, $listedBy2, $hadAt2, $idsBy2] = $this->gather($business_id, array_values($flipped), $storeOf, $cat);
             foreach ($flipped as $i => $f) {
                 $was = $activity($soldBy, $haveBy, $items[$i]['akey']);
                 $now = $activity($soldBy2, $haveBy2, $f['akey']);
@@ -179,6 +179,8 @@ class StoreOrDiscogsController extends Controller
                 if (isset($soldBy2[$f['akey']])) $soldBy[$f['akey']] = $soldBy2[$f['akey']];
                 if (isset($haveBy2[$f['akey']])) $haveBy[$f['akey']] = $haveBy2[$f['akey']];
                 if (isset($listedBy2[$f['akey']])) $listedBy[$f['akey']] = $listedBy2[$f['akey']];
+                if (isset($hadAt2[$f['akey']])) $hadAt[$f['akey']] = $hadAt2[$f['akey']];
+                if (isset($idsBy2[$f['akey']])) $idsBy[$f['akey']] = $idsBy2[$f['akey']];
             }
         }
 
@@ -188,6 +190,7 @@ class StoreOrDiscogsController extends Controller
         foreach ($items as $it) {
             $r = $this->blankRow($it['line'], $it['artist'], $it['title']);
             $r['artist_listed'] = (int) ($listedBy[$it['akey']] ?? 0);
+            $r['had_at'] = $hadAt[$it['akey']] ?? [];
             $priceSum = 0;
             foreach ($soldBy[$it['akey']] ?? [] as $s) {
                 $r['artist_sold'][$s['store']] += $s['qty'];
@@ -213,13 +216,15 @@ class StoreOrDiscogsController extends Controller
                 }
             }
             [$r['verdict'], $r['where'], $r['why']] = $this->musicVerdict($it, $r, $recentFrom);
+            $r['never_had_at'] = $this->neverHadAt($r);
+            $r['_ids'] = $idsBy[$it['akey']] ?? [];
             if (!empty($it['swapped'])) {
                 $r['swapped'] = true;
                 $r['why'] = 'Read as Title - Artist. ' . $r['why'];
             }
-            $rows[] = $this->finishRow($r);
+            $rows[] = $r;
         }
-        return $rows;
+        return array_map([$this, 'finishRow'], $this->addShelfDays($rows, $storeOf));
     }
 
     /**
@@ -324,15 +329,21 @@ class StoreOrDiscogsController extends Controller
             }
         }
 
-        [$sales, $stock] = $this->salesAndStock($business_id, $products->keys()->all());
+        [$sales, $stock, $everAt] = $this->salesAndStock($business_id, $products->keys()->all());
 
         // ---- Fold everything into per-artist buckets of {title key, store, qty, price, date}
         $soldBy = [];
         $haveBy = [];
         $listedBy = [];
+        $hadAt = [];
+        $idsBy = [];
         foreach ($products as $p) {
             $k = $this->norm($p->artist);
             $listedBy[$k] = ($listedBy[$k] ?? 0) + 1;
+            $idsBy[$k][] = $p->id;
+        }
+        foreach ($everAt as $v) {
+            $hadAt[$this->norm($products[$v->product_id]->artist)][$storeOf[(int) $v->location_id] ?? 'other'] = true;
         }
         foreach ($sales as $s) {
             $p = $products[$s->product_id];
@@ -358,7 +369,7 @@ class StoreOrDiscogsController extends Controller
                 'store' => $storeOf[(int) $v->location_id] ?? 'other', 'qty' => (float) $v->qty_available];
         }
 
-        return [$soldBy, $haveBy, $listedBy];
+        return [$soldBy, $haveBy, $listedBy, $hadAt, $idsBy];
     }
 
     /** Old sheets wrote formats as free text ("Vinyl 33", "CD", "Cassette"). */
@@ -439,7 +450,8 @@ class StoreOrDiscogsController extends Controller
                 if ($all) { $matchIds[$i][] = $p->id; $allIds[$p->id] = true; }
             }
         }
-        [$sales, $stock] = $this->salesAndStock($business_id, array_keys($allIds));
+        [$sales, $stock, $everAt] = $this->salesAndStock($business_id, array_keys($allIds));
+        $everAtBy = $everAt->groupBy('product_id');
         $salesBy = $sales->groupBy('product_id');
         $stockBy = $stock->groupBy('product_id');
         $byId = $products->keyBy('id');
@@ -461,6 +473,7 @@ class StoreOrDiscogsController extends Controller
                     if ($s->sold_at >= $recentFrom) $soldRecent += (float) $s->qty;
                     if ($s->sold_at > (string) $r['title_last_at']) { $r['title_last_at'] = $s->sold_at; $r['title_last_price'] = round((float) $s->price, 2); }
                 }
+                foreach ($everAtBy[$pid] ?? [] as $v) $r['had_at'][$storeOf[(int) $v->location_id] ?? 'other'] = true;
                 foreach ($stockBy[$pid] ?? [] as $v) {
                     $r['title_have'] += (float) $v->qty_available;
                     if ($this->forSale($byId[$pid])) $r['for_sale'][$storeOf[(int) $v->location_id] ?? 'other'] += (float) $v->qty_available;
@@ -483,9 +496,11 @@ class StoreOrDiscogsController extends Controller
                 $v = ['never_had', 'Never had for sale', 'We have never carried this in ' . $cat->name];
             }
             [$r['verdict'], $r['where'], $r['why']] = $v;
-            $rows[] = $this->finishRow($r);
+            $r['never_had_at'] = $this->neverHadAt($r);
+            $r['_ids'] = $matchIds[$i];
+            $rows[] = $r;
         }
-        return $rows;
+        return array_map([$this, 'finishRow'], $this->addShelfDays($rows, $storeOf));
     }
 
     /** Distinct significant words of an item name ("VHS - Pulp Fiction (Sealed)" → pulp, fiction). */
@@ -506,6 +521,7 @@ class StoreOrDiscogsController extends Controller
     {
         $sales = collect();
         $stock = collect();
+        $everAt = collect();
         foreach (array_chunk($ids, 2000) as $chunk) {
             $sales = $sales->merge(\DB::table('transaction_sell_lines as tsl')
                 ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
@@ -513,11 +529,13 @@ class StoreOrDiscogsController extends Controller
                 ->where('t.business_id', $business_id)->where('t.type', 'sell')->where('t.status', 'final')
                 ->get(['tsl.product_id', 't.location_id', 't.transaction_date as sold_at', 'tsl.unit_price_inc_tax as price',
                     \DB::raw('tsl.quantity - COALESCE(tsl.quantity_returned, 0) as qty')]));
-            $stock = $stock->merge(\DB::table('variation_location_details')
-                ->whereIn('product_id', $chunk)->where('qty_available', '>', 0)
-                ->get(['product_id', 'location_id', 'qty_available']));
+            // Every stock row, sold-out ones too: a row at a location = it was stocked there at some point.
+            $rows = \DB::table('variation_location_details')->whereIn('product_id', $chunk)
+                ->get(['product_id', 'location_id', 'qty_available']);
+            $stock = $stock->merge($rows->filter(function ($v) { return (float) $v->qty_available > 0; }));
+            $everAt = $everAt->merge($rows);
         }
-        return [$sales, $stock];
+        return [$sales, $stock, $everAt];
     }
 
     protected function blankRow($line, $artist, $title)
@@ -529,12 +547,19 @@ class StoreOrDiscogsController extends Controller
             'artist_have' => $z, 'artist_listed' => 0,
             // This exact title/item in stock and actually for sale (priced, active), per store.
             'for_sale' => $z,
+            // Stores that ever stocked it (any stock row, sold out or not); Never sold rows
+            // list the stores that never did.
+            'had_at' => [], 'never_had_at' => [],
+            // Never sold rows: per store, days the oldest copy still there has sat
+            // (shelf_days), else when it was first stocked there (first_in).
+            'shelf' => [],
             // Music only: copies by format (Vinyl / CD / Cassette / Other), most first.
             'title_fmt' => [], 'artist_fmt' => [], 'title_have_fmt' => []];
     }
 
     protected function finishRow($r)
     {
+        unset($r['_ids']);
         foreach (['title_fmt', 'artist_fmt', 'title_have_fmt'] as $k) arsort($r[$k]);
         foreach (['title_last_at', 'artist_last_at'] as $k) { if ($r[$k]) $r[$k] = substr($r[$k], 0, 10); }
         return $r;
@@ -549,6 +574,63 @@ class StoreOrDiscogsController extends Controller
         if (preg_match('/\bcds?\b|compact disc/', $s)) return 'CD';
         if (preg_match('/cass|tape|8 track/', $s)) return 'Cassette';
         return 'Other';
+    }
+
+    /**
+     * For Never sold rows: per store, from purchase / opening stock / transfer-in
+     * lots, how long the oldest copy still on that shelf has sat, or (none left
+     * there) when it first came in. One query for the batch.
+     */
+    protected function addShelfDays($rows, $storeOf)
+    {
+        $ids = [];
+        foreach ($rows as $r) { if ($r['verdict'] === 'never_sold') foreach ($r['_ids'] as $id) $ids[$id] = true; }
+        if (!$ids) return $rows;
+        $lots = collect();
+        foreach (array_chunk(array_keys($ids), 2000) as $chunk) {
+            $lots = $lots->merge(\DB::table('purchase_lines as pl')
+                ->join('transactions as t', 't.id', '=', 'pl.transaction_id')
+                ->whereIn('pl.product_id', $chunk)
+                ->whereIn('t.type', ['purchase', 'opening_stock', 'purchase_transfer'])
+                ->groupBy('pl.product_id', 't.location_id')
+                ->selectRaw('pl.product_id, t.location_id, MIN(t.transaction_date) as first_in,
+                    MIN(CASE WHEN (pl.quantity - pl.quantity_sold - pl.quantity_adjusted - pl.quantity_returned) > 0 THEN t.transaction_date END) as on_shelf_since')
+                ->get());
+        }
+        $byProduct = $lots->groupBy('product_id');
+        $now = now();
+        foreach ($rows as &$r) {
+            if ($r['verdict'] !== 'never_sold') continue;
+            $per = [];
+            foreach ($r['_ids'] as $id) {
+                foreach ($byProduct[$id] ?? [] as $l) {
+                    $st = $storeOf[(int) $l->location_id] ?? 'other';
+                    $cur = $per[$st] ?? ['since' => null, 'first' => null];
+                    if ($l->on_shelf_since && (!$cur['since'] || $l->on_shelf_since < $cur['since'])) $cur['since'] = $l->on_shelf_since;
+                    if ($l->first_in && (!$cur['first'] || $l->first_in < $cur['first'])) $cur['first'] = $l->first_in;
+                    $per[$st] = $cur;
+                }
+            }
+            foreach ($per as $st => $x) {
+                $r['shelf'][$st] = [
+                    'shelf_days' => $x['since'] ? \Carbon::parse($x['since'])->diffInDays($now) : null,
+                    'first_in' => $x['first'] ? substr($x['first'], 0, 10) : null,
+                ];
+            }
+        }
+        unset($r);
+        return $rows;
+    }
+
+    /** For a Never sold row: the stores (Pico / Hollywood) that never even had it for sale. */
+    protected function neverHadAt($r)
+    {
+        if ($r['verdict'] !== 'never_sold') return [];
+        $out = [];
+        foreach (['pico' => 'Pico', 'hollywood' => 'Hollywood'] as $k => $name) {
+            if (empty($r['had_at'][$k])) $out[] = $name;
+        }
+        return $out;
     }
 
     /** Active and priced: not an unpriced Buy-from-Customer copy or a retired listing. */

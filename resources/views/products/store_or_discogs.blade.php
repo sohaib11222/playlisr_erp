@@ -68,7 +68,7 @@
         Picking one format (e.g. CD) only counts that format.<br>
         <b>Not music:</b> matched by name within that type. Sold in the last {{ $recentYears }} years → store; sold before but not lately, or too many on hand → eBay.<br>
         <b>Discogs / eBay</b> then get their online price checked; under the amount above it's <b>Bargain bin</b>: not worth listing, and it doesn't move in the store either.
-        <b>Never sold</b> = we've had it but none sold. <b>Never had for sale</b> = we've never carried it. Neither is a call; the online price is shown so you can decide.
+        <b>Never sold</b> = we've had it but none sold; if one store never even stocked it, it also says <b>Never had for sale at</b> that store, and it shows how many days it's been sitting at each store. <b>Never had for sale</b> = we've never carried it. Neither is a call; the online price is shown so you can decide.
     </p>
 </div>
 @endsection
@@ -142,6 +142,16 @@
         return bits.join('');
     }
 
+    // Never sold rows: "Pico 214 days on shelf · Hollywood none left (first in 2025-03-02)"
+    function shelfLine(r) {
+        var names = { pico: 'Pico', hollywood: 'Hollywood', other: otherStore };
+        var parts = ['pico', 'hollywood', 'other'].filter(function (k) { return r.shelf && r.shelf[k]; }).map(function (k) {
+            var x = r.shelf[k];
+            return names[k] + ' ' + (x.shelf_days != null ? '<b>' + x.shelf_days + ' days</b> on shelf' : 'none left' + (x.first_in ? ' (first in ' + esc(x.first_in) + ')' : ''));
+        });
+        return parts.length ? '<div class="sd-sub">' + parts.join(' · ') + '</div>' : '';
+    }
+
     function render() {
         var counts = { all: rows.length };
         rows.forEach(function (r) { var v = fin(r).v; counts[v] = (counts[v] || 0) + 1; });
@@ -164,8 +174,9 @@
                 var name = r.artist ? '<b>' + esc(r.artist) + '</b>' + (r.title ? '<div>' + esc(r.title) + '</div>' : '') : '<b>' + esc(r.title) + '</b>';
                 return '<tr><td>' + name + '</td>'
                     + '<td><span class="sd-v ' + f.v + '">' + esc(f.where) + '</span>'
+                    + (r.never_had_at && r.never_had_at.length ? (r.never_had_at.map(function (st) { return '<div style="margin-top:4px"><span class="sd-v never_had">Never had for sale at ' + esc(st) + '</span></div>'; }).join('')) : '')
                     + (music && mainFormat(r) ? '<div class="sd-sub">mostly ' + esc(mainFormat(r)) + '</div>' : '') + '</td>'
-                    + '<td>' + esc(f.why) + (r.artist_last_at ? '<div class="sd-sub">artist last sold ' + esc(r.artist_last_at) + '</div>' : '')
+                    + '<td>' + esc(f.why) + shelfLine(r) + (r.artist_last_at ? '<div class="sd-sub">artist last sold ' + esc(r.artist_last_at) + '</div>' : '')
                     + (!music && r.title_last_at ? '<div class="sd-sub">last sold ' + esc(r.title_last_at) + '</div>' : '') + '</td>'
                     + (music ? '<td>' + formatCell(r) + '</td>' : '')
                     + '<td class="sd-num">' + num(sum(r.title_sold)) + split(r.title_sold) + '</td>'
@@ -258,11 +269,12 @@
     });
 
     copyBtn.addEventListener('click', function () {
-        var head = ['Artist', 'Title', 'Verdict', 'Format', 'Why', 'Sold', 'Our last price', 'Online price', 'Pico for sale', 'Hollywood for sale', otherStore + ' for sale', 'Artist sold', 'Artist 12 mo', 'Artist on hand', 'On hand', 'Listings'];
+        var head = ['Artist', 'Title', 'Verdict', 'Format', 'Why', 'Sold', 'Our last price', 'Online price', 'Pico for sale', 'Hollywood for sale', otherStore + ' for sale', 'Pico days on shelf', 'Hollywood days on shelf', 'Artist sold', 'Artist 12 mo', 'Artist on hand', 'On hand', 'Listings'];
         var tsv = [head.join('\t')].concat(rows.filter(function (r) { return filter === 'all' || fin(r).v === filter; }).map(function (r) {
             var f = fin(r);
-            return [r.artist, r.title, f.where, fmtList(Object.keys(r.title_fmt || {}).length ? r.title_fmt : r.artist_fmt), f.why, sum(r.title_sold), r.title_last_price == null ? '' : r.title_last_price,
+            return [r.artist, r.title, f.where + (r.never_had_at && r.never_had_at.length ? '; never had for sale at ' + r.never_had_at.join(' and ') : ''), fmtList(Object.keys(r.title_fmt || {}).length ? r.title_fmt : r.artist_fmt), f.why, sum(r.title_sold), r.title_last_price == null ? '' : r.title_last_price,
                 r.dv && r.dv.price != null ? r.dv.price : '', r.for_sale.pico, r.for_sale.hollywood, r.for_sale.other,
+                r.shelf && r.shelf.pico && r.shelf.pico.shelf_days != null ? r.shelf.pico.shelf_days : '', r.shelf && r.shelf.hollywood && r.shelf.hollywood.shelf_days != null ? r.shelf.hollywood.shelf_days : '',
                 sum(r.artist_sold), r.artist_sold_12m, sum(r.artist_have), r.title_have, mode === 'music' ? r.artist_listed : r.title_listed].join('\t');
         })).join('\n');
         navigator.clipboard.writeText(tsv).then(function () { status.textContent = 'Copied — paste into a spreadsheet.'; });
