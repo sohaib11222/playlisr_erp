@@ -30,6 +30,12 @@ class StoreOrDiscogsController extends Controller
     const OVERSTOCK_RATIO = 3;
     /** Never-sold artist with this many copies already on hand = clearly a Discogs artist. */
     const NEVER_SOLD_HAVE_LOTS = 3;
+    /** Sales older than this many years don't count as "it sells here". */
+    const RECENT_YEARS = 3;
+    /** Artist sell-through (sold ÷ (sold + on hand)) below this = it doesn't move here. */
+    const MIN_SELL_THROUGH = 0.2;
+    /** Default "too cheap to list on Discogs" cutoff; editable on the page. */
+    const MIN_DISCOGS_VALUE = 10;
 
     protected function allowed()
     {
@@ -43,6 +49,9 @@ class StoreOrDiscogsController extends Controller
             'overstockRatio' => self::OVERSTOCK_RATIO,
             'neverSoldLots' => self::NEVER_SOLD_HAVE_LOTS,
             'maxLines' => self::MAX_LINES,
+            'recentYears' => self::RECENT_YEARS,
+            'minSellThrough' => (int) round(self::MIN_SELL_THROUGH * 100),
+            'minDiscogsValue' => self::MIN_DISCOGS_VALUE,
         ]);
     }
 
@@ -162,6 +171,7 @@ class StoreOrDiscogsController extends Controller
 
         // ---- Fold everything into per-artist buckets of {artist key, title key, store, qty, price, date}
         $yearAgo = now()->subYear()->toDateTimeString();
+        $recentFrom = now()->subYears(self::RECENT_YEARS)->toDateTimeString();
         $soldBy = [];
         $haveBy = [];
         foreach ($sales as $s) {
@@ -187,22 +197,27 @@ class StoreOrDiscogsController extends Controller
         foreach ($items as $it) {
             $r = ['line' => $it['line'], 'artist' => $it['artist'], 'title' => $it['title'],
                 'title_sold' => ['pico' => 0, 'hollywood' => 0, 'other' => 0], 'title_last_price' => null, 'title_last_at' => null,
-                'artist_sold' => ['pico' => 0, 'hollywood' => 0, 'other' => 0], 'artist_sold_12m' => 0, 'artist_last_at' => null,
+                'artist_sold' => ['pico' => 0, 'hollywood' => 0, 'other' => 0], 'artist_sold_12m' => 0, 'artist_sold_recent' => 0, 'artist_last_at' => null, 'artist_avg_price' => null,
                 'artist_have' => ['pico' => 0, 'hollywood' => 0, 'other' => 0], 'title_have' => 0];
+            $priceSum = 0;
             foreach ($soldBy[$it['akey']] ?? [] as $s) {
                 $r['artist_sold'][$s['store']] += $s['qty'];
                 if ($s['at'] >= $yearAgo) $r['artist_sold_12m'] += $s['qty'];
+                if ($s['at'] >= $recentFrom) $r['artist_sold_recent'] += $s['qty'];
+                $priceSum += $s['price'] * $s['qty'];
                 if ($s['at'] > (string) $r['artist_last_at']) $r['artist_last_at'] = $s['at'];
                 if ($it['tkey'] !== '' && $this->sameTitle($it['tkey'], $s['t'])) {
                     $r['title_sold'][$s['store']] += $s['qty'];
                     if ($s['at'] > (string) $r['title_last_at']) { $r['title_last_at'] = $s['at']; $r['title_last_price'] = round($s['price'], 2); }
                 }
             }
+            $artistQty = array_sum($r['artist_sold']);
+            if ($artistQty > 0 && $priceSum > 0) $r['artist_avg_price'] = round($priceSum / $artistQty, 2);
             foreach ($haveBy[$it['akey']] ?? [] as $h) {
                 $r['artist_have'][$h['store']] += $h['qty'];
                 if ($it['tkey'] !== '' && $this->sameTitle($it['tkey'], $h['t'])) $r['title_have'] += $h['qty'];
             }
-            [$r['verdict'], $r['where'], $r['why']] = $this->verdict($it, $r);
+            [$r['verdict'], $r['where'], $r['why']] = $this->verdict($it, $r, $recentFrom);
             foreach (['title_last_at', 'artist_last_at'] as $k) { if ($r[$k]) $r[$k] = substr($r[$k], 0, 10); }
             $rows[] = $r;
         }
@@ -210,34 +225,102 @@ class StoreOrDiscogsController extends Controller
     }
 
     /** [verdict: store|discogs|lean_discogs|unknown, where: Pico|Hollywood|Discogs, why] */
-    protected function verdict($it, $r)
+    protected function verdict($it, $r, $recentFrom)
     {
         if ($it['akey'] === '') return ['unknown', '', 'No artist on this line'];
-        $titleSold = $r['title_sold']['pico'] + $r['title_sold']['hollywood'] + $r['title_sold']['other'];
-        $artistSold = $r['artist_sold']['pico'] + $r['artist_sold']['hollywood'] + $r['artist_sold']['other'];
-        $have = $r['artist_have']['pico'] + $r['artist_have']['hollywood'] + $r['artist_have']['other'];
+        $titleSold = array_sum($r['title_sold']);
+        $artistSold = array_sum($r['artist_sold']);
+        $have = array_sum($r['artist_have']);
+        $overstocked = $have > max(1, $r['artist_sold_12m']) * self::OVERSTOCK_RATIO;
+        $sellThrough = $artistSold > 0 ? $artistSold / ($artistSold + $have) : 0;
+        $year = function ($at) { return substr((string) $at, 0, 4); };
         $best = function ($counts) {
             if ($counts['pico'] == $counts['hollywood']) return 'Pico or Hollywood';
             return $counts['pico'] > $counts['hollywood'] ? 'Pico' : 'Hollywood';
         };
 
+        $note = '';
         if ($titleSold > 0) {
-            $why = 'Sold this title ' . $this->n($titleSold) . 'x';
-            if ($have > max(1, $r['artist_sold_12m']) * self::OVERSTOCK_RATIO) {
-                $why .= ' (but we have ' . $this->n($have) . ' of the artist)';
+            if ((string) $r['title_last_at'] >= $recentFrom) {
+                $why = 'Sold this title ' . $this->n($titleSold) . 'x';
+                if ($overstocked) $why .= ' (but we have ' . $this->n($have) . ' of the artist)';
+                return ['store', $best($r['title_sold']), $why];
             }
-            return ['store', $best($r['title_sold']), $why];
+            $note = 'Title last sold ' . $year($r['title_last_at']) . '. ';
         }
         if ($artistSold > 0) {
-            if ($have > max(1, $r['artist_sold_12m']) * self::OVERSTOCK_RATIO) {
-                return ['discogs', 'Discogs', 'Artist sells (' . $this->n($r['artist_sold_12m']) . ' in 12 mo) but we already have ' . $this->n($have)];
+            if ($r['artist_sold_recent'] <= 0) {
+                return ['discogs', 'Discogs', $note . 'Artist last sold ' . $year($r['artist_last_at']) . ', nothing since'];
             }
-            return ['store', $best($r['artist_sold']), 'Sold this artist ' . $this->n($artistSold) . 'x, not this title'];
+            if ($overstocked) {
+                return ['discogs', 'Discogs', $note . 'Artist sells (' . $this->n($r['artist_sold_12m']) . ' in 12 mo) but we already have ' . $this->n($have)];
+            }
+            if ($sellThrough < self::MIN_SELL_THROUGH) {
+                return ['discogs', 'Discogs', $note . 'Only ' . round($sellThrough * 100) . '% of this artist we stocked has sold (' . $this->n($artistSold) . ' sold, ' . $this->n($have) . ' left)'];
+            }
+            return ['store', $best($r['artist_sold']), $note . 'Sold this artist ' . $this->n($artistSold) . 'x' . ($titleSold > 0 ? '' : ', not this title')];
         }
         if ($have >= self::NEVER_SOLD_HAVE_LOTS) {
             return ['discogs', 'Discogs', 'Never sold this artist, already have ' . $this->n($have)];
         }
         return ['lean_discogs', 'Discogs', 'Never sold this artist'];
+    }
+
+    /**
+     * What the album goes for on Discogs: top release match for artist + title,
+     * then its marketplace stats (lowest asking price, copies for sale) and
+     * community want/have. Cached 30 days per album. Discogs allows ~60 calls
+     * a minute and this is 2, so the page asks one album at a time.
+     */
+    public function value(Request $request)
+    {
+        if (!$this->allowed()) { abort(403); }
+        $business_id = $request->session()->get('user.business_id');
+        [$artist, $title] = [trim((string) $request->input('artist')), trim((string) $request->input('title'))];
+        if ($artist === '' && $title === '') return response()->json(['found' => false]);
+        $key = 'sod-value:' . md5($this->norm($artist) . '|' . $this->normTitle($title));
+        if ($hit = \Cache::get($key)) return response()->json($hit + ['cached' => true]);
+
+        $discogs = new \App\Services\DiscogsService($business_id);
+        if (!$discogs->isConfigured()) return response()->json(['found' => false, 'error' => 'Discogs not connected']);
+        $search = $discogs->getRelease(null, $artist, $title);
+        if (empty($search['error']) && empty($search['data']->results)) {
+            // "Beatles, The" style names miss the artist field; a plain query is looser.
+            $search = $discogs->getRelease(trim($artist . ' ' . $title));
+        }
+        if (!empty($search['error'])) {
+            $limited = strpos((string) $search['message'], '429') !== false;
+            return response()->json(['found' => false, 'error' => $search['message'], 'rate_limited' => $limited], $limited ? 429 : 200);
+        }
+        $hit = $search['data']->results[0] ?? null;
+        if (!$hit) {
+            $out = ['found' => false];
+            \Cache::put($key, $out, now()->addDays(30));
+            return response()->json($out);
+        }
+        $stats = $discogs->callApi('https://api.discogs.com/marketplace/stats/' . (int) $hit->id . '?curr_abbr=USD&token=' . urlencode($this->discogsToken($business_id)));
+        if (!empty($stats['error']) && strpos((string) $stats['message'], '429') !== false) {
+            return response()->json(['found' => false, 'rate_limited' => true], 429);
+        }
+        $st = $stats['data'] ?? null;
+        $out = [
+            'found' => true,
+            'release_id' => (int) $hit->id,
+            'uri' => 'https://www.discogs.com/release/' . (int) $hit->id,
+            'lowest' => isset($st->lowest_price->value) ? round((float) $st->lowest_price->value, 2) : null,
+            'for_sale' => isset($st->num_for_sale) ? (int) $st->num_for_sale : null,
+            'want' => (int) ($hit->community->want ?? 0),
+            'have' => (int) ($hit->community->have ?? 0),
+        ];
+        \Cache::put($key, $out, now()->addDays(30));
+        return response()->json($out);
+    }
+
+    protected function discogsToken($business_id)
+    {
+        $d = (new \App\Utils\BusinessUtil())->getApiSettings($business_id)['discogs'] ?? [];
+        $t = trim((string) ($d['token'] ?? ''));
+        return $t !== '' ? $t : trim((string) ($d['user_token'] ?? ''));
     }
 
     protected function n($x)

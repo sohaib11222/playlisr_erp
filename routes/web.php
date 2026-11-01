@@ -455,6 +455,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/store-or-discogs', 'StoreOrDiscogsController@index');
     Route::post('/store-or-discogs/check', 'StoreOrDiscogsController@check');
     Route::get('/store-or-discogs/unpriced-buys', 'StoreOrDiscogsController@unpricedBuys');
+    Route::post('/store-or-discogs/value', 'StoreOrDiscogsController@value');
     Route::get('/products/fix-barcodes', 'BarcodeFixController@index');
     Route::get('/products/fix-barcodes/data', 'BarcodeFixController@data');
     Route::get('/products/fix-barcodes/scan', 'BarcodeFixController@scan');
