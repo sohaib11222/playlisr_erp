@@ -152,6 +152,21 @@
         return parts.length ? '<div class="sd-sub">' + parts.join(' · ') + '</div>' : '';
     }
 
+    // Rough price: what this title sold for here > what copies on our shelves are priced at >
+    // the online price > the artist's average sale (music). Returns [price, where it came from].
+    function estimate(r) {
+        if (r.sold_median != null) return [r.sold_median, 'our sales (' + r.sold_median_n + ')'];
+        if (r.shelf_price != null) return [r.shelf_price, 'our shelf price'];
+        if (r.dv && r.dv.price != null) return [r.dv.price, r.dv.source === 'ebay' ? 'eBay' : 'Discogs'];
+        if (r.artist_avg_price != null) return [r.artist_avg_price, 'artist average'];
+        return null;
+    }
+    function priceCell(r) {
+        var e = estimate(r);
+        if (!e) return r.dv === 'pending' ? '<span class="sd-sub">…</span>' : '<span class="sd-zero">?</span>';
+        return '<b>~$' + Math.round(e[0]) + '</b><div class="sd-sub">' + esc(e[1]) + '</div>';
+    }
+
     function render() {
         var counts = { all: rows.length };
         rows.forEach(function (r) { var v = fin(r).v; counts[v] = (counts[v] || 0) + 1; });
@@ -162,7 +177,7 @@
         if (!rows.length) { out.innerHTML = ''; copyBtn.style.display = 'none'; return; }
         copyBtn.style.display = '';
         var music = mode === 'music';
-        out.innerHTML = '<table class="sd-table"><thead><tr><th>' + (music ? 'Album' : 'Item') + '</th><th>Verdict</th><th>Why</th>'
+        out.innerHTML = '<table class="sd-table"><thead><tr><th>' + (music ? 'Album' : 'Item') + '</th><th>Verdict</th><th class="sd-num">Price</th><th>Why</th>'
             + (music ? '<th>Format</th>' : '')
             + '<th class="sd-num">' + (music ? 'Title sold' : 'Sold') + '</th><th class="sd-num">Value</th>'
             + '<th class="sd-num">Pico for sale</th><th class="sd-num">Hollywood for sale</th><th class="sd-num">' + esc(otherStore) + ' for sale</th>'
@@ -176,6 +191,7 @@
                     + '<td><span class="sd-v ' + f.v + '">' + esc(f.where) + '</span>'
                     + (r.never_had_at && r.never_had_at.length ? (r.never_had_at.map(function (st) { return '<div style="margin-top:4px"><span class="sd-v never_had">Never had for sale at ' + esc(st) + '</span></div>'; }).join('')) : '')
                     + (music && mainFormat(r) ? '<div class="sd-sub">mostly ' + esc(mainFormat(r)) + '</div>' : '') + '</td>'
+                    + '<td class="sd-num">' + priceCell(r) + '</td>'
                     + '<td>' + esc(f.why) + shelfLine(r) + (r.artist_last_at ? '<div class="sd-sub">artist last sold ' + esc(r.artist_last_at) + '</div>' : '')
                     + (!music && r.title_last_at ? '<div class="sd-sub">last sold ' + esc(r.title_last_at) + '</div>' : '') + '</td>'
                     + (music ? '<td>' + formatCell(r) + '</td>' : '')
@@ -269,10 +285,10 @@
     });
 
     copyBtn.addEventListener('click', function () {
-        var head = ['Artist', 'Title', 'Verdict', 'Format', 'Why', 'Sold', 'Our last price', 'Online price', 'Pico for sale', 'Hollywood for sale', otherStore + ' for sale', 'Pico days on shelf', 'Hollywood days on shelf', 'Artist sold', 'Artist 12 mo', 'Artist on hand', 'On hand', 'Listings'];
+        var head = ['Artist', 'Title', 'Verdict', 'Price estimate', 'Price from', 'Format', 'Why', 'Sold', 'Our last price', 'Online price', 'Pico for sale', 'Hollywood for sale', otherStore + ' for sale', 'Pico days on shelf', 'Hollywood days on shelf', 'Artist sold', 'Artist 12 mo', 'Artist on hand', 'On hand', 'Listings'];
         var tsv = [head.join('\t')].concat(rows.filter(function (r) { return filter === 'all' || fin(r).v === filter; }).map(function (r) {
-            var f = fin(r);
-            return [r.artist, r.title, f.where + (r.never_had_at && r.never_had_at.length ? '; never had for sale at ' + r.never_had_at.join(' and ') : ''), fmtList(Object.keys(r.title_fmt || {}).length ? r.title_fmt : r.artist_fmt), f.why, sum(r.title_sold), r.title_last_price == null ? '' : r.title_last_price,
+            var f = fin(r), e = estimate(r);
+            return [r.artist, r.title, f.where + (r.never_had_at && r.never_had_at.length ? '; never had for sale at ' + r.never_had_at.join(' and ') : ''), e ? Math.round(e[0]) : '', e ? e[1] : '', fmtList(Object.keys(r.title_fmt || {}).length ? r.title_fmt : r.artist_fmt), f.why, sum(r.title_sold), r.title_last_price == null ? '' : r.title_last_price,
                 r.dv && r.dv.price != null ? r.dv.price : '', r.for_sale.pico, r.for_sale.hollywood, r.for_sale.other,
                 r.shelf && r.shelf.pico && r.shelf.pico.shelf_days != null ? r.shelf.pico.shelf_days : '', r.shelf && r.shelf.hollywood && r.shelf.hollywood.shelf_days != null ? r.shelf.hollywood.shelf_days : '',
                 sum(r.artist_sold), r.artist_sold_12m, sum(r.artist_have), r.title_have, mode === 'music' ? r.artist_listed : r.title_listed].join('\t');

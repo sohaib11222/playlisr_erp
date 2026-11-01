@@ -192,6 +192,8 @@ class StoreOrDiscogsController extends Controller
             $r['artist_listed'] = (int) ($listedBy[$it['akey']] ?? 0);
             $r['had_at'] = $hadAt[$it['akey']] ?? [];
             $priceSum = 0;
+            $soldPrices = [];
+            $shelfPrices = [];
             foreach ($soldBy[$it['akey']] ?? [] as $s) {
                 $r['artist_sold'][$s['store']] += $s['qty'];
                 $this->addFmt($r['artist_fmt'], $s['fmt'], $s['qty']);
@@ -203,6 +205,7 @@ class StoreOrDiscogsController extends Controller
                     $r['title_sold'][$s['store']] += $s['qty'];
                     $this->addFmt($r['title_fmt'], $s['fmt'], $s['qty']);
                     if ($s['at'] > (string) $r['title_last_at']) { $r['title_last_at'] = $s['at']; $r['title_last_price'] = round($s['price'], 2); }
+                    $soldPrices[] = [$s['price'], $s['at']];
                 }
             }
             $artistQty = array_sum($r['artist_sold']);
@@ -212,9 +215,13 @@ class StoreOrDiscogsController extends Controller
                 if ($it['tkey'] !== '' && $this->sameTitle($it['tkey'], $h['t'])) {
                     $r['title_have'] += $h['qty'];
                     $this->addFmt($r['title_have_fmt'], $h['fmt'], $h['qty']);
-                    if ($h['for_sale']) $r['for_sale'][$h['store']] += $h['qty'];
+                    if ($h['for_sale']) {
+                        $r['for_sale'][$h['store']] += $h['qty'];
+                        $shelfPrices[] = $h['price'];
+                    }
                 }
             }
+            $this->setPriceHints($r, $soldPrices, $shelfPrices, $recentFrom);
             [$r['verdict'], $r['where'], $r['why']] = $this->musicVerdict($it, $r, $recentFrom);
             $r['never_had_at'] = $this->neverHadAt($r);
             $r['_ids'] = $idsBy[$it['akey']] ?? [];
@@ -365,7 +372,7 @@ class StoreOrDiscogsController extends Controller
         foreach ($stock as $v) {
             $p = $products[$v->product_id];
             $haveBy[$this->norm($p->artist)][] = ['t' => $this->normTitle($this->stripArtistPrefix($p->name, $p->artist)),
-                'fmt' => $this->formatOf($p->cat), 'for_sale' => $this->forSale($p),
+                'fmt' => $this->formatOf($p->cat), 'for_sale' => $this->forSale($p), 'price' => (float) $v->price,
                 'store' => $storeOf[(int) $v->location_id] ?? 'other', 'qty' => (float) $v->qty_available];
         }
 
@@ -464,6 +471,8 @@ class StoreOrDiscogsController extends Controller
             $r['title_listed'] = count($matchIds[$i]);
             $sold12m = 0;
             $soldRecent = 0;
+            $soldPrices = [];
+            $shelfPrices = [];
             foreach ($matchIds[$i] as $pid) {
                 foreach ($salesBy[$pid] ?? [] as $s) {
                     if ((float) $s->qty <= 0) continue;
@@ -472,14 +481,19 @@ class StoreOrDiscogsController extends Controller
                     if ($s->sold_at >= $yearAgo) $sold12m += (float) $s->qty;
                     if ($s->sold_at >= $recentFrom) $soldRecent += (float) $s->qty;
                     if ($s->sold_at > (string) $r['title_last_at']) { $r['title_last_at'] = $s->sold_at; $r['title_last_price'] = round((float) $s->price, 2); }
+                    $soldPrices[] = [(float) $s->price, (string) $s->sold_at];
                 }
                 foreach ($everAtBy[$pid] ?? [] as $v) $r['had_at'][$storeOf[(int) $v->location_id] ?? 'other'] = true;
                 foreach ($stockBy[$pid] ?? [] as $v) {
                     $r['title_have'] += (float) $v->qty_available;
-                    if ($this->forSale($byId[$pid])) $r['for_sale'][$storeOf[(int) $v->location_id] ?? 'other'] += (float) $v->qty_available;
+                    if ($this->forSale($byId[$pid])) {
+                        $r['for_sale'][$storeOf[(int) $v->location_id] ?? 'other'] += (float) $v->qty_available;
+                        $shelfPrices[] = (float) $v->price;
+                    }
                 }
             }
             $r['title_sold_12m'] = $sold12m;
+            $this->setPriceHints($r, $soldPrices, $shelfPrices, $recentFrom);
             $sold = array_sum($r['title_sold']);
             if (!$it['words']) {
                 $v = ['unknown', '', 'Nothing to match on this line'];
@@ -530,8 +544,10 @@ class StoreOrDiscogsController extends Controller
                 ->get(['tsl.product_id', 't.location_id', 't.transaction_date as sold_at', 'tsl.unit_price_inc_tax as price',
                     \DB::raw('tsl.quantity - COALESCE(tsl.quantity_returned, 0) as qty')]));
             // Every stock row, sold-out ones too: a row at a location = it was stocked there at some point.
-            $rows = \DB::table('variation_location_details')->whereIn('product_id', $chunk)
-                ->get(['product_id', 'location_id', 'qty_available']);
+            $rows = \DB::table('variation_location_details as vld')
+                ->leftJoin('variations as v', 'v.id', '=', 'vld.variation_id')
+                ->whereIn('vld.product_id', $chunk)
+                ->get(['vld.product_id', 'vld.location_id', 'vld.qty_available', 'v.sell_price_inc_tax as price']);
             $stock = $stock->merge($rows->filter(function ($v) { return (float) $v->qty_available > 0; }));
             $everAt = $everAt->merge($rows);
         }
@@ -547,6 +563,9 @@ class StoreOrDiscogsController extends Controller
             'artist_have' => $z, 'artist_listed' => 0,
             // This exact title/item in stock and actually for sale (priced, active), per store.
             'for_sale' => $z,
+            // Price hints for the page's rough estimate: median this title sold for
+            // (recent sales if any) and median shelf price of copies for sale now.
+            'sold_median' => null, 'sold_median_n' => 0, 'shelf_price' => null,
             // Stores that ever stocked it (any stock row, sold out or not); Never sold rows
             // list the stores that never did.
             'had_at' => [], 'never_had_at' => [],
@@ -620,6 +639,25 @@ class StoreOrDiscogsController extends Controller
         }
         unset($r);
         return $rows;
+    }
+
+    protected function setPriceHints(&$r, $soldPrices, $shelfPrices, $recentFrom)
+    {
+        $recent = array_filter($soldPrices, function ($x) use ($recentFrom) { return $x[1] >= $recentFrom && $x[0] > 0; });
+        $use = $recent ?: array_filter($soldPrices, function ($x) { return $x[0] > 0; });
+        $vals = array_map(function ($x) { return $x[0]; }, $use);
+        $r['sold_median'] = $this->median($vals);
+        $r['sold_median_n'] = count($vals);
+        $r['shelf_price'] = $this->median(array_filter($shelfPrices, function ($p) { return $p > 0; }));
+    }
+
+    protected function median($vals)
+    {
+        $vals = array_values($vals);
+        if (!$vals) return null;
+        sort($vals);
+        $n = count($vals);
+        return round($n % 2 ? $vals[intdiv($n, 2)] : ($vals[$n / 2 - 1] + $vals[$n / 2]) / 2, 2);
     }
 
     /** For a Never sold row: the stores (Pico / Hollywood) that never even had it for sale. */
