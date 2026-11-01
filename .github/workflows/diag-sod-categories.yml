@@ -1,0 +1,33 @@
+# Read-only: runs the Store or Discogs? category check: per-category artist fill
+# rate, legacy formats, eBay price test. Writes nothing.
+
+name: Diag store or discogs categories (read-only)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Run diag
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          command_timeout: 30m
+          script: |
+            set -e
+            cd /www/playlist.nivessa.com/app
+            echo 'PD9waHAKcmVxdWlyZSAndmVuZG9yL2F1dG9sb2FkLnBocCc7CiRhcHAgPSByZXF1aXJlICdib290c3RyYXAvYXBwLnBocCc7CiRhcHAtPm1ha2UoSWxsdW1pbmF0ZVxDb250cmFjdHNcQ29uc29sZVxLZXJuZWw6OmNsYXNzKS0+Ym9vdHN0cmFwKCk7CiRiaWQgPSAoaW50KSBEQjo6dGFibGUoJ3Byb2R1Y3RzJyktPnZhbHVlKCdidXNpbmVzc19pZCcpOwokZnJvbSA9IG5vdygpLT5zdWJZZWFycygzKS0+dG9EYXRlVGltZVN0cmluZygpOwokcm93cyA9IERCOjpzZWxlY3QoIlNFTEVDVCBjLmlkLCBjLm5hbWUsIGMuZWJheV9jYXRlZ29yeV9pZHMgZWIsIENPVU5UKHAuaWQpIG4sIFNVTShDT0FMRVNDRShUUklNKHAuYXJ0aXN0KSwnJyk8PicnKSB3aXRoX2FydGlzdCwKICAoU0VMRUNUIENPQUxFU0NFKFNVTSh0c2wucXVhbnRpdHkpLDApIEZST00gdHJhbnNhY3Rpb25fc2VsbF9saW5lcyB0c2wgSk9JTiB0cmFuc2FjdGlvbnMgdCBPTiB0LmlkPXRzbC50cmFuc2FjdGlvbl9pZCBKT0lOIHByb2R1Y3RzIHAyIE9OIHAyLmlkPXRzbC5wcm9kdWN0X2lkCiAgICAgV0hFUkUgcDIuY2F0ZWdvcnlfaWQ9Yy5pZCBBTkQgdC50eXBlPSdzZWxsJyBBTkQgdC5zdGF0dXM9J2ZpbmFsJyBBTkQgdC50cmFuc2FjdGlvbl9kYXRlPj0/KSBzb2xkM3kKICBGUk9NIGNhdGVnb3JpZXMgYyBMRUZUIEpPSU4gcHJvZHVjdHMgcCBPTiBwLmNhdGVnb3J5X2lkPWMuaWQgQU5EIHAuYnVzaW5lc3NfaWQ9PwogIFdIRVJFIGMuYnVzaW5lc3NfaWQ9PyBBTkQgYy5wYXJlbnRfaWQ9MCBBTkQgYy5jYXRlZ29yeV90eXBlPSdwcm9kdWN0JyBBTkQgYy5kZWxldGVkX2F0IElTIE5VTEwKICBHUk9VUCBCWSBjLmlkLCBjLm5hbWUsIGMuZWJheV9jYXRlZ29yeV9pZHMgT1JERVIgQlkgbiBERVNDIiwgWyRmcm9tLCAkYmlkLCAkYmlkXSk7CmZvcmVhY2ggKCRyb3dzIGFzICRyKSBwcmludGYoIkNBVHwlZHwlc3xwcm9kdWN0cz0lZHxhcnRpc3RfZmlsbGVkPSVkJSV8c29sZDN5PSVkfGViYXk9JXNcbiIsICRyLT5pZCwgJHItPm5hbWUsICRyLT5uLCAkci0+biA/IHJvdW5kKDEwMCokci0+d2l0aF9hcnRpc3QvJHItPm4pIDogMCwgJHItPnNvbGQzeSwgJHItPmViKTsKZm9yZWFjaCAoWydCb29rJywnRFZEJywnVkhTJywnUG9zdGVyJywnS2V5Y2hhaW4nLCdDb21pYyddIGFzICRrKSB7CiAgJGV4ID0gREI6OnRhYmxlKCdwcm9kdWN0cyBhcyBwJyktPmpvaW4oJ2NhdGVnb3JpZXMgYXMgYycsJ2MuaWQnLCc9JywncC5jYXRlZ29yeV9pZCcpLT53aGVyZSgnYy5uYW1lJywnbGlrZScsIiUkayUiKS0+d2hlcmUoJ3AuYnVzaW5lc3NfaWQnLCRiaWQpCiAgICAtPm9yZGVyQnlEZXNjKCdwLmlkJyktPmxpbWl0KDUpLT5nZXQoWydwLmFydGlzdCcsJ3AubmFtZScsJ2MubmFtZSBhcyBjYXQnXSk7CiAgZm9yZWFjaCAoJGV4IGFzICRlKSBwcmludGYoIkVYfCVzfCVzfCVzXG4iLCAkaywgJGUtPmFydGlzdCwgJGUtPm5hbWUpOwp9CiRsZWdhY3lGb3JtYXRzID0gREI6OnRhYmxlKCd0cmFuc2FjdGlvbl9zZWxsX2xpbmVzJyktPndoZXJlTm90TnVsbCgnbGVnYWN5X2Zvcm1hdCcpLT5zZWxlY3QoJ2xlZ2FjeV9mb3JtYXQnLCBEQjo6cmF3KCdjb3VudCgqKSBuJykpLT5ncm91cEJ5KCdsZWdhY3lfZm9ybWF0JyktPm9yZGVyQnlEZXNjKCduJyktPmxpbWl0KDI1KS0+Z2V0KCk7CmZvcmVhY2ggKCRsZWdhY3lGb3JtYXRzIGFzICRsKSBwcmludGYoIkxGfCVzfCVkXG4iLCAkbC0+bGVnYWN5X2Zvcm1hdCwgJGwtPm4pOwp0cnkgewogICRlID0gbmV3IEFwcFxTZXJ2aWNlc1xFYmF5U2VydmljZSgkYmlkKTsKICBwcmludGYoIkVCQVkgY29uZmlndXJlZD0lc1xuIiwgdmFyX2V4cG9ydCgkZS0+aXNDb25maWd1cmVkKCksIHRydWUpKTsKICAkdCA9IG1pY3JvdGltZSh0cnVlKTsKICBwcmludGYoIkVCQVkgdGVzdCAlcyAlLjJmc1xuIiwganNvbl9lbmNvZGUoJGUtPmdldFByaWNlUmVjb21tZW5kYXRpb25zKCdOaXJ2YW5hIHBvc3RlcicpKSwgbWljcm90aW1lKHRydWUpLSR0KTsKICBwcmludGYoIkVCQVkgdGVzdDIgJXNcbiIsIGpzb25fZW5jb2RlKGFycmF5X3NsaWNlKCRlLT5nZXRQcm9kdWN0UHJpY2UoJ1B1bHAgRmljdGlvbiBWSFMnKSwgMCwgMykpKTsKfSBjYXRjaCAoXFRocm93YWJsZSAkeCkgeyBlY2hvICJFQkFZIEVSUiAiLiR4LT5nZXRNZXNzYWdlKCkuIlxuIjsgfQo=' | base64 -d > /tmp/diag_sodc.php
+            php /tmp/diag_sodc.php
+            rm -f /tmp/diag_sodc.php
