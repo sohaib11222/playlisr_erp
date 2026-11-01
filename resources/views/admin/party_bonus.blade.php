@@ -82,7 +82,7 @@
     @if (count($unpaid_parties) > 0)
         <div style="margin-top:16px; border-top:1px solid #eee; padding-top:12px;">
             <div style="font-weight:700; color:#b3402e;">{{ count($unpaid_parties) }} {{ count($unpaid_parties) === 1 ? 'party' : 'parties' }} with nothing paid out yet</div>
-            <p class="text-muted" style="font-size:12px; margin:4px 0 8px;">Calculated at {{ rtrim(rtrim(number_format(\App\Http\Controllers\ListingCommissionController::PARTY_DEFAULT_PERCENT, 2), '0'), '.') }}% of the event's window, split among whoever had a live Sling floor shift (Cashier/Event Lead/Floor Sales) during it. Hit Pay to record it as shown, or Adjust to change staff/amounts first.</p>
+            <p class="text-muted" style="font-size:12px; margin:4px 0 8px;">Calculated at {{ rtrim(rtrim(number_format(\App\Http\Controllers\ListingCommissionController::PARTY_DEFAULT_PERCENT, 2), '0'), '.') }}% of what checked-in guests bought that day, split among whoever had a live Sling floor shift (Cashier/Event Lead/Floor Sales) during it. Hit Pay to record it as shown, or Adjust to change staff/amounts first.</p>
             <table class="pb-table">
                 <thead><tr><th>Date</th><th>Party</th><th>Store</th><th>Split</th><th></th></tr></thead>
                 <tbody>
