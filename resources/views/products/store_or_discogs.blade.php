@@ -24,7 +24,7 @@
 .sd-v { display: inline-block; border-radius: 8px; padding: 3px 9px; font-weight: 700; font-size: 13px; white-space: nowrap; }
 .sd-v.store { background: #E3F2E1; color: #24622A; }
 .sd-v.discogs { background: #FBE3DC; color: #9A3A1F; }
-.sd-v.lean_discogs { background: #FCEFD9; color: #8A5A12; }
+.sd-v.never_sold { background: #FCEFD9; color: #8A5A12; }
 .sd-v.unknown { background: #EEE; color: #666; }
 .sd-v.cheap { background: #ECE7F6; color: #5A3F8C; }
 .sd-min { width: 64px; height: 36px; border: 1px solid #E1D7C4; border-radius: 8px; padding: 0 8px; font-size: 15px; }
@@ -46,8 +46,8 @@
     <p class="sd-help" style="margin-top:14px">
         <b>How it decides:</b> sold this title in the last {{ $recentYears }} years → the store that sold it most.
         Sold the artist → the store that sold the artist most, unless: no artist sales in {{ $recentYears }} years, or we already have more than {{ $overstockRatio }}× what the artist sold in the last 12 months on the shelves, or under {{ $minSellThrough }}% of the artist we've stocked ever sold → Discogs.
-        Never sold the artist → Discogs.
-        Anything headed to Discogs then gets its Discogs price checked; if the cheapest copy for sale is under the amount above, it's <b>Bargain bin</b>: not worth listing, and it won't sell at full price in the store either.
+        Anything headed to Discogs then gets its Discogs price checked; if the cheapest copy for sale is under the amount above, it's <b>Bargain bin</b>: not worth listing, and it doesn't move in the store either.
+        Never sold the artist → <b>Never sold</b>: no history to go on, so it shows the Discogs price and you decide.
     </p>
 </div>
 @endsection
@@ -60,14 +60,18 @@
     var input = document.getElementById('sdIn'), go = document.getElementById('sdGo'), status = document.getElementById('sdStatus');
     var out = document.getElementById('sdOut'), summary = document.getElementById('sdSummary'), copyBtn = document.getElementById('sdCopy');
     var rows = [], filter = 'all';
-    var LABEL = { store: 'Store', discogs: 'Discogs', lean_discogs: 'Lean Discogs', cheap: 'Bargain bin', unknown: '?' };
+    var LABEL = { store: 'Store', discogs: 'Discogs', never_sold: 'Never sold', cheap: 'Bargain bin', unknown: '?' };
     var minIn = document.getElementById('sdMin'), runId = 0;
     function minValue() { var v = parseFloat(minIn.value); return isNaN(v) ? 0 : v; }
-    function needsValue(r) { return r.verdict === 'discogs' || r.verdict === 'lean_discogs'; }
+    function needsValue(r) { return r.verdict === 'discogs' || r.verdict === 'never_sold'; }
     // Final call = server verdict, then the Discogs price gate on anything headed to Discogs.
     function fin(r) {
-        if (needsValue(r) && r.dv && r.dv.lowest != null && r.dv.lowest < minValue()) {
+        var cheap = r.dv && r.dv.lowest != null && r.dv.lowest < minValue();
+        if (cheap && r.verdict === 'discogs') {
             return { v: 'cheap', where: 'Bargain bin', why: r.why + ' · cheapest on Discogs $' + r.dv.lowest.toFixed(2) };
+        }
+        if (cheap && r.verdict === 'never_sold') {
+            return { v: r.verdict, where: 'Never sold', why: r.why + ' · cheap on Discogs ($' + r.dv.lowest.toFixed(2) + ')' };
         }
         return { v: r.verdict, where: r.where || LABEL[r.verdict], why: r.why };
     }
@@ -94,9 +98,9 @@
     }
 
     function render() {
-        var counts = { all: rows.length, store: 0, discogs: 0, lean_discogs: 0, cheap: 0 };
+        var counts = { all: rows.length, store: 0, discogs: 0, never_sold: 0, cheap: 0 };
         rows.forEach(function (r) { var v = fin(r).v; if (counts[v] != null) counts[v]++; });
-        summary.innerHTML = [['all', 'All'], ['store', 'Store'], ['discogs', 'Discogs'], ['lean_discogs', 'Lean Discogs'], ['cheap', 'Bargain bin']].map(function (c) {
+        summary.innerHTML = [['all', 'All'], ['store', 'Store'], ['discogs', 'Discogs'], ['never_sold', 'Never sold'], ['cheap', 'Bargain bin']].map(function (c) {
             return '<span class="sd-chip' + (filter === c[0] ? ' on' : '') + '" data-f="' + c[0] + '">' + c[1] + ' ' + counts[c[0]] + '</span>';
         }).join('');
         var shown = rows.filter(function (r) { return filter === 'all' || fin(r).v === filter; });
@@ -109,7 +113,7 @@
                 var q = encodeURIComponent((r.artist + ' ' + r.title).trim()), f = fin(r);
                 return '<tr><td><b>' + esc(r.artist) + '</b>' + (r.title ? '<div>' + esc(r.title) + '</div>' : '') + '</td>'
                     + '<td><span class="sd-v ' + f.v + '">' + esc(f.where) + '</span>'
-                    + (f.v === 'lean_discogs' ? '<div class="sd-sub">lean</div>' : '') + '</td>'
+                    + '</td>'
                     + '<td>' + esc(f.why) + (r.artist_last_at ? '<div class="sd-sub">artist last sold ' + esc(r.artist_last_at) + '</div>' : '') + '</td>'
                     + '<td class="sd-num">' + num(sum(r.title_sold)) + split(r.title_sold) + '</td>'
                     + '<td class="sd-num">' + valueCell(r) + '</td>'

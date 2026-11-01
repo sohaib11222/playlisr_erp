@@ -16,8 +16,7 @@ use Illuminate\Http\Request;
  *   sold this title before                 → store that sold it most
  *   sold the artist, not overstocked       → store that sold the artist most
  *   sold the artist, shelves already full  → Discogs (overstocked)
- *   never sold the artist, have 3+ already → Discogs
- *   never sold the artist, have few        → lean Discogs (no history)
+ *   never sold the artist                  → "Never sold" (no call; page shows the Discogs price)
  *
  * Counts include the imported pre-ERP sales sheets (legacy_artist /
  * legacy_title). One batch = a handful of queries, not one per album.
@@ -28,8 +27,6 @@ class StoreOrDiscogsController extends Controller
     const MAX_LINES = 60;
     /** Artist copies on hand per copy sold in the last 12 months before we call it overstocked. */
     const OVERSTOCK_RATIO = 3;
-    /** Never-sold artist with this many copies already on hand = clearly a Discogs artist. */
-    const NEVER_SOLD_HAVE_LOTS = 3;
     /** Sales older than this many years don't count as "it sells here". */
     const RECENT_YEARS = 3;
     /** Artist sell-through (sold ÷ (sold + on hand)) below this = it doesn't move here. */
@@ -49,7 +46,6 @@ class StoreOrDiscogsController extends Controller
         if (!$this->allowed()) { abort(403); }
         return view('products.store_or_discogs', [
             'overstockRatio' => self::OVERSTOCK_RATIO,
-            'neverSoldLots' => self::NEVER_SOLD_HAVE_LOTS,
             'maxLines' => self::MAX_LINES,
             'recentYears' => self::RECENT_YEARS,
             'minSellThrough' => (int) round(self::MIN_SELL_THROUGH * 100),
@@ -269,7 +265,7 @@ class StoreOrDiscogsController extends Controller
         return [$soldBy, $haveBy];
     }
 
-    /** [verdict: store|discogs|lean_discogs|unknown, where: Pico|Hollywood|Discogs, why] */
+    /** [verdict: store|discogs|never_sold|unknown, where: Pico|Hollywood|Discogs|Never sold, why] */
     protected function verdict($it, $r, $recentFrom)
     {
         if ($it['akey'] === '') return ['unknown', '', 'No artist on this line'];
@@ -305,10 +301,8 @@ class StoreOrDiscogsController extends Controller
             }
             return ['store', $best($r['artist_sold']), $note . 'Sold this artist ' . $this->n($artistSold) . 'x' . ($titleSold > 0 ? '' : ', not this title')];
         }
-        if ($have >= self::NEVER_SOLD_HAVE_LOTS) {
-            return ['discogs', 'Discogs', 'Never sold this artist, already have ' . $this->n($have)];
-        }
-        return ['lean_discogs', 'Discogs', 'Never sold this artist'];
+        // No history = no call either way; the page shows the Discogs price next to it.
+        return ['never_sold', 'Never sold', $have > 0 ? 'Never sold this artist, already have ' . $this->n($have) : 'Never sold this artist'];
     }
 
     /**
