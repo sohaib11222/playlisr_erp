@@ -207,6 +207,7 @@ class StoreOrDiscogsController extends Controller
                 if ($it['tkey'] !== '' && $this->sameTitle($it['tkey'], $h['t'])) {
                     $r['title_have'] += $h['qty'];
                     $this->addFmt($r['title_have_fmt'], $h['fmt'], $h['qty']);
+                    if ($h['for_sale']) $r['for_sale'][$h['store']] += $h['qty'];
                 }
             }
             [$r['verdict'], $r['where'], $r['why']] = $this->musicVerdict($it, $r, $recentFrom);
@@ -297,7 +298,7 @@ class StoreOrDiscogsController extends Controller
                 ->where('p.business_id', $business_id)->where('p.sku', '!=', 'NIV-LEGACY-HIST');
             if ($cat) $pq->where('p.category_id', $cat->id);
             $likeAny($pq, 'p.artist');
-            $products = $pq->get(['p.id', 'p.artist', 'p.name', 'c.name as cat'])->filter(function ($p) use ($wanted) {
+            $products = $pq->get(['p.id', 'p.artist', 'p.name', 'c.name as cat', 'p.not_for_selling', 'p.is_inactive'])->filter(function ($p) use ($wanted) {
                 return isset($wanted[$this->norm($p->artist)]);
             })->keyBy('id');
 
@@ -351,7 +352,7 @@ class StoreOrDiscogsController extends Controller
         foreach ($stock as $v) {
             $p = $products[$v->product_id];
             $haveBy[$this->norm($p->artist)][] = ['t' => $this->normTitle($this->stripArtistPrefix($p->name, $p->artist)),
-                'fmt' => $this->formatOf($p->cat),
+                'fmt' => $this->formatOf($p->cat), 'for_sale' => $this->forSale($p),
                 'store' => $storeOf[(int) $v->location_id] ?? 'other', 'qty' => (float) $v->qty_available];
         }
 
@@ -422,7 +423,7 @@ class StoreOrDiscogsController extends Controller
 
         // Categories outside music are small (thousands), so load the category once and match in PHP.
         $products = \DB::table('products')->where('business_id', $business_id)->where('category_id', $cat->id)
-            ->get(['id', 'artist', 'name'])
+            ->get(['id', 'artist', 'name', 'not_for_selling', 'is_inactive'])
             ->map(function ($p) { $p->words = array_flip($this->itemWords($p->artist . ' ' . $p->name)); return $p; });
 
         $matchIds = [];
@@ -439,6 +440,7 @@ class StoreOrDiscogsController extends Controller
         [$sales, $stock] = $this->salesAndStock($business_id, array_keys($allIds));
         $salesBy = $sales->groupBy('product_id');
         $stockBy = $stock->groupBy('product_id');
+        $byId = $products->keyBy('id');
 
         $yearAgo = now()->subYear()->toDateTimeString();
         $recentFrom = now()->subYears(self::RECENT_YEARS)->toDateTimeString();
@@ -457,7 +459,10 @@ class StoreOrDiscogsController extends Controller
                     if ($s->sold_at >= $recentFrom) $soldRecent += (float) $s->qty;
                     if ($s->sold_at > (string) $r['title_last_at']) { $r['title_last_at'] = $s->sold_at; $r['title_last_price'] = round((float) $s->price, 2); }
                 }
-                foreach ($stockBy[$pid] ?? [] as $v) $r['title_have'] += (float) $v->qty_available;
+                foreach ($stockBy[$pid] ?? [] as $v) {
+                    $r['title_have'] += (float) $v->qty_available;
+                    if ($this->forSale($byId[$pid])) $r['for_sale'][$storeOf[(int) $v->location_id] ?? 'other'] += (float) $v->qty_available;
+                }
             }
             $r['title_sold_12m'] = $sold12m;
             $sold = array_sum($r['title_sold']);
@@ -520,6 +525,8 @@ class StoreOrDiscogsController extends Controller
             'title_sold' => $z, 'title_last_price' => null, 'title_last_at' => null, 'title_have' => 0, 'title_listed' => 0, 'title_sold_12m' => 0,
             'artist_sold' => $z, 'artist_sold_12m' => 0, 'artist_sold_recent' => 0, 'artist_last_at' => null, 'artist_avg_price' => null,
             'artist_have' => $z, 'artist_listed' => 0,
+            // This exact title/item in stock and actually for sale (priced, active), per store.
+            'for_sale' => $z,
             // Music only: copies by format (Vinyl / CD / Cassette / Other), most first.
             'title_fmt' => [], 'artist_fmt' => [], 'title_have_fmt' => []];
     }
@@ -540,6 +547,12 @@ class StoreOrDiscogsController extends Controller
         if (preg_match('/\bcds?\b|compact disc/', $s)) return 'CD';
         if (preg_match('/cass|tape|8 track/', $s)) return 'Cassette';
         return 'Other';
+    }
+
+    /** Active and priced: not an unpriced Buy-from-Customer copy or a retired listing. */
+    protected function forSale($p)
+    {
+        return empty($p->not_for_selling) && empty($p->is_inactive);
     }
 
     protected function addFmt(&$bucket, $fmt, $qty)
