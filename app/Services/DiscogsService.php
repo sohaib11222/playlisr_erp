@@ -250,6 +250,11 @@ class DiscogsService
                 if ($method === 'POST' && !empty($this->token)) {
                     $headers[] = 'Authorization: Discogs token=' . $this->token;
                 }
+                // Discogs write endpoints (marketplace/listings) only accept a
+                // JSON body; form-encoded POSTs get 400 "Not a JSON request".
+                if ($method === 'POST') {
+                    $headers[] = 'Content-Type: application/json';
+                }
 
                 curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 
@@ -267,7 +272,9 @@ class DiscogsService
                 if ($method === 'POST') {
                     curl_setopt($ch, CURLOPT_POST, true);
                     if (!empty($data)) {
-                        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
+                        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(array_filter($data, function ($v) {
+                            return $v !== null;
+                        })));
                     }
                 }
 
@@ -339,7 +346,8 @@ class DiscogsService
                 'condition' => $productData['condition'] ?? 'Mint (M)',
                 'comments' => $productData['comments'] ?? '',
                 'allow_offers' => $productData['allow_offers'] ?? true,
-                'external_id' => $productData['external_id'] ?? null
+                'external_id' => $productData['external_id'] ?? null,
+                'location' => $productData['location'] ?? null
             ];
 
             $response = $this->callApi($url, 'POST', $listingData);
