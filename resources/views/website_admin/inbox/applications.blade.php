@@ -121,7 +121,16 @@
                   <div>
                     <div class="wi-name">{{ $a['name'] ?? '' }}</div>
                     <div class="wi-muted">{{ $a['email'] ?? '' }}</div>
-                    @foreach(($a['otherApplications'] ?? []) as $o)
+                    @php
+                      // One line per other role; repeat copies of this same role collapse to a count.
+                      $others = collect($a['otherApplications'] ?? []);
+                      $sameRole = $others->where('role', $a['role'] ?? null)->count();
+                      $otherRoles = $others->where('role', '!=', $a['role'] ?? null)->groupBy('role')->map(function ($g) { return $g->sortByDesc('aiScore')->first(); });
+                    @endphp
+                    @if($sameRole)
+                      <div class="wi-also" title="Earlier copies of this same application">Applied {{ $sameRole + 1 }} times for this role</div>
+                    @endif
+                    @foreach($otherRoles as $o)
                       <div class="wi-also" title="Same applicant, a separate application">Also applied: {{ $shortRole($o['role'] ?? '') }}@if(isset($o['aiScore']) && $o['aiScore'] !== null) ({{ $o['aiScore'] }} {{ $o['aiVerdict'] ?? '' }})@endif @if(($o['status'] ?? 'new') !== 'new') &middot; {{ $o['status'] }}@endif</div>
                     @endforeach
                   </div>
