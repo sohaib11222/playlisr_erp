@@ -713,12 +713,50 @@ class StoreOrDiscogsController extends Controller
         [$artist, $title] = [trim((string) $request->input('artist')), trim((string) $request->input('title'))];
         if ($artist === '' && $title === '') return response()->json(['found' => false]);
         [$cat, $music] = $this->pickedCategory($business_id, $request->input('category_id'));
-        return $music ? $this->discogsValue($business_id, $artist, $title) : $this->ebayValue($business_id, $artist, $title, $cat);
+        return $music ? $this->discogsValue($business_id, $artist, $title, $this->discogsFormat($cat)) : $this->ebayValue($business_id, $artist, $title, $cat);
     }
 
-    protected function discogsValue($business_id, $artist, $title)
+    /** Discogs search format for the picked category (blank = any). */
+    protected function discogsFormat($cat)
     {
-        $key = 'sod-value2:' . md5($this->norm($artist) . '|' . $this->normTitle($title));
+        $n = strtolower((string) ($cat->name ?? ''));
+        if (preg_match('/vinyl|45 rpm|\brecord/', $n)) return 'Vinyl';
+        if (preg_match('/\bcds?\b/', $n)) return 'CD';
+        if (strpos($n, 'cassette') !== false) return 'Cassette';
+        if (strpos($n, '8 track') !== false) return '8-Track Cartridge';
+        return '';
+    }
+
+    /**
+     * Search Discogs and pick the most-owned pressing (highest community
+     * "have") in the picked format, not the first hit: the first hit is often
+     * a rare pressing with one copy for sale (Rumours matched a $48 one-off).
+     * Retries without the format, then as a plain query, if nothing matches.
+     */
+    protected function discogsSearch($discogs, $artist, $title, $format)
+    {
+        $tries = [];
+        if ($format !== '') $tries[] = [['artist' => $artist, 'title' => $title], $format];
+        $tries[] = [['artist' => $artist, 'title' => $title], ''];
+        // "Beatles, The" style names miss the artist field; a plain query is looser.
+        $tries[] = [['query' => trim($artist . ' ' . $title)], $format];
+        foreach ($tries as [$f, $fmt]) {
+            $url = $discogs->getReleaseApiUrl($f) . '&per_page=50' . ($fmt !== '' ? '&format=' . urlencode($fmt) : '');
+            $res = $discogs->callApi($url);
+            if (!empty($res['error'])) return $res;
+            $results = $res['data']->results ?? [];
+            if (!$results) continue;
+            usort($results, function ($a, $b) {
+                return ($b->community->have ?? 0) <=> ($a->community->have ?? 0);
+            });
+            return ['error' => false, 'hit' => $results[0]];
+        }
+        return ['error' => false, 'hit' => null];
+    }
+
+    protected function discogsValue($business_id, $artist, $title, $format = '')
+    {
+        $key = 'sod-value3:' . md5($this->norm($artist) . '|' . $this->normTitle($title) . '|' . $format);
         if ($hit = \Cache::get($key)) {
             if (!array_key_exists('price', $hit)) $hit['price'] = $hit['lowest'] ?? null; // cached before 'price' existed
             return response()->json($hit + ['cached' => true]);
@@ -726,16 +764,12 @@ class StoreOrDiscogsController extends Controller
 
         $discogs = new \App\Services\DiscogsService($business_id);
         if (!$discogs->isConfigured()) return response()->json(['found' => false, 'error' => 'Discogs not connected']);
-        $search = $discogs->getRelease(null, $artist, $title);
-        if (empty($search['error']) && empty($search['data']->results)) {
-            // "Beatles, The" style names miss the artist field; a plain query is looser.
-            $search = $discogs->getRelease(trim($artist . ' ' . $title));
-        }
+        $search = $this->discogsSearch($discogs, $artist, $title, $format);
         if (!empty($search['error'])) {
             $limited = strpos((string) $search['message'], '429') !== false;
             return response()->json(['found' => false, 'error' => $search['message'], 'rate_limited' => $limited], $limited ? 429 : 200);
         }
-        $hit = $search['data']->results[0] ?? null;
+        $hit = $search['hit'];
         if (!$hit) {
             $out = ['found' => false, 'source' => 'discogs'];
             \Cache::put($key, $out, now()->addDays(30));
