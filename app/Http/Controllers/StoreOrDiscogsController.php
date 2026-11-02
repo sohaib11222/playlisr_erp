@@ -697,9 +697,11 @@ class StoreOrDiscogsController extends Controller
     /**
      * What it goes for online, cached per line.
      *  - music: Discogs top release match for artist + title → marketplace
-     *    stats (lowest asking, copies for sale) + community want/have.
-     *    Discogs allows ~60 calls a minute and this is 2, so the page asks
-     *    one line at a time.
+     *    stats (lowest asking, copies for sale), sales-based VG+ price
+     *    (price_suggestions) + community want/have. 'price' is the VG+ price
+     *    (Sarah 2026-11-02: the lowest asking is a junk copy, use a typical
+     *    sale), falling back to lowest. Discogs allows ~60 calls a minute and
+     *    this is 3, so the page asks one line at a time.
      *  - anything else (category_id of a non-music category): eBay active
      *    listings in that category's eBay category → median asking price.
      * 'price' is the number the page compares to the "too cheap" cutoff.
@@ -716,7 +718,7 @@ class StoreOrDiscogsController extends Controller
 
     protected function discogsValue($business_id, $artist, $title)
     {
-        $key = 'sod-value:' . md5($this->norm($artist) . '|' . $this->normTitle($title));
+        $key = 'sod-value2:' . md5($this->norm($artist) . '|' . $this->normTitle($title));
         if ($hit = \Cache::get($key)) {
             if (!array_key_exists('price', $hit)) $hit['price'] = $hit['lowest'] ?? null; // cached before 'price' existed
             return response()->json($hit + ['cached' => true]);
@@ -745,13 +747,22 @@ class StoreOrDiscogsController extends Controller
         }
         $st = $stats['data'] ?? null;
         $lowest = isset($st->lowest_price->value) ? round((float) $st->lowest_price->value, 2) : null;
+        // Sales-based suggestion per condition; needs the seller token. VG+ is
+        // the usual used grade. Missing/failed = fall back to lowest asking.
+        $sugg = $discogs->callApi('https://api.discogs.com/marketplace/price_suggestions/' . (int) $hit->id . '?token=' . urlencode($this->discogsToken($business_id)));
+        if (!empty($sugg['error']) && strpos((string) $sugg['message'], '429') !== false) {
+            return response()->json(['found' => false, 'rate_limited' => true], 429);
+        }
+        $vgp = $sugg['data']->{'Very Good Plus (VG+)'}->value ?? null;
+        $median = $vgp ? round((float) $vgp, 2) : null;
         $out = [
             'found' => true,
             'source' => 'discogs',
             'release_id' => (int) $hit->id,
             'uri' => 'https://www.discogs.com/release/' . (int) $hit->id,
             'lowest' => $lowest,
-            'price' => $lowest,
+            'median' => $median,
+            'price' => $median ?? $lowest,
             'for_sale' => isset($st->num_for_sale) ? (int) $st->num_for_sale : null,
             'want' => (int) ($hit->community->want ?? 0),
             'have' => (int) ($hit->community->have ?? 0),
