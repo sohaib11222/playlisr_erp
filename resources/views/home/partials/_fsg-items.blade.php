@@ -15,7 +15,7 @@
             Showing the first {{ number_format($limit) }}.
         @endif
     </p>
-    <input type="text" class="form-control input-sm fsg-items-filter" placeholder="Search artist, title or SKU…" style="margin-bottom:8px;">
+    <input type="text" class="form-control input-sm fsg-items-filter" placeholder="Search artist, title, SKU or who listed it…" style="margin-bottom:8px;">
     <div style="max-height:60vh; overflow:auto;">
         <table class="table table-condensed table-striped fsg-items-table" style="margin:0; font-size:12px;">
             <thead>
@@ -34,6 +34,7 @@
                         <th class="fsg-sort" style="text-align:right;" title="(sale − cost) ÷ (cost × days held), in cents">Profit / $1 / day</th>
                     @endif
                     <th class="fsg-sort">Store</th>
+                    <th class="fsg-sort">Listed by</th>
                 </tr>
             </thead>
             <tbody>
@@ -53,6 +54,7 @@
                             <td style="text-align:right; font-weight:600; {{ is_null($it->profit_per_dollar_day) ? 'color:#9ca3af;' : ($it->profit_per_dollar_day < 0 ? 'color:#991b1b;' : 'color:#065f46;') }}">{{ is_null($it->profit_per_dollar_day) ? '—' : number_format($it->profit_per_dollar_day * 100, 2) . '¢' }}</td>
                         @endif
                         <td>{{ $it->location }}</td>
+                        <td>{{ $it->listed_by !== '' ? $it->listed_by : '—' }}</td>
                     </tr>
                 @endforeach
             </tbody>
