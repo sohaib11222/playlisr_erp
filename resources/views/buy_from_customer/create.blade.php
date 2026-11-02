@@ -1808,6 +1808,9 @@ HTML;
             if (!usesValue) { $median.removeClass('bfc-median-missing'); }
             var $grade = $row.find('select[name$="[condition_grade]"]');
             $grade.prop('disabled', !!t.no_grading).toggleClass('bfc-cell-off', !!t.no_grading);
+            // Bulk lots don't need a title; grey it out (readonly keeps an old draft's text).
+            var bulk = /bulk/i.test($row.find('select[name$="[item_type]"] option:selected').text());
+            $row.find('input[name$="[title]"]').prop('readonly', bulk).toggleClass('bfc-cell-off', bulk).attr('placeholder', bulk ? 'not needed for bulk' : '');
         }
         function bfcRecalcAll() {
             var cashTotal = 0;
