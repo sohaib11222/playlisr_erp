@@ -6210,19 +6210,51 @@ class ProductController extends Controller
         try {
             $product = Product::findOrFail($id);
 
-            // Prefer the release ID already linked on the product; only fall
-            // back to a name search when none is set.
-            $releaseId = $product->discogs_release_id ?? null;
-            if (empty($releaseId)) {
-                $release = $this->discogs()->getRelease($product->name, $product->sku, $product->name);
-                if (!empty($release['data']->results[0]->id)) {
-                    $releaseId = $release['data']->results[0]->id;
+            // Anything the popup sent back (release ID, grades, location) is
+            // saved onto the product first, then we check what's still missing.
+            $req = request();
+            if ($req->filled('discogs_release_id')) {
+                $raw = trim((string) $req->input('discogs_release_id'));
+                if (preg_match('~/release/(\d+)~', $raw, $m) || preg_match('~^\[?r?(\d+)\]?$~i', $raw, $m)) {
+                    $product->discogs_release_id = (int) $m[1];
                 }
             }
-            if (empty($releaseId)) {
+            foreach (['condition' => 'condition', 'sleeve_condition' => 'sleeve_condition', 'location' => 'listing_location'] as $in => $col) {
+                if ($req->filled($in)) {
+                    $product->{$col} = mb_substr(trim((string) $req->input($in)), 0, $col === 'listing_location' ? 255 : 40);
+                }
+            }
+            if ($product->isDirty()) {
+                $product->save();
+            }
+
+            // Use the product's own grade (stored in Discogs wording by mass
+            // add). "Sealed" isn't a Discogs grade: list it as Mint + a note.
+            $releaseId = $product->discogs_release_id ?? null;
+            $media = trim((string) ($product->condition ?? ''));
+            $sleeve = trim((string) ($product->sleeve_condition ?? ''));
+            $location = trim((string) ($product->listing_location ?? '')) ?: trim((string) ($product->bin_position ?? ''));
+            $catNames = strtolower(($product->category->name ?? '') . ' ' . ($product->sub_category->name ?? ''));
+            $isSealed = $media === 'Sealed' || ($media === '' && strpos($catNames, 'sealed') !== false);
+
+            $missing = [];
+            if (empty($releaseId)) $missing[] = 'discogs_release_id';
+            if ($media === '' && !$isSealed) $missing[] = 'condition';
+            if ($location === '') $missing[] = 'location';
+            if (!empty($missing)) {
                 return response()->json([
                     'success' => false,
-                    'msg' => 'No Discogs release found for this product. Set its Discogs release ID and try again.'
+                    'needs_input' => true,
+                    'missing' => $missing,
+                    'product' => [
+                        'name' => $product->name,
+                        'sku' => $product->sku,
+                        'discogs_release_id' => $releaseId,
+                        'condition' => $media,
+                        'sleeve_condition' => $sleeve,
+                        'location' => $location,
+                    ],
+                    'msg' => 'Missing ' . implode(', ', str_replace(['discogs_release_id', 'condition'], ['Discogs release ID', 'media grade'], $missing)) . ' — fill it in and list again.'
                 ]);
             }
 
@@ -6230,16 +6262,25 @@ class ProductController extends Controller
             $variation = $product->variations()->first();
             $price = $variation->sell_price_inc_tax ?? $variation->default_sell_price ?? 0;
 
+            $media = $isSealed ? 'Mint (M)' : $media;
+            if ($sleeve === '' || $sleeve === 'Sealed') {
+                $sleeve = $isSealed ? 'Mint (M)' : 'Not Graded';
+            }
+            $comments = trim((string) ($product->product_description ?? ''));
+            if ($isSealed) {
+                $comments = trim('Sealed. ' . $comments);
+            }
+
             $productData = [
                 'release_id' => (int) $releaseId,
                 'price' => (float) $price,
                 'status' => 'For Sale',
-                'condition' => 'Mint (M)',
-                'sleeve_condition' => 'Mint (M)',
-                'comments' => $product->product_description ?? '',
+                'condition' => $media,
+                'sleeve_condition' => $sleeve,
+                'comments' => $comments,
                 'allow_offers' => true,
                 'external_id' => $product->sku,
-                'location' => $product->listing_location ?? null
+                'location' => $location
             ];
 
             $result = $this->discogs()->createListing($productData);

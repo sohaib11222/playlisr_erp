@@ -1991,37 +1991,105 @@
             });
         });
 
-        $(document).on('click', '.list-to-discogs', function(e) {
-            e.preventDefault();
-            var $link = $(this);
-            var productId = $link.data('id');
-            var originalIcon = 'fa-music';
+        // Discogs listing: if the product is missing its release ID, media
+        // grade or location, the server says so and this popup asks for them,
+        // saves them to the product and lists in one go.
+        var DISCOGS_GRADES = ['Sealed', 'Mint (M)', 'Near Mint (NM or M-)', 'Very Good Plus (VG+)', 'Very Good (VG)', 'Good Plus (G+)', 'Good (G)', 'Fair (F)', 'Poor (P)'];
+        var DISCOGS_SLEEVES = DISCOGS_GRADES.concat(['Generic', 'No Cover', 'Not Graded']);
 
-            if (!confirm('List this product on Discogs? This creates a real, live listing.')) {
-                return;
-            }
+        function discogsOptions(list, selected, placeholder) {
+            var html = '<option value="">' + placeholder + '</option>';
+            list.forEach(function(g) {
+                html += '<option value="' + g + '"' + (g === selected ? ' selected' : '') + '>' + g + '</option>';
+            });
+            return html;
+        }
 
+        function submitDiscogsListing(productId, data, $link) {
             var $icon = $link.find('i');
             $icon.removeClass('fa-music').addClass('fa-spinner fa-spin');
             $link.css('pointer-events', 'none');
 
-            $.ajax({
+            data._token = $('meta[name="csrf-token"]').attr('content');
+            return $.ajax({
                 url: '/products/' + productId + '/list-to-discogs',
                 method: 'POST',
-                data: {},
+                data: data,
                 dataType: 'json'
             }).done(function(result) {
                 if (result && result.success) {
+                    $('#discogs_listing_modal').modal('hide');
                     toastr.success(result.msg || 'Listed on Discogs.');
+                } else if (result && result.needs_input) {
+                    showDiscogsListingModal(productId, result, $link);
                 } else {
                     toastr.error((result && result.msg) || 'Failed to list on Discogs.');
                 }
             }).fail(function(xhr) {
                 toastr.error('Request failed: ' + (xhr.statusText || xhr.status));
             }).always(function() {
-                $icon.removeClass('fa-spinner fa-spin').addClass(originalIcon);
+                $icon.removeClass('fa-spinner fa-spin').addClass('fa-music');
                 $link.css('pointer-events', '');
+                $('#discogs_listing_submit').prop('disabled', false);
             });
+        }
+
+        function showDiscogsListingModal(productId, result, $link) {
+            var p = result.product || {};
+            var missing = result.missing || [];
+            var esc = function(v) { return $('<div>').text(v == null ? '' : v).html(); };
+            var star = function(f) { return missing.indexOf(f) !== -1 ? ' <span class="text-danger">*</span>' : ''; };
+
+            $('#discogs_listing_modal').remove();
+            var html = ''
+                + '<div class="modal fade" id="discogs_listing_modal" tabindex="-1" role="dialog">'
+                + '<div class="modal-dialog" role="document"><div class="modal-content">'
+                + '<div class="modal-header"><button type="button" class="close" data-dismiss="modal">&times;</button>'
+                + '<h4 class="modal-title">List on Discogs</h4></div>'
+                + '<div class="modal-body">'
+                + '<p><strong>' + esc(p.name) + '</strong>' + (p.sku ? ' <span class="text-muted">(' + esc(p.sku) + ')</span>' : '') + '</p>'
+                + '<p class="text-muted">This product is missing some details. Fill them in. They\'ll be saved to the product and it will list right away.</p>'
+                + '<div class="form-group"><label>Discogs release ID or URL' + star('discogs_release_id') + '</label>'
+                + '<input type="text" class="form-control" id="discogs_in_release" placeholder="e.g. 1873085 or https://www.discogs.com/release/1873085" value="' + esc(p.discogs_release_id || '') + '"></div>'
+                + '<div class="row"><div class="col-sm-6 form-group"><label>Media grade' + star('condition') + '</label>'
+                + '<select class="form-control" id="discogs_in_condition">' + discogsOptions(DISCOGS_GRADES, p.condition, 'Media grade') + '</select></div>'
+                + '<div class="col-sm-6 form-group"><label>Sleeve grade</label>'
+                + '<select class="form-control" id="discogs_in_sleeve">' + discogsOptions(DISCOGS_SLEEVES, p.sleeve_condition, 'Sleeve grade') + '</select></div></div>'
+                + '<div class="form-group"><label>Location' + star('location') + '</label>'
+                + '<input type="text" class="form-control" id="discogs_in_location" placeholder="e.g. Warehouse A-12" value="' + esc(p.location || '') + '"></div>'
+                + '</div>'
+                + '<div class="modal-footer"><button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>'
+                + '<button type="button" class="btn btn-primary" id="discogs_listing_submit">Save &amp; list on Discogs</button></div>'
+                + '</div></div></div>';
+            $('body').append(html);
+
+            $('#discogs_listing_submit').on('click', function() {
+                var data = {
+                    discogs_release_id: $.trim($('#discogs_in_release').val()),
+                    condition: $('#discogs_in_condition').val(),
+                    sleeve_condition: $('#discogs_in_sleeve').val(),
+                    location: $.trim($('#discogs_in_location').val())
+                };
+                if (missing.indexOf('discogs_release_id') !== -1 && !data.discogs_release_id) { toastr.warning('Enter the Discogs release ID.'); return; }
+                if (missing.indexOf('condition') !== -1 && !data.condition) { toastr.warning('Pick a media grade.'); return; }
+                if (missing.indexOf('location') !== -1 && !data.location) { toastr.warning('Enter a location.'); return; }
+                $(this).prop('disabled', true);
+                submitDiscogsListing(productId, data, $link);
+            });
+
+            $('#discogs_listing_modal').modal('show');
+        }
+
+        $(document).on('click', '.list-to-discogs', function(e) {
+            e.preventDefault();
+            var $link = $(this);
+            var productId = $link.data('id');
+
+            if (!confirm('List this product on Discogs? This creates a real, live listing.')) {
+                return;
+            }
+
+            submitDiscogsListing(productId, {}, $link);
         });
 
         $(document).on('click', '#bulk_list_ebay_btn', function(e) {
