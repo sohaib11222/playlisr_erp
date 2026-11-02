@@ -32,6 +32,9 @@
 .sd-v.cheap { background: #ECE7F6; color: #5A3F8C; }
 .sd-min { width: 64px; height: 36px; border: 1px solid #E1D7C4; border-radius: 8px; padding: 0 8px; font-size: 15px; }
 .sd-scroll { overflow-x: auto; }
+.sd-table th[data-sort] { cursor: pointer; user-select: none; }
+.sd-table th[data-sort]:hover { color: #1F1B16; }
+.sd-arrow { font-size: 10px; margin-left: 3px; }
 </style>
 <div class="sd-wrap">
     <h1>Store or Online?</h1>
@@ -171,24 +174,58 @@
         return '<b>~$' + Math.round(e[0]) + '</b><div class="sd-sub">' + esc(e[1]) + '</div>';
     }
 
+    // ---- Sorting: click a header to sort, again to reverse. null = the order pasted.
+    var sortKey = null, sortDir = 1;
+    // Verdict sorts best-to-worst: store, online, bargain bin, never sold, never had.
+    var VERDICT_RANK = { store: 0, discogs: 1, ebay: 1, cheap: 2, never_sold: 3, never_had: 4, unknown: 5 };
+    var SORTS = {
+        name: function (r) { return ((r.artist || '') + ' ' + (r.title || '')).toLowerCase(); },
+        verdict: function (r) { var f = fin(r); return [VERDICT_RANK[f.v] != null ? VERDICT_RANK[f.v] : 9, f.where]; },
+        price: function (r) { var e = estimate(r); return e ? e[0] : -1; },
+        sold: function (r) { return sum(r.title_sold); },
+        pico: function (r) { return r.for_sale.pico; },
+        hollywood: function (r) { return r.for_sale.hollywood; },
+        other: function (r) { return r.for_sale.other; },
+        artist_sold: function (r) { return sum(r.artist_sold); },
+        artist_12m: function (r) { return r.artist_sold_12m; },
+        artist_have: function (r) { return sum(r.artist_have); },
+        sold_12m: function (r) { return r.title_sold_12m; },
+        listed: function (r) { return r.title_listed; }
+    };
+    function cmp(a, b) {
+        if (Array.isArray(a)) { for (var i = 0; i < a.length; i++) { var c = cmp(a[i], b[i]); if (c) return c; } return 0; }
+        return a < b ? -1 : (a > b ? 1 : 0);
+    }
+    function sorted(list) {
+        if (!sortKey) return list;
+        var key = SORTS[sortKey];
+        return list.map(function (r, i) { return [key(r), i, r]; })
+            .sort(function (a, b) { return cmp(a[0], b[0]) * sortDir || a[1] - b[1]; })
+            .map(function (x) { return x[2]; });
+    }
+    function th(label, key, cls) {
+        var arrow = sortKey === key ? '<span class="sd-arrow">' + (sortDir > 0 ? '▲' : '▼') + '</span>' : '';
+        return '<th' + (cls ? ' class="' + cls + '"' : '') + ' data-sort="' + key + '" title="Sort">' + label + arrow + '</th>';
+    }
+
     function render() {
         var counts = { all: rows.length };
         rows.forEach(function (r) { var v = fin(r).v; counts[v] = (counts[v] || 0) + 1; });
         summary.innerHTML = ['all', 'store', 'discogs', 'ebay', 'never_sold', 'never_had', 'cheap'].filter(function (k) { return k === 'all' || counts[k]; }).map(function (k) {
             return '<span class="sd-chip' + (filter === k ? ' on' : '') + '" data-f="' + k + '">' + (k === 'all' ? 'All' : LABEL[k]) + ' ' + (counts[k] || 0) + '</span>';
         }).join('');
-        var shown = rows.filter(function (r) { return filter === 'all' || fin(r).v === filter; });
+        var shown = sorted(rows.filter(function (r) { return filter === 'all' || fin(r).v === filter; }));
         if (!rows.length) { out.innerHTML = ''; [copyBtn, sendBtn, pickAll, pickNone].forEach(function (b) { b.style.display = 'none'; }); return; }
         [copyBtn, sendBtn, pickAll, pickNone].forEach(function (b) { b.style.display = ''; });
         updateSendLabel();
         var music = mode === 'music';
         var allOn = shown.length && shown.every(function (r) { return r.picked; });
-        out.innerHTML = '<table class="sd-table"><thead><tr><th><input type="checkbox" id="sdAll" title="Check all shown"' + (allOn ? ' checked' : '') + '></th><th>' + (music ? 'Album' : 'Item') + '</th><th>Verdict</th><th class="sd-num">Price</th><th>Why</th>'
+        out.innerHTML = '<table class="sd-table"><thead><tr><th><input type="checkbox" id="sdAll" title="Check all shown"' + (allOn ? ' checked' : '') + '></th>' + th(music ? 'Album' : 'Item', 'name') + th('Verdict', 'verdict') + th('Price', 'price', 'sd-num') + '<th>Why</th>'
             + (music ? '<th>Format</th>' : '')
-            + '<th class="sd-num">' + (music ? 'Title sold' : 'Sold') + '</th><th class="sd-num">Value</th>'
-            + '<th class="sd-num">Pico for sale</th><th class="sd-num">Hollywood for sale</th><th class="sd-num">' + esc(otherStore) + ' for sale</th>'
-            + (music ? '<th class="sd-num">Artist sold</th><th class="sd-num">Artist 12 mo</th><th class="sd-num">Artist on hand</th>'
-                     : '<th class="sd-num">Sold 12 mo</th><th class="sd-num">Listings</th>')
+            + th(music ? 'Title sold' : 'Sold', 'sold', 'sd-num') + '<th class="sd-num">Value</th>'
+            + th('Pico for sale', 'pico', 'sd-num') + th('Hollywood for sale', 'hollywood', 'sd-num') + th(esc(otherStore) + ' for sale', 'other', 'sd-num')
+            + (music ? th('Artist sold', 'artist_sold', 'sd-num') + th('Artist 12 mo', 'artist_12m', 'sd-num') + th('Artist on hand', 'artist_have', 'sd-num')
+                     : th('Sold 12 mo', 'sold_12m', 'sd-num') + th('Listings', 'listed', 'sd-num'))
             + '<th></th></tr></thead><tbody>'
             + shown.map(function (r) {
                 var q = encodeURIComponent((r.artist + ' ' + r.title).trim()), f = fin(r);
@@ -308,6 +345,16 @@
         sendBtn.textContent = n ? 'Send ' + n + ' checked to Mass Add' : 'Send checked to Mass Add';
         sendBtn.disabled = !n;
     }
+    // Header click: first click sorts (numbers biggest first, names/verdict A-Z / best first), again reverses, third goes back to pasted order.
+    out.addEventListener('click', function (e) {
+        var h = e.target.closest('th[data-sort]');
+        if (!h) return;
+        var k = h.getAttribute('data-sort'), first = (k === 'name' || k === 'verdict') ? 1 : -1;
+        if (sortKey !== k) { sortKey = k; sortDir = first; }
+        else if (sortDir === first) sortDir = -first;
+        else sortKey = null;
+        render();
+    });
     out.addEventListener('change', function (e) {
         if (e.target.id === 'sdAll') {
             rows.forEach(function (r) { if (filter === 'all' || fin(r).v === filter) r.picked = e.target.checked; });
