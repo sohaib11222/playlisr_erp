@@ -35,10 +35,12 @@
 .sd-table th[data-sort] { cursor: pointer; user-select: none; }
 .sd-table th[data-sort]:hover { color: #1F1B16; }
 .sd-arrow { font-size: 10px; margin-left: 3px; }
+.sd-note { background: #FFF6DB; border: 1px solid #F0D98A; color: #6B4E00; border-radius: 12px; padding: 10px 14px; font-size: 14px; margin: 0 0 14px; }
 </style>
 <div class="sd-wrap">
     <h1>Store or Online?</h1>
     <p class="sd-help">Paste one item per line. For music: <b>Artist - Title</b> (or two spreadsheet columns, or just "artist title"). For anything else, the item's name. Checks every line against everything we've ever sold.</p>
+    <div class="sd-note"><b>Prices here are only an estimate.</b> The suggested price is a starting point from our past sales, shelf prices and online prices; it doesn't know the condition of your copy. Check the condition (media, sleeve, pressing), look up the price yourself on Discogs / eBay, and set your own price.</div>
     <div class="sd-type">
         <b>What are these?</b>
         <select id="sdCat">
@@ -171,7 +173,7 @@
     function priceCell(r) {
         var e = estimate(r);
         if (!e) return r.dv === 'pending' ? '<span class="sd-sub">…</span>' : '<span class="sd-zero">?</span>';
-        return '<b>~$' + Math.round(e[0]) + '</b><div class="sd-sub">' + esc(e[1]) + '</div>';
+        return '<span title="Estimate only: check condition and look it up before pricing"><b>~$' + Math.round(e[0]) + '</b><div class="sd-sub">' + esc(e[1]) + ' · estimate</div></span>';
     }
 
     // ---- Sorting: click a header to sort, again to reverse. null = the order pasted.
@@ -220,7 +222,7 @@
         updateSendLabel();
         var music = mode === 'music';
         var allOn = shown.length && shown.every(function (r) { return r.picked; });
-        out.innerHTML = '<table class="sd-table"><thead><tr><th><input type="checkbox" id="sdAll" title="Check all shown"' + (allOn ? ' checked' : '') + '></th>' + th(music ? 'Album' : 'Item', 'name') + th('Verdict', 'verdict') + th('Price', 'price', 'sd-num') + '<th>Why</th>'
+        out.innerHTML = '<table class="sd-table"><thead><tr><th><input type="checkbox" id="sdAll" title="Check all shown"' + (allOn ? ' checked' : '') + '></th>' + th(music ? 'Album' : 'Item', 'name') + th('Verdict', 'verdict') + th('Suggested price', 'price', 'sd-num') + '<th>Why</th>'
             + (music ? '<th>Format</th>' : '')
             + th(music ? 'Title sold' : 'Sold', 'sold', 'sd-num') + '<th class="sd-num">Value</th>'
             + th('Pico for sale', 'pico', 'sd-num') + th('Hollywood for sale', 'hollywood', 'sd-num') + th(esc(otherStore) + ' for sale', 'other', 'sd-num')
@@ -379,7 +381,7 @@
         try { localStorage.setItem('massAddFromStoreOrOnline', picked.map(massAddLine).join('\n')); }
         catch (e) { status.textContent = 'Could not hand off to Mass Add (browser storage blocked).'; return; }
         window.open('/product/mass-create?from=store-or-online', '_blank');
-        status.textContent = picked.length + ' sent to Mass Add (new tab). Check them there and press Parse & Add.';
+        status.textContent = picked.length + ' sent to Mass Add (new tab). Prices are only suggestions: check condition, look each one up and set your own price before pressing Parse & Add.';
     });
 
     summary.addEventListener('click', function (e) {
@@ -388,7 +390,7 @@
     });
 
     copyBtn.addEventListener('click', function () {
-        var head = ['Artist', 'Title', 'Verdict', 'Price estimate', 'Price from', 'Format', 'Why', 'Sold', 'Our last price', 'Online price', 'Pico for sale', 'Hollywood for sale', otherStore + ' for sale', 'Pico days on shelf', 'Hollywood days on shelf', 'Artist sold', 'Artist 12 mo', 'Artist on hand', 'On hand', 'Listings'];
+        var head = ['Artist', 'Title', 'Verdict', 'Suggested price (estimate)', 'Price from', 'Format', 'Why', 'Sold', 'Our last price', 'Online price', 'Pico for sale', 'Hollywood for sale', otherStore + ' for sale', 'Pico days on shelf', 'Hollywood days on shelf', 'Artist sold', 'Artist 12 mo', 'Artist on hand', 'On hand', 'Listings'];
         var tsv = [head.join('\t')].concat(rows.filter(function (r) { return filter === 'all' || fin(r).v === filter; }).map(function (r) {
             var f = fin(r), e = estimate(r);
             return [r.artist, r.title, f.where + (r.never_had_at && r.never_had_at.length ? '; never had for sale at ' + r.never_had_at.join(' and ') : ''), e ? Math.round(e[0]) : '', e ? e[1] : '', fmtList(Object.keys(r.title_fmt || {}).length ? r.title_fmt : r.artist_fmt), f.why, sum(r.title_sold), r.title_last_price == null ? '' : r.title_last_price,
