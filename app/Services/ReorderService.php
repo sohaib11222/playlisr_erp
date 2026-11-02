@@ -35,6 +35,7 @@ class ReorderService
         'used_min_price'     => 15,    // or used sold for at least this
         'blank_count'        => 'sold', // sold | erp | zero
         'max_line_qty'       => 10,
+        'core_min_qty'       => 2,     // proven sellers: never plan on just 1 copy (Sarah 11/2)
         'count_fresh_days'   => 21,    // a bin count older than this is ignored
     ];
 
@@ -638,8 +639,10 @@ class ReorderService
             $xyz = substr($abcxyz[$pid] ?? '', 1, 1);
             $grade = $abcCls . $xyz;
 
-            $monthly = $s['pace_weight_recent'] * ($a['d10'] / 10 * 30)
-                + (1 - $s['pace_weight_recent']) * ($a['ytd'] / $monthsElapsed);
+            // A hot 10 days raises the pace; a quiet 10 days (often because it
+            // was sold out) never drops it below this year's monthly average.
+            $monthly = max($a['ytd'] / $monthsElapsed, $s['pace_weight_recent'] * ($a['d10'] / 10 * 30)
+                + (1 - $s['pace_weight_recent']) * ($a['ytd'] / $monthsElapsed));
             // Sold out (Sarah 10/15): with none here and no sale in the last
             // 10 days, the empty weeks aren't slow sales. Pace = this year's
             // sales over the months up to the last sale.
@@ -652,6 +655,9 @@ class ReorderService
             $suggested = (int) ceil(round($monthly * $cover * $factor, 2));
             $isCore = $grade === 'AX' || ($a['ytd'] >= 5 && count($a['months']) >= 3) || $a['ytd'] >= 8;
             if ($suggested < 1 && ($a['ytd'] > 0 || $isCore)) $suggested = 1;
+            // One copy of a proven seller = an empty bin after the first sale
+            // until the next order lands (Bieber/Beyonce, Sarah 11/2).
+            if ($isCore) $suggested = max($suggested, (int) $s['core_min_qty']);
             $suggested = min($suggested, (int) $s['max_line_qty']);
 
             // Overdue: no sale for longer than max(14 days, 2x its usual gap).
@@ -708,6 +714,7 @@ class ReorderService
                 'erp_stock' => $erpStock[$pid] ?? 0,
                 'on_order' => $onOrder[$pid] ?? 0,
                 'suggested' => $suggested,
+                'core' => $isCore,
                 'cant_order' => $cantOrder,
                 'erp_cost' => $cost ?: null,
                 'used_note' => null,
@@ -1417,6 +1424,11 @@ class ReorderService
         // titles are listed to look at, not auto-ordered: tested against
         // Jon's last 3 orders (Sep 24 - Oct 7) he bought ~3% of those.
         $base = (int) $r['sold_since'];
+        // Proven sellers: top the bin up to the target from ERP stock too, so
+        // a title that's sitting at 1 copy gets built back up, not just replaced.
+        if (!empty($r['core'])) {
+            $base = max($base, $sug - max(0, (int) $r['erp_stock']) - (int) $r['on_order']);
+        }
         // Used copies selling fast -> buy 1 sealed when we have none. The one
         // extra rule Jon agreed with in the backtest (~40% vs ~3-7% for others).
         if ($base === 0 && in_array('used', $r['why'], true) && (int) $r['erp_stock'] <= 0 && (int) $r['on_order'] === 0) {
