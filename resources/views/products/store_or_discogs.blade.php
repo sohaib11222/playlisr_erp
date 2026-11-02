@@ -58,6 +58,7 @@
         <button class="sd-btn" id="sdBuys" title="Fill the box with the unpriced buys of this type from Price New Buys">Load unpriced buys</button>
         <label class="sd-status" style="margin:0 6px">Too cheap to list online under $<input class="sd-min" id="sdMin" type="number" min="0" step="1" value="{{ (int) $minDiscogsValue }}"></label>
         <button class="sd-btn" id="sdCopy" style="display:none">Copy results</button>
+        <button class="sd-btn primary" id="sdSend" style="display:none">Send checked to Mass Add</button>
         <span class="sd-status" id="sdStatus"></span>
     </div>
     <div class="sd-summary" id="sdSummary"></div>
@@ -81,6 +82,7 @@
     var input = document.getElementById('sdIn'), go = document.getElementById('sdGo'), status = document.getElementById('sdStatus');
     var out = document.getElementById('sdOut'), summary = document.getElementById('sdSummary'), copyBtn = document.getElementById('sdCopy');
     var catSel = document.getElementById('sdCat'), minIn = document.getElementById('sdMin');
+    var sendBtn = document.getElementById('sdSend');
     var rows = [], filter = 'all', mode = 'music', runCat = '', runId = 0, otherStore = 'Other';
     var LABEL = { store: 'Store', discogs: 'Discogs', ebay: 'eBay', never_sold: 'Never sold', never_had: 'Never had for sale', cheap: 'Bargain bin', unknown: '?' };
     var ONLINE = { discogs: 1, ebay: 1, never_sold: 1, never_had: 1 };
@@ -174,10 +176,13 @@
             return '<span class="sd-chip' + (filter === k ? ' on' : '') + '" data-f="' + k + '">' + (k === 'all' ? 'All' : LABEL[k]) + ' ' + (counts[k] || 0) + '</span>';
         }).join('');
         var shown = rows.filter(function (r) { return filter === 'all' || fin(r).v === filter; });
-        if (!rows.length) { out.innerHTML = ''; copyBtn.style.display = 'none'; return; }
+        if (!rows.length) { out.innerHTML = ''; copyBtn.style.display = 'none'; sendBtn.style.display = 'none'; return; }
         copyBtn.style.display = '';
+        sendBtn.style.display = '';
+        updateSendLabel();
         var music = mode === 'music';
-        out.innerHTML = '<table class="sd-table"><thead><tr><th>' + (music ? 'Album' : 'Item') + '</th><th>Verdict</th><th class="sd-num">Price</th><th>Why</th>'
+        var allOn = shown.length && shown.every(function (r) { return r.picked; });
+        out.innerHTML = '<table class="sd-table"><thead><tr><th><input type="checkbox" id="sdAll" title="Check all shown"' + (allOn ? ' checked' : '') + '></th><th>' + (music ? 'Album' : 'Item') + '</th><th>Verdict</th><th class="sd-num">Price</th><th>Why</th>'
             + (music ? '<th>Format</th>' : '')
             + '<th class="sd-num">' + (music ? 'Title sold' : 'Sold') + '</th><th class="sd-num">Value</th>'
             + '<th class="sd-num">Pico for sale</th><th class="sd-num">Hollywood for sale</th><th class="sd-num">' + esc(otherStore) + ' for sale</th>'
@@ -187,7 +192,7 @@
             + shown.map(function (r) {
                 var q = encodeURIComponent((r.artist + ' ' + r.title).trim()), f = fin(r);
                 var name = r.artist ? '<b>' + esc(r.artist) + '</b>' + (r.title ? '<div>' + esc(r.title) + '</div>' : '') : '<b>' + esc(r.title) + '</b>';
-                return '<tr><td>' + name + '</td>'
+                return '<tr><td><input type="checkbox" class="sd-pick" data-i="' + rows.indexOf(r) + '"' + (r.picked ? ' checked' : '') + '></td><td>' + name + '</td>'
                     + '<td><span class="sd-v ' + f.v + '">' + esc(f.where) + '</span>'
                     + (r.never_had_at && r.never_had_at.length ? (r.never_had_at.map(function (st) { return '<div style="margin-top:4px"><span class="sd-v never_had">Never had for sale at ' + esc(st) + '</span></div>'; }).join('')) : '')
                     + (music && mainFormat(r) ? '<div class="sd-sub">mostly ' + esc(mainFormat(r)) + '</div>' : '') + '</td>'
@@ -277,6 +282,44 @@
             input.value = j.lines.join('\n');
             status.textContent = j.lines.length + ' unpriced buys loaded. Press Check.';
         });
+    });
+
+    // ---- Send checked rows to Mass Add (its Bulk Product Entry box, pipe format:
+    // Name | Artist | Category | Subcategory | SKU | Price | Bin | Location).
+    // Location = the verdict's store, or the Discogs Warehouse for Discogs / eBay;
+    // left blank for Never sold / Never had / Bargain bin so staff choose.
+    var FORMAT_CATEGORY = { Vinyl: 'Vinyl - Used', CD: 'CD - Used', Cassette: 'Cassettes - Used' };
+    function massAddLine(r) {
+        var f = fin(r), e = estimate(r), clean = function (t) { return String(t || '').replace(/\|/g, '/').trim(); };
+        var cat = '';
+        if (runCat) { var o = catSel.querySelector('option[value="' + runCat + '"]'); cat = o ? o.textContent.trim() : ''; }
+        else if (mainFormat(r)) cat = FORMAT_CATEGORY[mainFormat(r)] || '';
+        var loc = '';
+        if (f.v === 'store') loc = /pico/i.test(f.where) && !/hollywood/i.test(f.where) ? 'Pico' : (/hollywood/i.test(f.where) && !/pico/i.test(f.where) ? 'Hollywood' : '');
+        else if (f.v === 'discogs' || f.v === 'ebay') loc = 'Discogs Warehouse';
+        return [clean(r.title || r.artist), clean(r.title ? r.artist : ''), cat, '', '', e ? String(Math.round(e[0])) : '', '', loc].join(' | ');
+    }
+    function updateSendLabel() {
+        var n = rows.filter(function (r) { return r.picked; }).length;
+        sendBtn.textContent = n ? 'Send ' + n + ' checked to Mass Add' : 'Send checked to Mass Add';
+        sendBtn.disabled = !n;
+    }
+    out.addEventListener('change', function (e) {
+        if (e.target.id === 'sdAll') {
+            rows.forEach(function (r) { if (filter === 'all' || fin(r).v === filter) r.picked = e.target.checked; });
+            render();
+        } else if (e.target.classList.contains('sd-pick')) {
+            rows[+e.target.getAttribute('data-i')].picked = e.target.checked;
+            updateSendLabel();
+        }
+    });
+    sendBtn.addEventListener('click', function () {
+        var picked = rows.filter(function (r) { return r.picked; });
+        if (!picked.length) return;
+        try { localStorage.setItem('massAddFromStoreOrOnline', picked.map(massAddLine).join('\n')); }
+        catch (e) { status.textContent = 'Could not hand off to Mass Add (browser storage blocked).'; return; }
+        window.open('/product/mass-create?from=store-or-online', '_blank');
+        status.textContent = picked.length + ' sent to Mass Add (new tab). Check them there and press Parse & Add.';
     });
 
     summary.addEventListener('click', function (e) {

@@ -2598,6 +2598,25 @@ Nevermind,Nirvana,Cassettes - Used,Rock,,18.00,</pre>
         addNextProduct(0);
     });
 
+    // Rows sent from "Store or Online?" (/store-or-discogs, checkboxes → Send to
+    // Mass Add): open the Bulk Product Entry box with them and show the preview;
+    // staff check it and press Parse & Add as usual.
+    (function () {
+        if (!/[?&]from=store-or-online\b/.test(window.location.search)) return;
+        var text = null;
+        try { text = localStorage.getItem('massAddFromStoreOrOnline'); localStorage.removeItem('massAddFromStoreOrOnline'); } catch (e) {}
+        if (!text) return;
+        // After the page's own load-time input clearing.
+        setTimeout(function () {
+            var $ta = $('#bulk_product_text'), $box = $ta.closest('.box');
+            $box.removeClass('collapsed-box').children('.box-body').show();
+            $ta.val(text);
+            showBulkPreview(parseBulkProductText(text));
+            $('#bulk_parse_status').html('<span class="text-info"><i class="fa fa-share"></i> ' + text.split('\n').length + ' sent from Store or Online? Check the preview, then press <strong>Parse &amp; Add Products</strong>.</span>');
+            $('html, body').animate({ scrollTop: $box.offset().top - 60 }, 200);
+        }, 800);
+    })();
+
     // Clear bulk text
     $('#clear_bulk_text').on('click', function() {
         if (confirm('Are you sure you want to clear the bulk text entry?')) {
