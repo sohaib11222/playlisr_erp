@@ -6210,16 +6210,29 @@ class ProductController extends Controller
         try {
             $product = Product::findOrFail($id);
 
-            // Try to find release ID from product name/artist
-            $release = $this->discogs()->getRelease($product->name, $product->sku, $product->name);
-            $releaseId = null;
-            if (!empty($release['data']->results[0]->id)) {
-                $releaseId = $release['data']->results[0]->id;
+            // Prefer the release ID already linked on the product; only fall
+            // back to a name search when none is set.
+            $releaseId = $product->discogs_release_id ?? null;
+            if (empty($releaseId)) {
+                $release = $this->discogs()->getRelease($product->name, $product->sku, $product->name);
+                if (!empty($release['data']->results[0]->id)) {
+                    $releaseId = $release['data']->results[0]->id;
+                }
+            }
+            if (empty($releaseId)) {
+                return response()->json([
+                    'success' => false,
+                    'msg' => 'No Discogs release found for this product. Set its Discogs release ID and try again.'
+                ]);
             }
 
+            // Price lives on the variation, not the product row.
+            $variation = $product->variations()->first();
+            $price = $variation->sell_price_inc_tax ?? $variation->default_sell_price ?? 0;
+
             $productData = [
-                'release_id' => $releaseId,
-                'price' => $product->sell_price_inc_tax ?? $product->sell_price_exc_tax ?? 0,
+                'release_id' => (int) $releaseId,
+                'price' => (float) $price,
                 'status' => 'For Sale',
                 'condition' => 'Mint (M)',
                 'sleeve_condition' => 'Mint (M)',
