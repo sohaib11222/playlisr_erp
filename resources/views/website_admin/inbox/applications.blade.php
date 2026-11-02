@@ -125,7 +125,7 @@
                       // One line per other role; repeat copies of this same role collapse to a count.
                       $others = collect($a['otherApplications'] ?? []);
                       $sameRole = $others->where('role', $a['role'] ?? null)->count();
-                      $otherRoles = $others->where('role', '!=', $a['role'] ?? null)->groupBy('role')->map(function ($g) { return $g->sortByDesc('aiScore')->first(); });
+                      $otherRoles = $others->where('role', '!=', $a['role'] ?? null)->where('status', '!=', 'archived')->groupBy('role')->map(function ($g) { return $g->sortByDesc('aiScore')->first(); });
                     @endphp
                     @if($sameRole)
                       <div class="wi-also" title="Earlier copies of this same application">Applied {{ $sameRole + 1 }} times for this role</div>
