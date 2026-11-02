@@ -58,6 +58,8 @@
         <button class="sd-btn" id="sdBuys" title="Fill the box with the unpriced buys of this type from Price New Buys">Load unpriced buys</button>
         <label class="sd-status" style="margin:0 6px">Too cheap to list online under $<input class="sd-min" id="sdMin" type="number" min="0" step="1" value="{{ (int) $minDiscogsValue }}"></label>
         <button class="sd-btn" id="sdCopy" style="display:none">Copy results</button>
+        <button class="sd-btn" id="sdPickAll" style="display:none">Select all</button>
+        <button class="sd-btn" id="sdPickNone" style="display:none">Clear</button>
         <button class="sd-btn primary" id="sdSend" style="display:none">Send checked to Mass Add</button>
         <span class="sd-status" id="sdStatus"></span>
     </div>
@@ -82,7 +84,7 @@
     var input = document.getElementById('sdIn'), go = document.getElementById('sdGo'), status = document.getElementById('sdStatus');
     var out = document.getElementById('sdOut'), summary = document.getElementById('sdSummary'), copyBtn = document.getElementById('sdCopy');
     var catSel = document.getElementById('sdCat'), minIn = document.getElementById('sdMin');
-    var sendBtn = document.getElementById('sdSend');
+    var sendBtn = document.getElementById('sdSend'), pickAll = document.getElementById('sdPickAll'), pickNone = document.getElementById('sdPickNone');
     var rows = [], filter = 'all', mode = 'music', runCat = '', runId = 0, otherStore = 'Other';
     var LABEL = { store: 'Store', discogs: 'Discogs', ebay: 'eBay', never_sold: 'Never sold', never_had: 'Never had for sale', cheap: 'Bargain bin', unknown: '?' };
     var ONLINE = { discogs: 1, ebay: 1, never_sold: 1, never_had: 1 };
@@ -176,9 +178,8 @@
             return '<span class="sd-chip' + (filter === k ? ' on' : '') + '" data-f="' + k + '">' + (k === 'all' ? 'All' : LABEL[k]) + ' ' + (counts[k] || 0) + '</span>';
         }).join('');
         var shown = rows.filter(function (r) { return filter === 'all' || fin(r).v === filter; });
-        if (!rows.length) { out.innerHTML = ''; copyBtn.style.display = 'none'; sendBtn.style.display = 'none'; return; }
-        copyBtn.style.display = '';
-        sendBtn.style.display = '';
+        if (!rows.length) { out.innerHTML = ''; [copyBtn, sendBtn, pickAll, pickNone].forEach(function (b) { b.style.display = 'none'; }); return; }
+        [copyBtn, sendBtn, pickAll, pickNone].forEach(function (b) { b.style.display = ''; });
         updateSendLabel();
         var music = mode === 'music';
         var allOn = shown.length && shown.every(function (r) { return r.picked; });
@@ -301,6 +302,9 @@
     }
     function updateSendLabel() {
         var n = rows.filter(function (r) { return r.picked; }).length;
+        // "Select all" follows the chip filter: on "Discogs" it selects just the Discogs rows.
+        pickAll.textContent = filter === 'all' ? 'Select all' : 'Select all ' + (LABEL[filter] || '');
+        pickNone.disabled = !n;
         sendBtn.textContent = n ? 'Send ' + n + ' checked to Mass Add' : 'Send checked to Mass Add';
         sendBtn.disabled = !n;
     }
@@ -312,6 +316,14 @@
             rows[+e.target.getAttribute('data-i')].picked = e.target.checked;
             updateSendLabel();
         }
+    });
+    pickAll.addEventListener('click', function () {
+        rows.forEach(function (r) { if (filter === 'all' || fin(r).v === filter) r.picked = true; });
+        render();
+    });
+    pickNone.addEventListener('click', function () {
+        rows.forEach(function (r) { r.picked = false; });
+        render();
     });
     sendBtn.addEventListener('click', function () {
         var picked = rows.filter(function (r) { return r.picked; });
