@@ -201,6 +201,7 @@
                             data-since-default="{{ $r['sold_since_default'] }}"
                             data-daily="{{ json_encode((object) ($r['daily_sales'] ?? [])) }}"
                             data-cant="{{ $r['cant_order'] ? 1 : 0 }}"
+                            data-core="{{ !empty($r['core']) ? 1 : 0 }}"
                             data-cost="{{ $r['best_cost'] ?? $r['ams_cost'] ?? $r['erp_cost'] ?? 0 }}">
                             <td title="{{ !empty($r['merged']) ? 'Combines ' . count($r['merged']) . ' ERP entries: ' . implode(' | ', $r['merged']) : '' }}">
                                 @if($r['artist'])<div class="ro-artist">{{ $r['artist'] }}</div>@endif
@@ -330,6 +331,7 @@
                                 rare <input name="xyz_Z" class="form-control ro-num" value="{{ $settings['xyz_factor']['Z'] }}"></td></tr>
                             <tr><td>Reorder a title we bought once if it sold within</td><td><input name="bought_once_days" class="form-control ro-num" value="{{ $settings['bought_once_days'] }}"> days</td></tr>
                             <tr><td>Suggest buying new when a used copy sold within</td><td><input name="used_fast_days" class="form-control ro-num" value="{{ $settings['used_fast_days'] }}"> days, or for $<input name="used_min_price" class="form-control ro-num" value="{{ $settings['used_min_price'] }}"> or more</td></tr>
+                            <tr><td>Keep at least<div class="ro-muted">for "always stock" titles</div></td><td><input name="core_min_qty" class="form-control ro-num" value="{{ $settings['core_min_qty'] }}"> copies of a proven seller</td></tr>
                             <tr><td>Never order more than</td><td><input name="max_line_qty" class="form-control ro-num" value="{{ $settings['max_line_qty'] }}"> copies of one title</td></tr>
                             <tr><td>Ignore bin counts older than</td><td><input name="count_fresh_days" class="form-control ro-num" value="{{ $settings['count_fresh_days'] }}"> days</td></tr>
                             <tr><td>If a title hasn't been counted</td><td>
@@ -373,6 +375,7 @@
         if (BLANK === 'erp') return Math.max(0, sug - Math.max(0, +d.erp) - onord);
         if (BLANK === 'zero') return Math.max(0, sug - onord);
         var base = +d.since;
+        if (+d.core) base = Math.max(base, sug - Math.max(0, +d.erp) - onord);
         if (base === 0 && /\bused\b/.test(d.why) && +d.erp <= 0 && +d.onorder === 0) base = 1;
         return Math.max(0, Math.min(base, Math.max(sug, 1)));
     }

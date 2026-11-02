@@ -554,6 +554,7 @@ class ReorderController extends Controller
             'used_fast_days'   => (int) $num('used_fast_days', 45, 1, 365),
             'used_min_price'   => $num('used_min_price', 15, 0, 1000),
             'max_line_qty'     => (int) $num('max_line_qty', 10, 1, 100),
+            'core_min_qty'     => (int) $num('core_min_qty', $d['core_min_qty'], 1, 20),
             'count_fresh_days' => (int) $num('count_fresh_days', 21, 1, 120),
             'blank_count' => in_array($request->input('blank_count'), ['sold', 'erp', 'zero'], true) ? $request->input('blank_count') : 'sold',
         ]);
