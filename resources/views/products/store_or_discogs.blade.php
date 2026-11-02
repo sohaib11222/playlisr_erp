@@ -125,8 +125,8 @@
             bits.push('<a href="' + esc(d.uri) + '" target="_blank" rel="noopener">eBay ~' + money(d.median) + '</a>'
                 + '<div class="sd-sub">median of ' + d.for_sale + ' listed · low ' + money(d.lowest) + '</div>');
         } else if (d && d.found) {
-            bits.push('<a href="' + esc(d.uri) + '" target="_blank" rel="noopener">Discogs ' + (d.lowest != null ? 'from ' + money(d.lowest) : 'none for sale') + '</a>'
-                + '<div class="sd-sub">' + (d.for_sale || 0) + ' for sale · want ' + d.want + ' / have ' + d.have + '</div>');
+            bits.push('<a href="' + esc(d.uri) + '" target="_blank" rel="noopener">Discogs ' + (d.median != null ? '~' + money(d.median) : (d.lowest != null ? 'from ' + money(d.lowest) : 'none for sale')) + '</a>'
+                + '<div class="sd-sub">' + (d.median != null ? 'VG+ sales median · low ' + (d.lowest != null ? money(d.lowest) : '–') + ' · ' : '') + (d.for_sale || 0) + ' for sale · want ' + d.want + ' / have ' + d.have + '</div>');
         } else if (d && d.error) bits.push('<span class="sd-sub">' + esc(d.error).slice(0, 60) + '</span>');
         else if (d) bits.push('<span class="sd-sub">not found online</span>');
         return bits.join('<br>');
