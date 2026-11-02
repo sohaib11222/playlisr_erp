@@ -38,7 +38,7 @@ class StoreOrDiscogsController extends Controller
     /** Artist sell-through (sold ÷ (sold + on hand)) below this = it doesn't move here. */
     const MIN_SELL_THROUGH = 0.2;
     /** Default "too cheap to list online" cutoff; editable on the page. */
-    const MIN_DISCOGS_VALUE = 10;
+    const MIN_DISCOGS_VALUE = 6;
     /** Lines whose artist has less history than this (copies sold + on hand) also get tried as Title - Artist. */
     const SWAP_CHECK_BELOW = 10;
     /** Category names that are music formats (artist-based matching, Discogs). */
