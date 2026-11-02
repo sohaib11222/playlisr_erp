@@ -1,0 +1,100 @@
+# Moves products between categories, filtered by price / in-stock.
+# Runs `php artisan nivessa:recategorize`. DRY RUN by default — lists every
+# item that WOULD move. Tick "commit" to write (an undo log is saved; pass
+# its path in "undo" to put everything back).
+
+name: Recategorize products
+
+on:
+  workflow_dispatch:
+    inputs:
+      from_parent:
+        description: 'From parent category (e.g. Vinyl - Used)'
+        default: "Vinyl - Used"
+      from_sub:
+        description: 'From subcategory (blank = any)'
+        default: ""
+      to_parent:
+        description: 'To parent category (e.g. Vinyl - Sealed)'
+        default: "Vinyl - Sealed"
+      to_sub:
+        description: 'To subcategory (blank = none)'
+        default: ""
+      price:
+        description: 'Only this selling price, e.g. 22.00 (blank = any)'
+        default: ""
+      in_stock:
+        description: 'Only items currently in stock'
+        type: boolean
+        default: true
+      undo:
+        description: 'Undo log path to restore (ignores the rest)'
+        default: ""
+      commit:
+        description: 'Actually write? (leave unchecked for a dry run)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1 && exit 0
+            sleep 3
+          done
+          exit 0
+
+      - name: Run nivessa:recategorize
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          FROM_PARENT: ${{ github.event.inputs.from_parent }}
+          FROM_SUB: ${{ github.event.inputs.from_sub }}
+          TO_PARENT: ${{ github.event.inputs.to_parent }}
+          TO_SUB: ${{ github.event.inputs.to_sub }}
+          PRICE: ${{ github.event.inputs.price }}
+          UNDO: ${{ github.event.inputs.undo }}
+          IN_STOCK: ${{ github.event.inputs.in_stock }}
+          COMMIT: ${{ github.event.inputs.commit }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          envs: FROM_PARENT,FROM_SUB,TO_PARENT,TO_SUB,PRICE,UNDO,IN_STOCK,COMMIT
+          script_stop: false
+          command_timeout: 15m
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app || { echo "cd failed"; exit 0; }
+            set --
+            if [ -n "$UNDO" ]; then
+              set -- --undo="$UNDO"
+            else
+              set -- --from-parent="$FROM_PARENT" --to-parent="$TO_PARENT"
+              [ -n "$FROM_SUB" ] && set -- "$@" --from-sub="$FROM_SUB"
+              [ -n "$TO_SUB" ] && set -- "$@" --to-sub="$TO_SUB"
+              [ -n "$PRICE" ] && set -- "$@" --price="$PRICE"
+              [ "$IN_STOCK" = "true" ] && set -- "$@" --in-stock
+            fi
+            [ "$COMMIT" = "true" ] && set -- "$@" --commit
+            echo "=== php artisan nivessa:recategorize $* ==="
+            php artisan nivessa:recategorize "$@" 2>&1
+            echo "=== artisan exit code: $? ==="
+            exit 0
