@@ -230,6 +230,8 @@
         .bfc-create .bfc-items-gate-hint { border-left: 0 !important; border: 0 !important; background: #fdecea !important; border-radius: 8px; font-size: 17px !important; }
         .bfc-create .select2-container .select2-selection__rendered { font-size: 17px !important; color: #111 !important; line-height: 42px !important; }
         .bfc-create .select2-container .select2-selection--single { height: 44px !important; }
+        /* Select2 greys the currently-selected option in the open list; show it like the rest. */
+        .select2-container--default .select2-results__option[aria-selected=true]:not(.select2-results__option--highlighted) { background-color: #fff !important; color: #111 !important; }
         .content .alert.bfc-rules, .content .alert.bfc-rules * { color: #111 !important; background-color: transparent !important; }
         .content h4.bfc-step-sub { font-size: 19px !important; font-weight: 700 !important; }
         .bfc-step-num { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; background: #1f2937; color: #fff; font-size: 16px; flex: none; }
