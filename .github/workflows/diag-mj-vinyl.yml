@@ -1,0 +1,37 @@
+# One-off, read-only: Lists in-stock Michael Jackson / Jackson vinyl with category + price.
+# SELECTs only. Writes nothing.
+
+name: Diag MJ vinyl lookup (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      location:
+        description: 'Store name (hollywood or pico)'
+        default: hollywood
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Run diag
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          command_timeout: 30m
+          script: |
+            set -e
+            cd /www/playlist.nivessa.com/app
+            echo 'PD9waHAKcmVxdWlyZSAndmVuZG9yL2F1dG9sb2FkLnBocCc7CiRhcHAgPSByZXF1aXJlICdib290c3RyYXAvYXBwLnBocCc7CiRhcHAtPm1ha2UoSWxsdW1pbmF0ZVxDb250cmFjdHNcQ29uc29sZVxLZXJuZWw6OmNsYXNzKS0+Ym9vdHN0cmFwKCk7CnVzZSBJbGx1bWluYXRlXFN1cHBvcnRcRmFjYWRlc1xEQjsKJHJvd3MgPSBEQjo6c2VsZWN0KCJTRUxFQ1QgcC5pZCwgcC5uYW1lLCBwLmFydGlzdCwgYy5uYW1lIGNhdCwgc2MubmFtZSBzdWIsIFJPVU5EKE1BWCh2LnNlbGxfcHJpY2VfaW5jX3RheCksMikgcHJpY2UsCiAgKFNFTEVDVCBDT0FMRVNDRShTVU0ocXR5X2F2YWlsYWJsZSksMCkgRlJPTSB2YXJpYXRpb25fbG9jYXRpb25fZGV0YWlscyBkIFdIRVJFIGQucHJvZHVjdF9pZD1wLmlkKSBzdG9jaywKICAoU0VMRUNUIEdST1VQX0NPTkNBVChDT05DQVQoZC5sb2NhdGlvbl9pZCwnOicsZC5xdHlfYXZhaWxhYmxlKzApKSBGUk9NIHZhcmlhdGlvbl9sb2NhdGlvbl9kZXRhaWxzIGQgV0hFUkUgZC5wcm9kdWN0X2lkPXAuaWQgQU5EIGQucXR5X2F2YWlsYWJsZT4wKSBsb2NzCiAgRlJPTSBwcm9kdWN0cyBwIEpPSU4gdmFyaWF0aW9ucyB2IE9OIHYucHJvZHVjdF9pZD1wLmlkIEFORCB2LmRlbGV0ZWRfYXQgSVMgTlVMTAogIExFRlQgSk9JTiBjYXRlZ29yaWVzIGMgT04gYy5pZD1wLmNhdGVnb3J5X2lkIExFRlQgSk9JTiBjYXRlZ29yaWVzIHNjIE9OIHNjLmlkPXAuc3ViX2NhdGVnb3J5X2lkCiAgV0hFUkUgcC5idXNpbmVzc19pZD0xIEFORCAocC5hcnRpc3QgTElLRSAnJWphY2tzb24lJyBPUiBwLm5hbWUgTElLRSAnJW1pY2hhZWwgamFja3NvbiUnIE9SIHAubmFtZSBMSUtFICclamFja3NvbiwgbWljaGFlbCUnKQogICAgQU5EIGMubmFtZSBMSUtFICdWaW55bCUnCiAgR1JPVVAgQlkgcC5pZCBIQVZJTkcgc3RvY2s+MCBPUkRFUiBCWSBwcmljZSBERVNDLCBwLm5hbWUiKTsKZm9yZWFjaCAoJHJvd3MgYXMgJHIpIGVjaG8gaW1wbG9kZSgnIHwgJywgKGFycmF5KSRyKSwgIlxuIjsKZWNobyBjb3VudCgkcm93cykuIiByb3dzXG4iOwo=' | base64 -d > /tmp/diag_mj.php
+            LOC='${{ inputs.location }}' php /tmp/diag_mj.php
+            rm -f /tmp/diag_mj.php
