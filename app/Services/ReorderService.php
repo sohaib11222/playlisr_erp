@@ -561,7 +561,7 @@ class ReorderService
         $pids = array_keys($meta); // drops A-grades that aren't sealed $label
         $erpStock = $this->stockByProduct($business_id, $locationId, $pids);
         $sellDays = $this->daysToSell($business_id, $locationId, $pids);
-        $onOrder = $this->asOf ? [] : $this->onOrder($business_id, $locationId, $format, $orders, $pids);
+        $onOrder = $this->asOf ? [] : $this->onOrder($business_id, $locationId, $format, $orders, $pids, $state);
 
         // One row per album, like Clarissa's sheet: the same title is often
         // in the ERP several times (manual entry, alternate cover, typo).
@@ -1568,10 +1568,17 @@ class ReorderService
      * Units on the way: lines of orders marked placed on this page in the
      * last 21 days, plus ERP purchases still in "ordered"/"pending" status
      * (how Alliance orders are logged) from the last 45 days.
+     *
+     * The same AMS shipment shows up twice (auto-logged order here, then its
+     * invoice as an "ordered" ERP purchase a day later), so an ERP line that
+     * follows a page order for the same title within a week counts once.
+     * Lines placed well before a fresh bin count already arrived and got
+     * counted, even if the ERP purchase was never marked received
+     * (Bieber Journals: 6 "on order", 2 real, Sarah 11/2).
      */
-    protected function onOrder(int $business_id, int $locationId, string $format, array $orders, array $pids): array
+    protected function onOrder(int $business_id, int $locationId, string $format, array $orders, array $pids, array $state = []): array
     {
-        $out = [];
+        $page = [];
         $cut = Carbon::now()->subDays(21);
         foreach ($orders as $i => $o) {
             // The newest order is the "since" boundary: its lines are already
@@ -1579,9 +1586,10 @@ class ReorderService
             if (Carbon::parse($o['at'])->lt($cut)) continue;
             foreach ($o['lines'] as $l) {
                 $pid = (int) ($l['product_id'] ?? 0);
-                if ($pid) $out[$pid] = ($out[$pid] ?? 0) + (int) $l['qty'];
+                if ($pid) $page[$pid][] = ['at' => Carbon::parse($o['at']), 'qty' => (int) $l['qty']];
             }
         }
+        $erp = [];
         if (!empty($pids)) {
             foreach (array_chunk($pids, 2000) as $chunk) {
                 foreach (DB::table('purchase_lines as pl')
@@ -1593,12 +1601,33 @@ class ReorderService
                     ->whereIn('t.status', ['ordered', 'pending'])
                     ->where('t.transaction_date', '>=', Carbon::now()->subDays(45)->toDateTimeString())
                     ->whereIn('v.product_id', $chunk)
-                    ->groupBy('v.product_id')
-                    ->select('v.product_id', DB::raw('SUM(pl.quantity) as q'))
+                    ->groupBy('v.product_id', 't.id', 't.transaction_date')
+                    ->select('v.product_id', 't.transaction_date', DB::raw('SUM(pl.quantity) as q'))
                     ->get() as $r) {
-                    $out[(int) $r->product_id] = ($out[(int) $r->product_id] ?? 0) + (int) $r->q;
+                    $erp[(int) $r->product_id][] = ['at' => Carbon::parse($r->transaction_date), 'qty' => (int) $r->q];
                 }
             }
+        }
+        $fresh = Carbon::now()->subDays((int) ($state['settings']['count_fresh_days'] ?? 21));
+        $out = [];
+        foreach (array_unique(array_merge(array_keys($page), array_keys($erp))) as $pid) {
+            $c = $state['counts'][$locationId . ':' . $pid] ?? null;
+            $countAt = $c && Carbon::parse($c['at'])->gt($fresh) ? Carbon::parse($c['at'])->subDays(3) : null;
+            $keep = function ($l) use ($countAt) { return !$countAt || $l['at']->gte($countAt); };
+            $p = array_values(array_filter($page[$pid] ?? [], $keep));
+            $used = [];
+            $n = 0;
+            foreach (array_filter($erp[$pid] ?? [], $keep) as $e) {
+                $match = null;
+                foreach ($p as $j => $pl) {
+                    if (empty($used[$j]) && $pl['at']->lte($e['at']->copy()->addDay()) && $pl['at']->gte($e['at']->copy()->subDays(7))) { $match = $j; break; }
+                }
+                if ($match === null) { $n += $e['qty']; continue; }
+                $used[$match] = true;
+                $n += max($e['qty'], $p[$match]['qty']);
+            }
+            foreach ($p as $j => $pl) if (empty($used[$j])) $n += $pl['qty'];
+            if ($n > 0) $out[$pid] = $n;
         }
         return $out;
     }
