@@ -33,6 +33,7 @@ class RecategorizeProducts extends Command
                             {--to-parent= : Target parent category name}
                             {--to-sub= : Target subcategory name (blank = none)}
                             {--price= : Only items whose selling price (inc tax) equals this}
+                            {--artist= : Only items whose artist (or name) contains this}
                             {--in-stock : Only items with stock > 0}
                             {--location= : Store name (e.g. Hollywood): only items stocked there}
                             {--commit : Actually write (default: dry-run)}
@@ -76,6 +77,13 @@ class RecategorizeProducts extends Command
             });
         }
 
+        if ($artist = trim((string) $this->option('artist'))) {
+            $q->where(function ($w) use ($artist) {
+                $w->where('p.artist', 'like', "%$artist%")->orWhere('p.name', 'like', "%$artist%");
+            });
+            $this->info("ARTIST contains '$artist'");
+        }
+
         // --location scopes the stock check to one store. Category is per
         // product, so items also stocked at another store move there too:
         // the listing flags them.
@@ -98,14 +106,15 @@ class RecategorizeProducts extends Command
             $q->whereRaw("$stockSub > 0");
         }
 
-        $rows = $q->select('p.id', 'p.name', 'p.sku', 'p.category_id', 'p.sub_category_id',
+        $rows = $q->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
+            ->select('p.id', 'p.name', 'p.sku', 'p.category_id', 'p.sub_category_id', 'sc.name as sub_name',
                 DB::raw("$stockSub as stock"), DB::raw("$otherSub as other_stock"),
                 DB::raw('(select max(v.sell_price_inc_tax) from variations v where v.product_id = p.id and v.deleted_at is null) as price'))
             ->orderBy('p.name')->get();
 
         $this->info('MATCHED ' . $rows->count() . ' product(s)' . ($this->option('commit') ? '' : ' (dry run, nothing written)'));
         foreach ($rows->take((int) $this->option('show')) as $r) {
-            $this->line(sprintf('  #%d  %s  | sku %s | $%s | stock %s%s', $r->id, $r->name, $r->sku, number_format((float) $r->price, 2), (float) $r->stock,
+            $this->line(sprintf('  #%d  %s  | %s | sku %s | $%s | stock %s%s', $r->id, $r->name, $r->sub_name ?: '(no sub)', $r->sku, number_format((float) $r->price, 2), (float) $r->stock,
                 (float) $r->other_stock > 0 ? ' | ALSO ' . (float) $r->other_stock . ' at other stores' : ''));
         }
 
