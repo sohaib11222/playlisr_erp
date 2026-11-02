@@ -1323,6 +1323,9 @@ class HomeController extends Controller
                 ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
                 ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
                 ->leftJoin('business_locations as bl', 'bl.id', '=', 'sale.location_id')
+                // "Listed by": whoever entered the purchase lot this unit
+                // came from, falling back to whoever created the product.
+                ->leftJoin('users as lu', 'lu.id', '=', \DB::raw('COALESCE(purchase.created_by, p.created_by)'))
                 ->where('sale.business_id', $business_id)
                 ->where('sale.type', 'sell')
                 ->where('sale.status', 'final')
@@ -1342,7 +1345,8 @@ class HomeController extends Controller
                     tslp.quantity as qty,
                     tsl.unit_price_inc_tax as price,
                     pl.purchase_price_inc_tax as cost,
-                    bl.name as location")
+                    bl.name as location,
+                    TRIM(CONCAT(COALESCE(lu.first_name, ''), ' ', COALESCE(lu.last_name, ''))) as listed_by")
                 ->orderBy('days', 'asc')
                 ->orderBy('sale.transaction_date', 'desc')
                 ->limit($limit)
@@ -1370,6 +1374,7 @@ class HomeController extends Controller
                 ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
                 ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
                 ->leftJoin('business_locations as bl', 'bl.id', '=', 'vld.location_id')
+                ->leftJoin('users as lu', 'lu.id', '=', 'p.created_by')
                 ->where('p.business_id', $business_id)
                 ->where('vld.qty_available', '>', 0);
             if (!is_null($location_id)) {
@@ -1381,6 +1386,7 @@ class HomeController extends Controller
                     vld.qty_available as qty,
                     v.sell_price_inc_tax as price,
                     bl.name as location,
+                    TRIM(CONCAT(COALESCE(lu.first_name, ''), ' ', COALESCE(lu.last_name, ''))) as listed_by,
                     COALESCE({$on_shelf_since}, p.created_at) as intake_date")
                 ->orderBy('intake_date', 'asc')
                 ->limit($limit)
