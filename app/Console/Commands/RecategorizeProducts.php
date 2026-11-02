@@ -34,6 +34,7 @@ class RecategorizeProducts extends Command
                             {--to-sub= : Target subcategory name (blank = none)}
                             {--price= : Only items whose selling price (inc tax) equals this}
                             {--in-stock : Only items with stock > 0}
+                            {--location= : Store name (e.g. Hollywood): only items stocked there}
                             {--commit : Actually write (default: dry-run)}
                             {--undo= : Undo log file to restore from}
                             {--show=500 : Max rows to print}';
@@ -75,19 +76,37 @@ class RecategorizeProducts extends Command
             });
         }
 
-        $stockSub = '(select coalesce(sum(vld.qty_available),0) from variation_location_details vld where vld.product_id = p.id)';
-        if ($this->option('in-stock')) {
+        // --location scopes the stock check to one store. Category is per
+        // product, so items also stocked at another store move there too:
+        // the listing flags them.
+        $locId = null;
+        if ($this->option('location')) {
+            $locs = DB::table('business_locations')->where('business_id', $biz)
+                ->where('name', 'like', '%' . $this->option('location') . '%')->get(['id', 'name']);
+            if ($locs->count() !== 1) {
+                $this->error("Location '{$this->option('location')}' matched " . $locs->count() . ': ' . $locs->pluck('name')->implode(', '));
+                return 1;
+            }
+            $locId = (int) $locs[0]->id;
+            $this->info("LOCATION {$locs[0]->name} (#$locId)");
+        }
+        $stockSub = '(select coalesce(sum(vld.qty_available),0) from variation_location_details vld where vld.product_id = p.id'
+            . ($locId ? " and vld.location_id = $locId" : '') . ')';
+        $otherSub = '(select coalesce(sum(vld.qty_available),0) from variation_location_details vld where vld.product_id = p.id'
+            . ($locId ? " and vld.location_id <> $locId" : ' and 0') . ')';
+        if ($this->option('in-stock') || $locId) {
             $q->whereRaw("$stockSub > 0");
         }
 
         $rows = $q->select('p.id', 'p.name', 'p.sku', 'p.category_id', 'p.sub_category_id',
-                DB::raw("$stockSub as stock"),
+                DB::raw("$stockSub as stock"), DB::raw("$otherSub as other_stock"),
                 DB::raw('(select max(v.sell_price_inc_tax) from variations v where v.product_id = p.id and v.deleted_at is null) as price'))
             ->orderBy('p.name')->get();
 
         $this->info('MATCHED ' . $rows->count() . ' product(s)' . ($this->option('commit') ? '' : ' (dry run, nothing written)'));
         foreach ($rows->take((int) $this->option('show')) as $r) {
-            $this->line(sprintf('  #%d  %s  | sku %s | $%s | stock %s', $r->id, $r->name, $r->sku, number_format((float) $r->price, 2), (float) $r->stock));
+            $this->line(sprintf('  #%d  %s  | sku %s | $%s | stock %s%s', $r->id, $r->name, $r->sku, number_format((float) $r->price, 2), (float) $r->stock,
+                (float) $r->other_stock > 0 ? ' | ALSO ' . (float) $r->other_stock . ' at other stores' : ''));
         }
 
         if (!$this->option('commit') || $rows->isEmpty()) return 0;

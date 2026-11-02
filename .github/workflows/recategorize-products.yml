@@ -27,6 +27,9 @@ on:
         description: 'Only items currently in stock'
         type: boolean
         default: true
+      location:
+        description: 'Only items stocked at this store, e.g. Hollywood (blank = any)'
+        default: ""
       undo:
         description: 'Undo log path to restore (ignores the rest)'
         default: ""
@@ -70,6 +73,7 @@ jobs:
           TO_SUB: ${{ github.event.inputs.to_sub }}
           PRICE: ${{ github.event.inputs.price }}
           UNDO: ${{ github.event.inputs.undo }}
+          LOCATION: ${{ github.event.inputs.location }}
           IN_STOCK: ${{ github.event.inputs.in_stock }}
           COMMIT: ${{ github.event.inputs.commit }}
         with:
@@ -77,7 +81,7 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ steps.flags.outputs.ssh_port }}
-          envs: FROM_PARENT,FROM_SUB,TO_PARENT,TO_SUB,PRICE,UNDO,IN_STOCK,COMMIT
+          envs: FROM_PARENT,FROM_SUB,TO_PARENT,TO_SUB,PRICE,UNDO,LOCATION,IN_STOCK,COMMIT
           script_stop: false
           command_timeout: 15m
           script: |
@@ -92,6 +96,7 @@ jobs:
               [ -n "$TO_SUB" ] && set -- "$@" --to-sub="$TO_SUB"
               [ -n "$PRICE" ] && set -- "$@" --price="$PRICE"
               [ "$IN_STOCK" = "true" ] && set -- "$@" --in-stock
+              [ -n "$LOCATION" ] && set -- "$@" --location="$LOCATION"
             fi
             [ "$COMMIT" = "true" ] && set -- "$@" --commit
             echo "=== php artisan nivessa:recategorize $* ==="
