@@ -42,6 +42,8 @@ class StoreOrDiscogsController extends Controller
     /** Lines whose artist has less history than this (copies sold + on hand) also get tried as Title - Artist. */
     const SWAP_CHECK_BELOW = 10;
     /** Category names that are music formats (artist-based matching, Discogs). */
+    // Discogs VG+ price suggestion is capped at this many times the lowest copy for sale.
+    const DISCOGS_CAP_X_LOWEST = 3;
     const MUSIC_CATEGORY = '/vinyl|\bcds?\b|cassette|45 rpm|8 track|\brecord/i';
     /** Words that say what the thing is rather than which one it is; ignored when matching item names. */
     const ITEM_NOISE = ['the', 'a', 'an', 'of', 'and', 'vhs', 'dvd', 'blu', 'ray', 'bluray', 'book', 'books', 'poster', 'sealed', 'new', 'used', 'edition', 'hardcover', 'paperback'];
@@ -224,6 +226,7 @@ class StoreOrDiscogsController extends Controller
             $this->setPriceHints($r, $soldPrices, $shelfPrices, $recentFrom);
             [$r['verdict'], $r['where'], $r['why']] = $this->musicVerdict($it, $r, $recentFrom);
             $r['never_had_at'] = $this->neverHadAt($r);
+            $r['new_title_artist_sells'] = $it['tkey'] !== '' && array_sum($r['title_sold']) <= 0 && $r['title_have'] <= 0 && array_sum($r['artist_sold']) > 0;
             $r['_ids'] = $idsBy[$it['akey']] ?? [];
             if (!empty($it['swapped'])) {
                 $r['swapped'] = true;
@@ -401,6 +404,12 @@ class StoreOrDiscogsController extends Controller
         $sellThrough = $artistSold > 0 ? $artistSold / ($artistSold + $have) : 0;
 
         $note = '';
+        // Never carried this title, but the artist sells: say so (Sarah 2026-11-02).
+        $titleNeverHad = $it['tkey'] !== '' && $titleSold <= 0 && $r['title_have'] <= 0;
+        if ($titleNeverHad && $artistSold > 0) {
+            $note = 'Never had this title, but sold this artist ' . $this->n($artistSold) . 'x'
+                . ($r['artist_sold_12m'] > 0 ? ' (' . $this->n($r['artist_sold_12m']) . ' in 12 mo)' : '') . '. ';
+        }
         if ($titleSold > 0) {
             if ((string) $r['title_last_at'] >= $recentFrom) {
                 $why = 'Sold this title ' . $this->n($titleSold) . 'x';
@@ -419,6 +428,7 @@ class StoreOrDiscogsController extends Controller
             if ($sellThrough < self::MIN_SELL_THROUGH) {
                 return ['discogs', 'Discogs', $note . 'Only ' . round($sellThrough * 100) . '% of this artist we stocked has sold (' . $this->n($artistSold) . ' sold, ' . $this->n($have) . ' left)'];
             }
+            if ($titleNeverHad) return ['store', $this->bestStore($r['artist_sold']), rtrim($note, '. ')];
             return ['store', $this->bestStore($r['artist_sold']), $note . 'Sold this artist ' . $this->n($artistSold) . 'x' . ($titleSold > 0 ? '' : ', not this title')];
         }
         // No sales = no call either way; the page shows the Discogs price next to it.
@@ -756,7 +766,7 @@ class StoreOrDiscogsController extends Controller
 
     protected function discogsValue($business_id, $artist, $title, $format = '')
     {
-        $key = 'sod-value3:' . md5($this->norm($artist) . '|' . $this->normTitle($title) . '|' . $format);
+        $key = 'sod-value4:' . md5($this->norm($artist) . '|' . $this->normTitle($title) . '|' . $format);
         if ($hit = \Cache::get($key)) {
             if (!array_key_exists('price', $hit)) $hit['price'] = $hit['lowest'] ?? null; // cached before 'price' existed
             return response()->json($hit + ['cached' => true]);
@@ -789,6 +799,9 @@ class StoreOrDiscogsController extends Controller
         }
         $vgp = $sugg['data']->{'Very Good Plus (VG+)'}->value ?? null;
         $median = $vgp ? round((float) $vgp, 2) : null;
+        // The suggestion runs high on common titles (Rumours VG+ $97.50 with
+        // copies from $9), so cap it at 3x the cheapest copy for sale.
+        if ($median !== null && $lowest) $median = min($median, round($lowest * self::DISCOGS_CAP_X_LOWEST, 2));
         $out = [
             'found' => true,
             'source' => 'discogs',

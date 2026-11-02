@@ -232,6 +232,7 @@
                 var name = r.artist ? '<b>' + esc(r.artist) + '</b>' + (r.title ? '<div>' + esc(r.title) + '</div>' : '') : '<b>' + esc(r.title) + '</b>';
                 return '<tr><td><input type="checkbox" class="sd-pick" data-i="' + rows.indexOf(r) + '"' + (r.picked ? ' checked' : '') + '></td><td>' + name + '</td>'
                     + '<td><span class="sd-v ' + f.v + '">' + esc(f.where) + '</span>'
+                    + (r.new_title_artist_sells ? '<div style="margin-top:4px"><span class="sd-v never_had">Never had this title · artist sold ' + num(sum(r.artist_sold)) + (r.artist_sold_12m ? ' (' + num(r.artist_sold_12m) + ' in 12 mo)' : '') + '</span></div>' : '')
                     + (r.never_had_at && r.never_had_at.length ? (r.never_had_at.map(function (st) { return '<div style="margin-top:4px"><span class="sd-v never_had">Never had for sale at ' + esc(st) + '</span></div>'; }).join('')) : '')
                     + (music && mainFormat(r) ? '<div class="sd-sub">mostly ' + esc(mainFormat(r)) + '</div>' : '') + '</td>'
                     + '<td class="sd-num">' + priceCell(r) + '</td>'
