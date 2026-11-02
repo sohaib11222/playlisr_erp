@@ -1,0 +1,37 @@
+# Read-only: where /reports/reorder's "on order" comes from for a title regex
+# (page-logged orders + ERP purchases), plus sales, stock, bin counts. SELECTs only.
+
+name: Diag reorder on-order sources (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      artists:
+        description: 'Artist/title regex'
+        default: 'journals'
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Run diag
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          command_timeout: 30m
+          script: |
+            set -e
+            cd /www/playlist.nivessa.com/app
+            echo 'PD9waHAKcmVxdWlyZSAndmVuZG9yL2F1dG9sb2FkLnBocCc7CiRhcHAgPSByZXF1aXJlICdib290c3RyYXAvYXBwLnBocCc7CiRhcHAtPm1ha2UoSWxsdW1pbmF0ZVxDb250cmFjdHNcQ29uc29sZVxLZXJuZWw6OmNsYXNzKS0+Ym9vdHN0cmFwKCk7CnVzZSBJbGx1bWluYXRlXFN1cHBvcnRcRmFjYWRlc1xEQjsKJHBhdCA9IGdldGVudignQVJUSVNUUycpID86ICdqb3VybmFscyc7CiRiaXogPSAxOwokcGlkcyA9IGFycmF5X21hcChmdW5jdGlvbigkcil7cmV0dXJuIChpbnQpJHItPmlkO30sIERCOjpzZWxlY3QoIlNFTEVDVCBwLmlkIEZST00gcHJvZHVjdHMgcCBXSEVSRSBwLmJ1c2luZXNzX2lkPTEgQU5EIChwLnByb2R1Y3RfY3VzdG9tX2ZpZWxkMSBSRUdFWFAgPyBPUiBwLm5hbWUgUkVHRVhQID8pIiwgWyRwYXQsJHBhdF0pKTsKZWNobyAicHJvZHVjdHM6ICIuaW1wbG9kZSgnLCcsICRwaWRzKS4iXG4iOwpmb3JlYWNoIChEQjo6c2VsZWN0KCJTRUxFQ1QgcC5pZCxwLm5hbWUsYy5uYW1lIGNhdCBGUk9NIHByb2R1Y3RzIHAgTEVGVCBKT0lOIGNhdGVnb3JpZXMgYyBPTiBjLmlkPXAuY2F0ZWdvcnlfaWQgV0hFUkUgcC5pZCBJTiAoIi5pbXBsb2RlKCcsJywgJHBpZHMgPzogWzBdKS4iKSIpIGFzICRyKSBlY2hvICIgICIuaW1wbG9kZSgnIHwgJywoYXJyYXkpJHIpLiJcbiI7CiRzdmMgPSBhcHAoXEFwcFxTZXJ2aWNlc1xSZW9yZGVyU2VydmljZTo6Y2xhc3MpOwokc3QgPSAkc3ZjLT5sb2FkU3RhdGUoJGJpeik7CmVjaG8gIlxuPT09IG9yZGVycyBtYXJrZWQgcGxhY2VkIG9uIHJlb3JkZXIgcGFnZSAoYWxsKSBjb250YWluaW5nIHRoZXNlID09PVxuIjsKZm9yZWFjaCAoJHN0WydvcmRlcnMnXSBhcyAkbykgZm9yZWFjaCAoJG9bJ2xpbmVzJ10gYXMgJGwpIGlmIChpbl9hcnJheSgoaW50KSgkbFsncHJvZHVjdF9pZCddID8/IDApLCAkcGlkcykpIGVjaG8gIiAgb3JkZXIgeyRvWydpZCddfSBhdCB7JG9bJ2F0J119IGxvYyAiLigkb1snbG9jYXRpb25faWQnXT8/Jz8nKS4iIGZtdCAiLigkb1snZm9ybWF0J10/Pyc/JykuIiBieSAiLigkb1snYnknXT8/Jz8nKS4iIG5vdGU9Ii4oJG9bJ25vdGUnXT8/JycpLiIgfCBwaWQgeyRsWydwcm9kdWN0X2lkJ119IHF0eSB7JGxbJ3F0eSddfVxuIjsKZWNobyAiXG49PT0gRVJQIHB1cmNoYXNlcyAoYW55IHN0YXR1cywgbGFzdCAxMjBkKSA9PT1cbiI7CmZvcmVhY2ggKERCOjpzZWxlY3QoIlNFTEVDVCB0LmlkLCB0LnJlZl9ubywgdC5zdGF0dXMsIHQudHJhbnNhY3Rpb25fZGF0ZSwgdC5sb2NhdGlvbl9pZCwgdC5jcmVhdGVkX2F0LCBjdC5uYW1lIHN1cHBsaWVyLCB2LnByb2R1Y3RfaWQgcGlkLCBwbC5xdWFudGl0eSBxLCBwbC5xdWFudGl0eV9yZXR1cm5lZCByZXQKICBGUk9NIHB1cmNoYXNlX2xpbmVzIHBsIEpPSU4gdHJhbnNhY3Rpb25zIHQgT04gdC5pZD1wbC50cmFuc2FjdGlvbl9pZCBKT0lOIHZhcmlhdGlvbnMgdiBPTiB2LmlkPXBsLnZhcmlhdGlvbl9pZCBMRUZUIEpPSU4gY29udGFjdHMgY3QgT04gY3QuaWQ9dC5jb250YWN0X2lkCiAgV0hFUkUgdC5idXNpbmVzc19pZD0xIEFORCB0LnR5cGUgSU4gKCdwdXJjaGFzZScsJ3B1cmNoYXNlX29yZGVyJykgQU5EIHYucHJvZHVjdF9pZCBJTiAoIi5pbXBsb2RlKCcsJywgJHBpZHMgPzogWzBdKS4iKSBBTkQgdC50cmFuc2FjdGlvbl9kYXRlID49IE5PVygpIC0gSU5URVJWQUwgMTIwIERBWSBPUkRFUiBCWSB0LnRyYW5zYWN0aW9uX2RhdGUiKSBhcyAkcikgZWNobyAiICAiLmltcGxvZGUoJyB8ICcsKGFycmF5KSRyKS4iXG4iOwplY2hvICJcbj09PSBzYWxlcyAobGFzdCAxMjBkKSA9PT1cbiI7CmZvcmVhY2ggKERCOjpzZWxlY3QoIlNFTEVDVCBEQVRFKHQudHJhbnNhY3Rpb25fZGF0ZSkgZCwgdC5sb2NhdGlvbl9pZCBsb2MsIHYucHJvZHVjdF9pZCBwaWQsIFNVTSh0c2wucXVhbnRpdHktdHNsLnF1YW50aXR5X3JldHVybmVkKSBxIEZST00gdHJhbnNhY3Rpb25fc2VsbF9saW5lcyB0c2wgSk9JTiB0cmFuc2FjdGlvbnMgdCBPTiB0LmlkPXRzbC50cmFuc2FjdGlvbl9pZCBKT0lOIHZhcmlhdGlvbnMgdiBPTiB2LmlkPXRzbC52YXJpYXRpb25faWQKICBXSEVSRSB0LmJ1c2luZXNzX2lkPTEgQU5EIHQudHlwZT0nc2VsbCcgQU5EIHQuc3RhdHVzPSdmaW5hbCcgQU5EIHYucHJvZHVjdF9pZCBJTiAoIi5pbXBsb2RlKCcsJywgJHBpZHMgPzogWzBdKS4iKSBBTkQgdC50cmFuc2FjdGlvbl9kYXRlID49IE5PVygpIC0gSU5URVJWQUwgMTIwIERBWSBHUk9VUCBCWSBkLCBsb2MsIHBpZCBPUkRFUiBCWSBkIikgYXMgJHIpIGVjaG8gIiAgIi5pbXBsb2RlKCcgfCAnLChhcnJheSkkcikuIlxuIjsKZWNobyAiXG49PT0gc3RvY2sgbm93ID09PVxuIjsKZm9yZWFjaCAoREI6OnNlbGVjdCgiU0VMRUNUIHYucHJvZHVjdF9pZCBwaWQsIHZsZC5sb2NhdGlvbl9pZCBsb2MsIHZsZC5xdHlfYXZhaWxhYmxlIHEgRlJPTSB2YXJpYXRpb25fbG9jYXRpb25fZGV0YWlscyB2bGQgSk9JTiB2YXJpYXRpb25zIHYgT04gdi5pZD12bGQudmFyaWF0aW9uX2lkIFdIRVJFIHYucHJvZHVjdF9pZCBJTiAoIi5pbXBsb2RlKCcsJywgJHBpZHMgPzogWzBdKS4iKSIpIGFzICRyKSBlY2hvICIgICIuaW1wbG9kZSgnIHwgJywoYXJyYXkpJHIpLiJcbiI7CmVjaG8gIlxuPT09IGJpbiBjb3VudHMgPT09XG4iOwpmb3JlYWNoICgkc3RbJ2NvdW50cyddIGFzICRrID0+ICRjKSB7IFskbCwkcF0gPSBleHBsb2RlKCc6JywgJGspOyBpZiAoaW5fYXJyYXkoKGludCkkcCwgJHBpZHMpKSBlY2hvICIgICRrICIuanNvbl9lbmNvZGUoJGMpLiJcbiI7IH0K' | base64 -d > /tmp/diag_on_order.php
+            ARTISTS='${{ inputs.artists }}' php -d memory_limit=1G /tmp/diag_on_order.php
+            rm -f /tmp/diag_on_order.php
