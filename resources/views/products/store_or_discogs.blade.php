@@ -48,6 +48,21 @@
 .sd-stack { text-align: right; white-space: nowrap; font-size: 13px; line-height: 1.45; }
 .sd-stack span { color: #8E8273; }
 .sd-vcol .sd-v { white-space: normal; }
+.sd-find { border: 1px solid #E1D7C4; background: #fff; border-radius: 8px; height: 32px; padding: 0 8px; font-size: 13px; cursor: pointer; margin-left: 4px; vertical-align: top; }
+.sd-find:hover { background: #FAF6EE; }
+.sd-modal { position: fixed; inset: 0; background: rgba(31,27,22,.45); z-index: 2000; display: none; align-items: flex-start; justify-content: center; padding: 40px 12px; }
+.sd-modal.on { display: flex; }
+.sd-mbox { background: #fff; border-radius: 14px; width: 100%; max-width: 760px; max-height: calc(100vh - 80px); display: flex; flex-direction: column; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+.sd-mhead { padding: 14px 16px 10px; border-bottom: 1px solid #F3ECE1; }
+.sd-mhead h3 { margin: 0 0 8px; font-size: 17px; font-weight: 700; }
+.sd-mq { display: flex; gap: 8px; }
+.sd-mq input { flex: 1; height: 38px; border: 1px solid #E1D7C4; border-radius: 10px; padding: 0 10px; font-size: 15px; }
+.sd-mlist { overflow-y: auto; padding: 6px 8px 10px; }
+.sd-rel { display: flex; gap: 10px; align-items: center; padding: 8px; border-radius: 10px; cursor: pointer; }
+.sd-rel:hover { background: #FAF6EE; }
+.sd-rel img, .sd-rel .sd-noimg { width: 52px; height: 52px; border-radius: 6px; object-fit: cover; background: #F3ECE1; flex: none; }
+.sd-rel .sd-rt { flex: 1; min-width: 0; font-size: 14px; }
+.sd-rel .sd-use { flex: none; }
 .sd-note { background: #FFF6DB; border: 1px solid #F0D98A; color: #6B4E00; border-radius: 12px; padding: 10px 14px; font-size: 14px; margin: 0 0 14px; }
 </style>
 <div class="sd-wrap">
@@ -84,6 +99,12 @@
     </div>
     <div class="sd-summary" id="sdSummary"></div>
     <div class="sd-scroll" id="sdOut"></div>
+    <div class="sd-modal" id="sdModal"><div class="sd-mbox">
+        <div class="sd-mhead"><h3>Find the Discogs release</h3>
+            <div class="sd-mq"><input id="sdMq" placeholder="Artist title, catalog number, barcode…"><button class="sd-btn primary" id="sdMgo">Search</button><button class="sd-btn" id="sdMx">Close</button></div>
+            <div class="sd-sub" id="sdMstat" style="margin-top:6px">Most-owned pressings first. Click one to use it; the row's Discogs price updates for that pressing.</div></div>
+        <div class="sd-mlist" id="sdMlist"></div>
+    </div></div>
     <p class="sd-help" style="margin-top:14px">
         <b>Music:</b> sold this title in the last {{ $recentYears }} years → the store that sold it most.
         Sold the artist → the store that sold the artist most, unless: no artist sales in {{ $recentYears }} years, or we already have more than {{ $overstockRatio }}× what the artist sold in the last 12 months on the shelves, or under {{ $minSellThrough }}% of the artist we've stocked ever sold → Discogs.
@@ -252,7 +273,9 @@
         if (!hasRid(r)) return '<span class="sd-zero">–</span>';
         if (r.dv === 'pending' && r.rid == null) return '<span class="sd-sub">…</span>';
         var v = rid(r);
-        return '<input class="sd-rid" data-i="' + i + '" value="' + esc(v) + '" placeholder="ID or link" title="Release ID, or paste the whole Discogs release link">'
+        return '<span style="white-space:nowrap"><input class="sd-rid" data-i="' + i + '" value="' + esc(v) + '" placeholder="ID or link" title="Release ID, or paste the whole Discogs release link">'
+            + '<button type="button" class="sd-find" data-i="' + i + '" title="Search Discogs for the right release">🔍</button></span>'
+            + (r.ridLoading ? '<div class="sd-sub">getting price…</div>' : '')
             + (v ? '<div class="sd-sub"><a href="https://www.discogs.com/release/' + encodeURIComponent(v) + '" target="_blank" rel="noopener">open</a></div>' : '');
     }
 
@@ -392,13 +415,13 @@
             var r = queue[0];
             status.textContent = 'Online prices ' + (n + 1) + ' of ' + total + '…';
             post('/store-or-discogs/value', { artist: r.artist, title: r.title, category_id: runCat }).then(function (j) {
-                queue.shift(); n++; r.dv = j; render();
+                queue.shift(); n++; if (!r.ridPicked) r.dv = j; render();
                 setTimeout(next, j.cached ? 0 : 1100);
             }).catch(function (e) {
                 if (String(e.message).indexOf('429') !== -1) {
                     status.textContent = 'Discogs says slow down; waiting a minute (' + n + ' of ' + total + ' done)…';
                     setTimeout(next, 61000);
-                } else { queue.shift(); n++; r.dv = { found: false, error: e.message }; render(); setTimeout(next, 1100); }
+                } else { queue.shift(); n++; if (!r.ridPicked) r.dv = { found: false, error: e.message }; render(); setTimeout(next, 1100); }
             });
         })();
     }
@@ -437,6 +460,8 @@
     }
     // Header click: first click sorts (numbers biggest first, names/verdict A-Z / best first), again reverses, third goes back to pasted order.
     out.addEventListener('click', function (e) {
+        var fb = e.target.closest('.sd-find');
+        if (fb) { openFind(rows[+fb.getAttribute('data-i')]); return; }
         var rm = e.target.closest('.sd-rm');
         if (rm) {
             var gone = rows.splice(+rm.getAttribute('data-i'), 1)[0];
@@ -477,6 +502,7 @@
             var ri = rows[+e.target.getAttribute('data-i')], got = parseRid(e.target.value);
             if (got === null) { status.textContent = 'That looks like a Discogs master link; open it and paste a release link (discogs.com/release/…) instead.'; e.target.value = rid(ri); return; }
             ri.rid = got;
+            if (got && (!ri.dv || ri.dv.release_id !== +got)) useRelease(ri, +got);
             render();
         } else if (e.target.classList.contains('sd-pick')) {
             rows[+e.target.getAttribute('data-i')].picked = e.target.checked;
@@ -531,6 +557,76 @@
         })).join('\n');
         navigator.clipboard.writeText(tsv).then(function () { status.textContent = 'Copied — paste into a spreadsheet.'; });
     });
+
+    // ---- Release picker: search Discogs, click a pressing to use it.
+    var modal = document.getElementById('sdModal'), mq = document.getElementById('sdMq'), mlist = document.getElementById('sdMlist'), mstat = document.getElementById('sdMstat');
+    var findRow = null, findSeq = 0;
+    function openFind(r) {
+        findRow = r;
+        mq.value = ((r.artist || '') + ' ' + (r.title || '')).trim();
+        mlist.innerHTML = '';
+        modal.classList.add('on');
+        mq.focus();
+        runFind();
+    }
+    function closeFind() { modal.classList.remove('on'); findRow = null; }
+    function runFind() {
+        var q = mq.value.trim(), seq = ++findSeq;
+        if (!q) return;
+        var asId = parseRid(q);
+        mstat.textContent = 'Searching Discogs…';
+        post('/store-or-discogs/releases', { q: q, category_id: runCat }).then(function (j) {
+            if (seq !== findSeq) return;
+            var list = j.results || [];
+            mstat.textContent = j.error ? j.error : (list.length ? list.length + ' found, most-owned first. Click one to use it.' : 'Nothing found. Try fewer words, or the catalog number.');
+            var cur = findRow ? +rid(findRow) : 0;
+            mlist.innerHTML = (asId && /^\d+$/.test(asId) && /discogs\.com|^\[?r?\d+\]?$/i.test(q) ? '<div class="sd-rel" data-id="' + asId + '"><div class="sd-noimg"></div><div class="sd-rt"><b>Use release ' + esc(asId) + '</b><div class="sd-sub">the ID / link you typed</div></div><button class="sd-btn sd-use">Use</button></div>' : '')
+                + list.map(function (x) {
+                    var meta = [x.year, x.country, x.label, x.catno, x.format].filter(Boolean).join(' · ');
+                    return '<div class="sd-rel" data-id="' + x.id + '" data-have="' + x.have + '" data-want="' + x.want + '">'
+                        + (x.thumb ? '<img src="' + esc(x.thumb) + '" alt="" loading="lazy">' : '<div class="sd-noimg"></div>')
+                        + '<div class="sd-rt"><b>' + esc(x.title) + '</b>' + (x.id === cur ? ' <span class="sd-v store">current</span>' : '')
+                        + '<div class="sd-sub">' + esc(meta) + '</div><div class="sd-sub">' + x.have + ' have · ' + x.want + ' want · <a href="https://www.discogs.com/release/' + x.id + '" target="_blank" rel="noopener">view</a> · ID ' + x.id + '</div></div>'
+                        + '<button class="sd-btn sd-use">Use</button></div>';
+                }).join('');
+        }).catch(function (e) {
+            if (seq !== findSeq) return;
+            mstat.textContent = String(e.message).indexOf('429') !== -1 ? 'Discogs says slow down; try again in a minute.' : 'Search failed (' + e.message + ').';
+        });
+    }
+    // Point a row at a release and re-price it from that release's Discogs data.
+    function useRelease(r, id, have, want) {
+        r.rid = String(id);
+        r.ridPicked = true;
+        r.ridLoading = true;
+        r.pricePick = null;
+        var body = { release_id: id };
+        if (have != null) { body.have = have; body.want = want; }
+        post('/store-or-discogs/release-value', body).then(function (j) {
+            r.ridLoading = false;
+            if (j.found) r.dv = j;
+            else status.textContent = j.error || ('No Discogs prices for release ' + id + '.');
+            render();
+        }).catch(function (e) {
+            r.ridLoading = false;
+            status.textContent = String(e.message).indexOf('429') !== -1 ? 'Discogs says slow down; the price for release ' + id + ' will need a retry in a minute.' : 'Could not price release ' + id + ' (' + e.message + ').';
+            render();
+        });
+    }
+    mlist.addEventListener('click', function (e) {
+        if (e.target.closest('a')) return;
+        var el = e.target.closest('.sd-rel');
+        if (!el || !findRow) return;
+        var h = el.getAttribute('data-have');
+        useRelease(findRow, +el.getAttribute('data-id'), h == null ? null : +h, h == null ? null : +el.getAttribute('data-want'));
+        closeFind();
+        render();
+    });
+    document.getElementById('sdMgo').addEventListener('click', runFind);
+    document.getElementById('sdMx').addEventListener('click', closeFind);
+    mq.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); runFind(); } });
+    modal.addEventListener('click', function (e) { if (e.target === modal) closeFind(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && modal.classList.contains('on')) closeFind(); });
 
     // Remember the last type picked on this computer.
     try { var saved = localStorage.getItem('sdCat'); if (saved !== null && catSel.querySelector('option[value="' + saved + '"]')) catSel.value = saved; } catch (e) {}
