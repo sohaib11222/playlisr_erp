@@ -35,6 +35,7 @@
 .sd-table th[data-sort] { cursor: pointer; user-select: none; }
 .sd-table th[data-sort]:hover { color: #1F1B16; }
 .sd-arrow { font-size: 10px; margin-left: 3px; }
+.sd-price { height: 32px; border: 1px solid #E1D7C4; border-radius: 8px; padding: 0 6px; font-size: 14px; font-weight: 700; background: #fff; }
 .sd-cond { height: 32px; border: 1px solid #E1D7C4; border-radius: 8px; padding: 0 6px; font-size: 14px; background: #fff; }
 .sd-rid { width: 110px; height: 32px; border: 1px solid #E1D7C4; border-radius: 8px; padding: 0 6px; font-size: 14px; }
 .sd-rm { border: 1px solid #E1D7C4; background: #fff; color: #9A3A1F; border-radius: 8px; width: 28px; height: 28px; font-size: 16px; line-height: 1; cursor: pointer; }
@@ -192,15 +193,33 @@
         if (cr && cr[k] > 0) return r.cond === 'Sealed' ? Math.max(cr[k], COND_X.Sealed) : cr[k];
         return COND_X[r.cond] || 1;
     }
-    function estimate(r) {
+    function suggest(r) {
         var e = baseEstimate(r);
         if (!e || !r.cond) return e;
         return [e[0] * condX(r), e[1] + ', ' + r.cond];
     }
-    function priceCell(r) {
-        var e = estimate(r);
-        if (!e) return r.dv === 'pending' ? '<span class="sd-sub">…</span>' : '<span class="sd-zero">?</span>';
-        return '<span title="Estimate only: check condition and look it up before pricing"><b>~$' + Math.max(1, Math.round(e[0])) + '</b><div class="sd-sub">' + esc(e[1]) + ' · estimate</div></span>';
+    // The price used everywhere (sort, Mass Add, prompt, copy): the one picked
+    // in the row's dropdown, else the suggestion.
+    function estimate(r) {
+        return r.pricePick != null ? [r.pricePick, 'your price'] : suggest(r);
+    }
+    function priceOut(r) { var e = estimate(r); return e ? (r.pricePick != null ? r.pricePick : Math.round(e[0])) : ''; }
+    // Shelf price points for the dropdown: 7 below and 7 above the suggestion.
+    var LADDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 15, 17, 18, 20, 22, 25, 28, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 90, 100,
+        110, 125, 150, 175, 200, 225, 250, 300, 350, 400, 450, 500, 600, 700, 800, 900, 1000, 1250, 1500, 2000, 2500, 3000, 4000, 5000];
+    function priceOptions(sug) {
+        var below = LADDER.filter(function (p) { return p < sug; }).slice(-7), above = LADDER.filter(function (p) { return p > sug; }).slice(0, 7);
+        return below.concat([sug], above);
+    }
+    function priceCell(r, i) {
+        var s = suggest(r);
+        if (!s) return r.dv === 'pending' ? '<span class="sd-sub">…</span>' : '<span class="sd-zero">?</span>';
+        var sug = Math.max(1, Math.round(s[0])), cur = r.pricePick != null ? r.pricePick : sug, opts = priceOptions(sug);
+        if (opts.indexOf(cur) === -1) { opts.push(cur); opts.sort(function (a, b) { return a - b; }); }
+        return '<select class="sd-price" data-i="' + i + '" title="Estimate only: check condition and look it up before pricing">'
+            + opts.map(function (p) { return '<option value="' + p + '"' + (p === cur ? ' selected' : '') + '>$' + p + (p === sug ? ' (suggested)' : '') + '</option>'; }).join('')
+            + '<option value="other">Other…</option></select>'
+            + '<div class="sd-sub">' + (r.pricePick != null ? 'your price · suggested ~$' + sug : esc(s[1]) + ' · estimate') + '</div>';
     }
 
     // Discogs release ID: only for vinyl, CD and cassette. Pre-filled from the
@@ -307,7 +326,7 @@
                     + (r.never_had_at && r.never_had_at.length ? (r.never_had_at.map(function (st) { return '<div style="margin-top:4px"><span class="sd-v never_had">Never had for sale at ' + esc(st) + '</span></div>'; }).join('')) : '')
                     + (music && mainFormat(r) ? '<div class="sd-sub">mostly ' + esc(mainFormat(r)) + '</div>' : '') + '</td>'
                     + '<td>' + condCell(r, rows.indexOf(r)) + '</td>'
-                    + '<td class="sd-num">' + priceCell(r) + '</td>'
+                    + '<td class="sd-num">' + priceCell(r, rows.indexOf(r)) + '</td>'
                     + (music ? '<td>' + ridCell(r, rows.indexOf(r)) + '</td>' : '')
                     + '<td class="sd-why">' + esc(f.why) + shelfLine(r) + (r.artist_last_at ? '<div class="sd-sub">artist last sold ' + esc(r.artist_last_at) + '</div>' : '')
                     + (!music && r.title_last_at ? '<div class="sd-sub">last sold ' + esc(r.title_last_at) + '</div>' : '') + '</td>'
@@ -406,7 +425,7 @@
         var loc = '';
         if (f.v === 'store') loc = /pico/i.test(f.where) && !/hollywood/i.test(f.where) ? 'Pico' : (/hollywood/i.test(f.where) && !/pico/i.test(f.where) ? 'Hollywood' : '');
         else if (f.v === 'discogs' || f.v === 'ebay') loc = 'Discogs Warehouse';
-        return [clean(r.title || r.artist), clean(r.title ? r.artist : ''), cat, '', '', e ? String(Math.round(e[0])) : '', '', loc].join(' | ');
+        return [clean(r.title || r.artist), clean(r.title ? r.artist : ''), cat, '', '', String(priceOut(r)), '', loc].join(' | ');
     }
     function updateSendLabel() {
         var n = rows.filter(function (r) { return r.picked; }).length;
@@ -439,7 +458,20 @@
             rows.forEach(function (r) { if (filter === 'all' || fin(r).v === filter) r.picked = e.target.checked; });
             render();
         } else if (e.target.classList.contains('sd-cond')) {
-            rows[+e.target.getAttribute('data-i')].cond = e.target.value;
+            var rc = rows[+e.target.getAttribute('data-i')];
+            rc.cond = e.target.value;
+            rc.pricePick = null; // new condition = new suggestion
+            render();
+        } else if (e.target.classList.contains('sd-price')) {
+            var rp = rows[+e.target.getAttribute('data-i')], val = e.target.value;
+            if (val === 'other') {
+                var typed = window.prompt('Price for this item ($):', estimate(rp) ? Math.round(estimate(rp)[0]) : '');
+                var n = typed == null ? NaN : parseFloat(String(typed).replace(/[^0-9.]/g, ''));
+                if (!isNaN(n) && n > 0) rp.pricePick = Math.round(n * 100) / 100;
+            } else {
+                var sv = suggest(rp), sug = sv ? Math.max(1, Math.round(sv[0])) : null;
+                rp.pricePick = +val === sug ? null : +val;
+            }
             render();
         } else if (e.target.classList.contains('sd-rid')) {
             var ri = rows[+e.target.getAttribute('data-i')], got = parseRid(e.target.value);
@@ -480,7 +512,7 @@
         if (!list.length) list = sorted(rows.filter(function (r) { return filter === 'all' || fin(r).v === filter; }));
         var lines = list.map(function (r) {
             var e = estimate(r), name = r.artist ? r.artist + (r.title ? ' - ' + r.title : '') : r.title;
-            return name + ' | Condition: ' + (r.cond || 'not given') + ' | Suggested price: ' + (e ? '$' + Math.round(e[0]) : 'none');
+            return name + ' | Condition: ' + (r.cond || 'not given') + ' | Suggested price: ' + (e ? '$' + priceOut(r) : 'none');
         });
         var text = 'Price these items for a Hollywood / Pico Blvd retail record store, using fair current market value (Discogs / eBay) for the condition. '
             + 'Fill in the best category and subcategory for each, and leave SKU blank. Return one item per line in this exact format, nothing else:\n'
@@ -492,7 +524,7 @@
         var head = ['Artist', 'Title', 'Verdict', 'Suggested price (estimate)', 'Price from', 'Condition', 'Discogs release ID', 'Format', 'Why', 'Sold', 'Our last price', 'Online price', 'Pico for sale', 'Hollywood for sale', otherStore + ' for sale', 'Pico days on shelf', 'Hollywood days on shelf', 'Artist sold', 'Artist 12 mo', 'Artist on hand', 'On hand', 'Listings'];
         var tsv = [head.join('\t')].concat(rows.filter(function (r) { return filter === 'all' || fin(r).v === filter; }).map(function (r) {
             var f = fin(r), e = estimate(r);
-            return [r.artist, r.title, f.where + (r.never_had_at && r.never_had_at.length ? '; never had for sale at ' + r.never_had_at.join(' and ') : ''), e ? Math.round(e[0]) : '', e ? e[1] : '', r.cond || '', mode === 'music' && hasRid(r) ? rid(r) : '', fmtList(Object.keys(r.title_fmt || {}).length ? r.title_fmt : r.artist_fmt), f.why, sum(r.title_sold), r.title_last_price == null ? '' : r.title_last_price,
+            return [r.artist, r.title, f.where + (r.never_had_at && r.never_had_at.length ? '; never had for sale at ' + r.never_had_at.join(' and ') : ''), priceOut(r), e ? e[1] : '', r.cond || '', mode === 'music' && hasRid(r) ? rid(r) : '', fmtList(Object.keys(r.title_fmt || {}).length ? r.title_fmt : r.artist_fmt), f.why, sum(r.title_sold), r.title_last_price == null ? '' : r.title_last_price,
                 r.dv && r.dv.price != null ? r.dv.price : '', r.for_sale.pico, r.for_sale.hollywood, r.for_sale.other,
                 r.shelf && r.shelf.pico && r.shelf.pico.shelf_days != null ? r.shelf.pico.shelf_days : '', r.shelf && r.shelf.hollywood && r.shelf.hollywood.shelf_days != null ? r.shelf.hollywood.shelf_days : '',
                 sum(r.artist_sold), r.artist_sold_12m, sum(r.artist_have), r.title_have, mode === 'music' ? r.artist_listed : r.title_listed].join('\t');
