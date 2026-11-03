@@ -766,7 +766,7 @@ class StoreOrDiscogsController extends Controller
 
     protected function discogsValue($business_id, $artist, $title, $format = '')
     {
-        $key = 'sod-value4:' . md5($this->norm($artist) . '|' . $this->normTitle($title) . '|' . $format);
+        $key = 'sod-value5:' . md5($this->norm($artist) . '|' . $this->normTitle($title) . '|' . $format);
         if ($hit = \Cache::get($key)) {
             if (!array_key_exists('price', $hit)) $hit['price'] = $hit['lowest'] ?? null; // cached before 'price' existed
             return response()->json($hit + ['cached' => true]);
@@ -802,7 +802,18 @@ class StoreOrDiscogsController extends Controller
         // The suggestion runs high on common titles (Rumours VG+ $97.50 with
         // copies from $9), so cap it at 3x the cheapest copy for sale.
         if ($median !== null && $lowest) $median = min($median, round($lowest * self::DISCOGS_CAP_X_LOWEST, 2));
+        // This release's price per grade relative to VG+, so the page can scale
+        // its suggested price when staff pick a condition.
+        $condRatio = [];
+        if ($vgp > 0) {
+            $grades = ['M' => 'Mint (M)', 'NM' => 'Near Mint (NM or M-)', 'VG+' => 'Very Good Plus (VG+)', 'VG' => 'Very Good (VG)', 'G+' => 'Good Plus (G+)', 'G' => 'Good (G)', 'F/P' => 'Fair (F)'];
+            foreach ($grades as $k => $label) {
+                $v = $sugg['data']->{$label}->value ?? null;
+                if ($v > 0) $condRatio[$k] = round((float) $v / (float) $vgp, 3);
+            }
+        }
         $out = [
+            'cond_ratio' => $condRatio ?: null,
             'found' => true,
             'source' => 'discogs',
             'release_id' => (int) $hit->id,
