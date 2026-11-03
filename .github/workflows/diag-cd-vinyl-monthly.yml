@@ -1,0 +1,33 @@
+# One-off, read-only: monthly sales $ by category (sealed/used CD + vinyl
+# trend check), all stores and per location. SELECTs only. Writes nothing.
+
+name: Diag CD/vinyl monthly sales (read-only)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Run diag
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          command_timeout: 30m
+          script: |
+            set -e
+            cd /www/playlist.nivessa.com/app
+            echo 'PD9waHAKcmVxdWlyZSAndmVuZG9yL2F1dG9sb2FkLnBocCc7CiRhcHAgPSByZXF1aXJlICdib290c3RyYXAvYXBwLnBocCc7CiRhcHAtPm1ha2UoSWxsdW1pbmF0ZVxDb250cmFjdHNcQ29uc29sZVxLZXJuZWw6OmNsYXNzKS0+Ym9vdHN0cmFwKCk7CnVzZSBJbGx1bWluYXRlXFN1cHBvcnRcRmFjYWRlc1xEQjsKaW5pX3NldCgnbWVtb3J5X2xpbWl0JywgJzEwMjRNJyk7IHNldF90aW1lX2xpbWl0KDApOwpmdW5jdGlvbiBxKCRsYWJlbCwgJHNxbCwgJGIgPSBbXSkgewogIGVjaG8gIlxuIyMjICRsYWJlbFxuIjsKICB0cnkgeyAkcm93cyA9IERCOjpzZWxlY3QoJHNxbCwgJGIpOwogICAgZm9yZWFjaCAoJHJvd3MgYXMgJHIpIGVjaG8gaW1wbG9kZSgnIHwgJywgYXJyYXlfbWFwKGZ1bmN0aW9uKCRrLCR2KXtyZXR1cm4gIiRrPSIuKGlzX251bWVyaWMoJHYpP3JvdW5kKCR2LDIpOiR2KTt9LCBhcnJheV9rZXlzKChhcnJheSkkciksIChhcnJheSkkcikpLCAiXG4iOwogICAgcHJpbnRmKCIoJWQgcm93cylcbiIsIGNvdW50KCRyb3dzKSk7CiAgfSBjYXRjaCAoXFRocm93YWJsZSAkZSkgeyBlY2hvICJFUlIgIi5zdWJzdHIoJGUtPmdldE1lc3NhZ2UoKSwwLDMwMCkuIlxuIjsgfQp9CnEoImxvY2F0aW9ucyIsICJTRUxFQ1QgaWQsIG5hbWUgRlJPTSBidXNpbmVzc19sb2NhdGlvbnMiKTsKJGJhc2UgPSAiU0VMRUNUIERBVEVfRk9STUFUKHQudHJhbnNhY3Rpb25fZGF0ZSwnJVktJW0nKSBtLCB0LmxvY2F0aW9uX2lkIGxvYywgQ09BTEVTQ0UoYy5uYW1lLCcobm9uZSknKSBjYXQsCiAgKGwucXVhbnRpdHkgLSBDT0FMRVNDRShsLnF1YW50aXR5X3JldHVybmVkLDApKSB1LAogIChsLnF1YW50aXR5IC0gQ09BTEVTQ0UobC5xdWFudGl0eV9yZXR1cm5lZCwwKSkgKiBsLnVuaXRfcHJpY2UgcmV2CiAgRlJPTSB0cmFuc2FjdGlvbl9zZWxsX2xpbmVzIGwgSk9JTiB0cmFuc2FjdGlvbnMgdCBPTiB0LmlkPWwudHJhbnNhY3Rpb25faWQKICBKT0lOIHByb2R1Y3RzIHAgT04gcC5pZD1sLnByb2R1Y3RfaWQgTEVGVCBKT0lOIGNhdGVnb3JpZXMgYyBPTiBjLmlkPXAuY2F0ZWdvcnlfaWQKICBXSEVSRSB0LnR5cGU9J3NlbGwnIEFORCB0LnN0YXR1cz0nZmluYWwnIEFORCB0LnRyYW5zYWN0aW9uX2RhdGUgPj0gJzIwMjUtMDUtMDEnIEFORCBsLnBhcmVudF9zZWxsX2xpbmVfaWQgSVMgTlVMTCI7CnEoImFsbCBjYXRlZ29yaWVzIDEybW8gKHRvIHNwb3QgQ0QvdmlueWwgbmFtZXMpIiwgIlNFTEVDVCBjYXQsIFJPVU5EKFNVTShyZXYpKSByZXYsIFNVTSh1KSB1bml0cyBGUk9NICgkYmFzZSkgeiBXSEVSRSBtID49IERBVEVfRk9STUFUKERBVEVfU1VCKENVUkRBVEUoKSwgSU5URVJWQUwgMTIgTU9OVEgpLCclWS0lbScpIEdST1VQIEJZIGNhdCBPUkRFUiBCWSByZXYgREVTQyBMSU1JVCA0MCIpOwpxKCJtb250aGx5IGJ5IGNhdGVnb3J5IChhbGwgc3RvcmVzKSIsICJTRUxFQ1QgbSwgY2F0LCBST1VORChTVU0ocmV2KSkgcmV2LCBTVU0odSkgdW5pdHMgRlJPTSAoJGJhc2UpIHogR1JPVVAgQlkgbSwgY2F0IEhBVklORyByZXYgPj0gNTAwIE9SREVSIEJZIGNhdCwgbSIpOwpxKCJtb250aGx5IGJ5IGNhdGVnb3J5K2xvY2F0aW9uIiwgIlNFTEVDVCBtLCBsb2MsIGNhdCwgUk9VTkQoU1VNKHJldikpIHJldiwgU1VNKHUpIHVuaXRzIEZST00gKCRiYXNlKSB6IFdIRVJFIGNhdCBMSUtFICclQ0QlJyBPUiBjYXQgTElLRSAnJVZpbnlsJScgT1IgY2F0IExJS0UgJyVTZWFsZWQlJyBPUiBjYXQgTElLRSAnJVVzZWQlJyBHUk9VUCBCWSBtLCBsb2MsIGNhdCBIQVZJTkcgcmV2ID49IDMwMCBPUkRFUiBCWSBjYXQsIGxvYywgbSIpOwpxKCJtb250aGx5IHN0b3JlIHRvdGFsIiwgIlNFTEVDVCBtLCBST1VORChTVU0ocmV2KSkgcmV2LCBTVU0odSkgdW5pdHMgRlJPTSAoJGJhc2UpIHogR1JPVVAgQlkgbSBPUkRFUiBCWSBtIik7Cg==' | base64 -d > /tmp/diag_cd_vinyl.php
+            php /tmp/diag_cd_vinyl.php
+            rm -f /tmp/diag_cd_vinyl.php
