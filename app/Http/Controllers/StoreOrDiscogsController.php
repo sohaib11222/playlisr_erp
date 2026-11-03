@@ -785,18 +785,27 @@ class StoreOrDiscogsController extends Controller
             \Cache::put($key, $out, now()->addDays(30));
             return response()->json($out);
         }
-        $stats = $discogs->callApi('https://api.discogs.com/marketplace/stats/' . (int) $hit->id . '?curr_abbr=USD&token=' . urlencode($this->discogsToken($business_id)));
-        if (!empty($stats['error']) && strpos((string) $stats['message'], '429') !== false) {
-            return response()->json(['found' => false, 'rate_limited' => true], 429);
-        }
+        $out = $this->releasePrices($business_id, $discogs, (int) $hit->id, (int) ($hit->community->have ?? 0), (int) ($hit->community->want ?? 0));
+        if ($out === null) return response()->json(['found' => false, 'rate_limited' => true], 429);
+        \Cache::put($key, $out, now()->addDays(30));
+        return response()->json($out);
+    }
+
+    /**
+     * Marketplace stats + sales-based per-grade price for one release, in the
+     * shape the page expects. null = Discogs rate limit.
+     */
+    protected function releasePrices($business_id, $discogs, $id, $have, $want)
+    {
+        $token = urlencode($this->discogsToken($business_id));
+        $stats = $discogs->callApi('https://api.discogs.com/marketplace/stats/' . $id . '?curr_abbr=USD&token=' . $token);
+        if (!empty($stats['error']) && strpos((string) $stats['message'], '429') !== false) return null;
         $st = $stats['data'] ?? null;
         $lowest = isset($st->lowest_price->value) ? round((float) $st->lowest_price->value, 2) : null;
         // Sales-based suggestion per condition; needs the seller token. VG+ is
         // the usual used grade. Missing/failed = fall back to lowest asking.
-        $sugg = $discogs->callApi('https://api.discogs.com/marketplace/price_suggestions/' . (int) $hit->id . '?token=' . urlencode($this->discogsToken($business_id)));
-        if (!empty($sugg['error']) && strpos((string) $sugg['message'], '429') !== false) {
-            return response()->json(['found' => false, 'rate_limited' => true], 429);
-        }
+        $sugg = $discogs->callApi('https://api.discogs.com/marketplace/price_suggestions/' . $id . '?token=' . $token);
+        if (!empty($sugg['error']) && strpos((string) $sugg['message'], '429') !== false) return null;
         $vgp = $sugg['data']->{'Very Good Plus (VG+)'}->value ?? null;
         $median = $vgp ? round((float) $vgp, 2) : null;
         // The suggestion runs high on common titles (Rumours VG+ $97.50 with
@@ -812,20 +821,92 @@ class StoreOrDiscogsController extends Controller
                 if ($v > 0) $condRatio[$k] = round((float) $v / (float) $vgp, 3);
             }
         }
-        $out = [
+        return [
             'cond_ratio' => $condRatio ?: null,
             'found' => true,
             'source' => 'discogs',
-            'release_id' => (int) $hit->id,
-            'uri' => 'https://www.discogs.com/release/' . (int) $hit->id,
+            'release_id' => $id,
+            'uri' => 'https://www.discogs.com/release/' . $id,
             'lowest' => $lowest,
             'median' => $median,
             'price' => $median ?? $lowest,
             'for_sale' => isset($st->num_for_sale) ? (int) $st->num_for_sale : null,
-            'want' => (int) ($hit->community->want ?? 0),
-            'have' => (int) ($hit->community->have ?? 0),
+            'want' => $want,
+            'have' => $have,
         ];
-        \Cache::put($key, $out, now()->addDays(30));
+    }
+
+    /**
+     * Release picker: Discogs releases for a search (artist + title, or free
+     * text), most-owned first, so staff can choose the exact pressing.
+     */
+    public function releases(Request $request)
+    {
+        if (!$this->allowed()) { abort(403); }
+        $business_id = $request->session()->get('user.business_id');
+        $q = trim((string) $request->input('q'));
+        if ($q === '') return response()->json(['results' => []]);
+        [$cat] = $this->pickedCategory($business_id, $request->input('category_id'));
+        $format = $this->discogsFormat($cat);
+        $key = 'sod-releases:' . md5(mb_strtolower($q) . '|' . $format);
+        if ($hit = \Cache::get($key)) return response()->json($hit);
+        $discogs = new \App\Services\DiscogsService($business_id);
+        if (!$discogs->isConfigured()) return response()->json(['results' => [], 'error' => 'Discogs not connected']);
+        $results = [];
+        foreach (array_unique([$format, '']) as $fmt) {
+            $res = $discogs->callApi($discogs->getReleaseApiUrl(['query' => $q]) . '&per_page=50' . ($fmt !== '' ? '&format=' . urlencode($fmt) : ''));
+            if (!empty($res['error'])) {
+                $limited = strpos((string) $res['message'], '429') !== false;
+                return response()->json(['results' => [], 'error' => $limited ? 'Discogs says slow down; try again in a minute.' : $res['message']], $limited ? 429 : 200);
+            }
+            $results = $res['data']->results ?? [];
+            if ($results) break;
+        }
+        usort($results, function ($a, $b) { return ($b->community->have ?? 0) <=> ($a->community->have ?? 0); });
+        $out = ['results' => array_map(function ($r) {
+            return [
+                'id' => (int) $r->id,
+                'title' => (string) ($r->title ?? ''),
+                'year' => (string) ($r->year ?? ''),
+                'country' => (string) ($r->country ?? ''),
+                'label' => implode(', ', array_slice(array_unique((array) ($r->label ?? [])), 0, 2)),
+                'catno' => (string) ($r->catno ?? ''),
+                'format' => implode(', ', array_unique((array) ($r->format ?? []))),
+                'thumb' => (string) ($r->thumb ?? ''),
+                'have' => (int) ($r->community->have ?? 0),
+                'want' => (int) ($r->community->want ?? 0),
+            ];
+        }, array_slice($results, 0, 25))];
+        \Cache::put($key, $out, now()->addDay());
+        return response()->json($out);
+    }
+
+    /** Prices for a release staff picked (or typed) for a row. */
+    public function releaseValue(Request $request)
+    {
+        if (!$this->allowed()) { abort(403); }
+        $business_id = $request->session()->get('user.business_id');
+        $id = (int) $request->input('release_id');
+        if ($id <= 0) return response()->json(['found' => false]);
+        $key = 'sod-release-value:' . $id;
+        if ($hit = \Cache::get($key)) return response()->json($hit + ['cached' => true]);
+        $discogs = new \App\Services\DiscogsService($business_id);
+        if (!$discogs->isConfigured()) return response()->json(['found' => false, 'error' => 'Discogs not connected']);
+        $have = (int) $request->input('have');
+        $want = (int) $request->input('want');
+        if (!$request->has('have')) {
+            // Typed ID: look the release up for its have/want counts.
+            $rel = $discogs->callApi('https://api.discogs.com/releases/' . $id . '?token=' . urlencode($this->discogsToken($business_id)));
+            if (!empty($rel['error'])) {
+                if (strpos((string) $rel['message'], '429') !== false) return response()->json(['found' => false, 'rate_limited' => true], 429);
+                return response()->json(['found' => false, 'error' => 'No Discogs release ' . $id]);
+            }
+            $have = (int) ($rel['data']->community->have ?? 0);
+            $want = (int) ($rel['data']->community->want ?? 0);
+        }
+        $out = $this->releasePrices($business_id, $discogs, $id, $have, $want);
+        if ($out === null) return response()->json(['found' => false, 'rate_limited' => true], 429);
+        \Cache::put($key, $out, now()->addDays(7));
         return response()->json($out);
     }
 
