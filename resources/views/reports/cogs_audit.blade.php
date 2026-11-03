@@ -38,7 +38,7 @@
     <tbody>
     @forelse($rows as $r)
       <tr>
-        <td>{{ $r['label'] }}</td>
+        <td><a href="?start_date={{ $start }}&end_date={{ $end }}&channel={{ urlencode($r['channel']) }}">{{ $r['label'] }}</a></td>
         <td>${{ number_format($r['revenue'], 2) }}</td>
         <td>${{ number_format($r['cogs'], 2) }}</td>
         <td>${{ number_format($r['gross_profit'], 2) }}</td>

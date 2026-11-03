@@ -32,6 +32,10 @@ class CogsAuditController extends Controller
         $start = request()->get('start_date', date('Y-01-01'));
         $end   = request()->get('end_date', date('Y-m-d'));
 
+        if (request()->filled('channel')) {
+            return $this->detail($businessId, $start, $end, request()->get('channel'));
+        }
+
         // Sold quantity and revenue per channel and variation.
         $sold = DB::table('transaction_sell_lines as tsl')
             ->join('transactions as s', 'tsl.transaction_id', '=', 's.id')
@@ -107,13 +111,42 @@ class CogsAuditController extends Controller
                 $categoryOf[$row->id] = (int) $row->category_id;
             }
         }
+        // Rules are keyed by top-level category, so a product filed under a
+        // sub-category has to be walked up to its parent first.
         $ruleCost = CostPriceRulesController::defaultCostsByCategoryId($businessId);
+        $parentOf = DB::table('categories')
+            ->where('business_id', $businessId)
+            ->whereNull('deleted_at')
+            ->pluck('parent_id', 'id');
+        foreach ($categoryOf as $vid => $cid) {
+            $seen = 0;
+            while ($cid && !isset($ruleCost[$cid]) && !empty($parentOf[$cid]) && $seen++ < 5) {
+                $cid = (int) $parentOf[$cid];
+            }
+            $categoryOf[$vid] = $cid;
+        }
+
+        // Discogs sales imported from the API all hang off one "Discogs Sale"
+        // placeholder product, so there is no stock record to cost them from:
+        // no purchase line, no category, nothing. Sarah, 2026-11-02 - cost
+        // those at the standard used guide rather than showing them free.
+        $usedGuide = 0.0;
+        foreach (CostPriceRulesController::RULES as $rule) {
+            if ($rule['label'] === 'Used Vinyl') {
+                $usedGuide = (float) $rule['cost'];
+                break;
+            }
+        }
+
+        $locations = DB::table('business_locations')
+            ->where('business_id', $businessId)
+            ->pluck('name', 'id');
 
         // Roll the three sources up per channel.
         $rows = [];
         foreach ($sold as $r) {
             $k = $r->location_id . '|' . $r->channel . '|' . $r->variation_id;
-            $channelKey = $r->location_id . '|' . ($r->channel ?: 'in_store');
+            $channelKey = $this->label($r->channel ?: 'in_store', $locations[$r->location_id] ?? '');
             if (!isset($rows[$channelKey])) {
                 $rows[$channelKey] = [
                     'location_id'   => $r->location_id,
@@ -152,22 +185,21 @@ class CogsAuditController extends Controller
             } elseif (!empty($categoryOf[$vid]) && isset($ruleCost[$categoryOf[$vid]])) {
                 $row['cost_rule'] += $gap * $ruleCost[$categoryOf[$vid]];
                 $row['qty_rule']  += $gap;
+            } elseif ($usedGuide > 0) {
+                $row['cost_rule'] += $gap * $usedGuide;
+                $row['qty_rule']  += $gap;
             } else {
                 $row['qty_nocost'] += $gap;
             }
             unset($row);
         }
 
-        $locations = DB::table('business_locations')
-            ->where('business_id', $businessId)
-            ->pluck('name', 'id');
-
         foreach ($rows as $k => $row) {
             $rows[$k]['cogs'] = $row['cost_purchase'] + $row['cost_invoice'] + $row['cost_rule'];
             $rows[$k]['gross_profit'] = $row['revenue'] - $rows[$k]['cogs'];
             $rows[$k]['margin'] = $row['revenue'] > 0
                 ? ($rows[$k]['gross_profit'] / $row['revenue']) * 100 : 0;
-            $rows[$k]['label'] = $this->label($row['channel'], $locations[$row['location_id']] ?? '');
+            $rows[$k]['label'] = $k;
         }
         usort($rows, function ($a, $b) { return $b['revenue'] <=> $a['revenue']; });
 
@@ -187,6 +219,50 @@ class CogsAuditController extends Controller
             ? ($totals['gross_profit'] / $totals['revenue']) * 100 : 0;
 
         return view('reports.cogs_audit', compact('rows', 'totals', 'start', 'end'));
+    }
+
+    /**
+     * Line by line behind one channel, so a figure that looks wrong can be
+     * traced to the sale that caused it. Read-only like the roll-up.
+     */
+    private function detail($businessId, $start, $end, $channel)
+    {
+        $locations = DB::table('business_locations')
+            ->where('business_id', $businessId)
+            ->pluck('name', 'id');
+
+        $lines = DB::table('transaction_sell_lines as tsl')
+            ->join('transactions as s', 'tsl.transaction_id', '=', 's.id')
+            ->leftJoin('variations as v', 'tsl.variation_id', '=', 'v.id')
+            ->leftJoin('products as p', 'v.product_id', '=', 'p.id')
+            ->leftJoin('transaction_sell_lines_purchase_lines as tspl', 'tsl.id', '=', 'tspl.sell_line_id')
+            ->leftJoin('purchase_lines as pl', 'tspl.purchase_line_id', '=', 'pl.id')
+            ->where('s.business_id', $businessId)
+            ->where('s.type', 'sell')
+            ->where('s.status', 'final')
+            ->where('tsl.children_type', '!=', 'combo')
+            ->whereDate('s.transaction_date', '>=', $start)
+            ->whereDate('s.transaction_date', '<=', $end)
+            ->when($channel === 'in_store', function ($q) {
+                return $q->where(function ($q2) {
+                    $q2->whereNull('s.channel')->orWhere('s.channel', 'in_store');
+                });
+            }, function ($q) use ($channel) {
+                return $q->where('s.channel', $channel);
+            })
+            ->orderBy('s.transaction_date')
+            ->limit(500)
+            ->get([
+                's.id as transaction_id', 's.invoice_no', 's.transaction_date', 's.location_id',
+                'p.name as product', 'tsl.quantity', 'tsl.quantity_returned', 'tsl.unit_price_inc_tax',
+                'tspl.quantity as mapped_qty', 'tspl.qty_returned as mapped_returned',
+                'pl.purchase_price_inc_tax as unit_cost',
+            ]);
+
+        return view('reports.cogs_audit_detail', [
+            'lines' => $lines, 'channel' => $channel, 'start' => $start,
+            'end' => $end, 'locations' => $locations,
+        ]);
     }
 
     private function label($channel, $locationName)
