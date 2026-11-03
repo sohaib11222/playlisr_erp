@@ -1410,6 +1410,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/whatnot/import-statement', 'ImportWhatnotStatementController@index')->name('whatnot.import-statement');
     Route::post('/whatnot/import-statement', 'ImportWhatnotStatementController@store');
     Route::get('/reports/sales-by-channel', 'ReportController@salesByChannel');
+    Route::get('/reports/cogs-audit', 'CogsAuditController@index');
     Route::get('/reports/archer-performance', 'ReportController@archerPerformance');
     Route::get('/reports/archer-performance/filtered', 'ReportController@archerPerformanceFiltered')->name('reports.archer-performance.filtered');
     Route::get('/reports/discogs', 'ReportController@discogsReport');
