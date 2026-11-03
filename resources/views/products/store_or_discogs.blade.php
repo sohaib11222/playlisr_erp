@@ -39,6 +39,10 @@
 .sd-rid { width: 92px; height: 32px; border: 1px solid #E1D7C4; border-radius: 8px; padding: 0 6px; font-size: 14px; }
 .sd-rm { border: 1px solid #E1D7C4; background: #fff; color: #9A3A1F; border-radius: 8px; width: 28px; height: 28px; font-size: 16px; line-height: 1; cursor: pointer; }
 .sd-rm:hover { background: #FBE3DC; }
+.sd-first { white-space: nowrap; }
+.sd-first .sd-rm { margin-left: 6px; vertical-align: middle; }
+.sd-vcol { min-width: 120px; max-width: 190px; }
+.sd-vcol .sd-v { white-space: normal; }
 .sd-note { background: #FFF6DB; border: 1px solid #F0D98A; color: #6B4E00; border-radius: 12px; padding: 10px 14px; font-size: 14px; margin: 0 0 14px; }
 </style>
 <div class="sd-wrap">
@@ -278,12 +282,13 @@
             + th('Pico for sale', 'pico', 'sd-num') + th('Hollywood for sale', 'hollywood', 'sd-num') + th(esc(otherStore) + ' for sale', 'other', 'sd-num')
             + (music ? th('Artist sold', 'artist_sold', 'sd-num') + th('Artist 12 mo', 'artist_12m', 'sd-num') + th('Artist on hand', 'artist_have', 'sd-num')
                      : th('Sold 12 mo', 'sold_12m', 'sd-num') + th('Listings', 'listed', 'sd-num'))
-            + '<th></th><th></th></tr></thead><tbody>'
+            + '<th></th></tr></thead><tbody>'
             + shown.map(function (r) {
                 var q = encodeURIComponent((r.artist + ' ' + r.title).trim()), f = fin(r);
                 var name = r.artist ? '<b>' + esc(r.artist) + '</b>' + (r.title ? '<div>' + esc(r.title) + '</div>' : '') : '<b>' + esc(r.title) + '</b>';
-                return '<tr><td><input type="checkbox" class="sd-pick" data-i="' + rows.indexOf(r) + '"' + (r.picked ? ' checked' : '') + '></td><td>' + name + '</td>'
-                    + '<td><span class="sd-v ' + f.v + '">' + esc(f.where) + '</span>'
+                return '<tr><td class="sd-first"><input type="checkbox" class="sd-pick" data-i="' + rows.indexOf(r) + '"' + (r.picked ? ' checked' : '') + '>'
+                    + '<button type="button" class="sd-rm" data-i="' + rows.indexOf(r) + '" title="Remove this row">×</button></td><td>' + name + '</td>'
+                    + '<td class="sd-vcol"><span class="sd-v ' + f.v + '">' + esc(f.where) + '</span>'
                     + (r.new_title_artist_sells ? '<div style="margin-top:4px"><span class="sd-v never_had">Never had this title · artist sold ' + num(sum(r.artist_sold)) + (r.artist_sold_12m ? ' (' + num(r.artist_sold_12m) + ' in 12 mo)' : '') + '</span></div>' : '')
                     + (r.never_had_at && r.never_had_at.length ? (r.never_had_at.map(function (st) { return '<div style="margin-top:4px"><span class="sd-v never_had">Never had for sale at ' + esc(st) + '</span></div>'; }).join('')) : '')
                     + (music && mainFormat(r) ? '<div class="sd-sub">mostly ' + esc(mainFormat(r)) + '</div>' : '') + '</td>'
@@ -307,8 +312,7 @@
                     + '<td style="white-space:nowrap">' + (music
                         ? '<a href="https://www.discogs.com/search/?type=release&q=' + q + '" target="_blank" rel="noopener">Discogs</a>'
                         : '<a href="https://www.ebay.com/sch/i.html?_nkw=' + q + '" target="_blank" rel="noopener">eBay</a>')
-                    + ' · <a href="/stock-lookup?q=' + q + '" target="_blank">Ours</a></td>'
-                    + '<td><button type="button" class="sd-rm" data-i="' + rows.indexOf(r) + '" title="Remove this row">×</button></td></tr>';
+                    + ' · <a href="/stock-lookup?q=' + q + '" target="_blank">Ours</a></td></tr>';
             }).join('') + '</tbody></table>';
     }
 
