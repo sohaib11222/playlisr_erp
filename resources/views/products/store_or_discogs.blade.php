@@ -35,6 +35,7 @@
 .sd-table th[data-sort] { cursor: pointer; user-select: none; }
 .sd-table th[data-sort]:hover { color: #1F1B16; }
 .sd-arrow { font-size: 10px; margin-left: 3px; }
+.sd-cond { height: 32px; border: 1px solid #E1D7C4; border-radius: 8px; padding: 0 6px; font-size: 14px; background: #fff; }
 .sd-note { background: #FFF6DB; border: 1px solid #F0D98A; color: #6B4E00; border-radius: 12px; padding: 10px 14px; font-size: 14px; margin: 0 0 14px; }
 </style>
 <div class="sd-wrap">
@@ -63,6 +64,7 @@
         <button class="sd-btn" id="sdBuys" title="Fill the box with the unpriced buys of this type from Price New Buys">Load unpriced buys</button>
         <label class="sd-status" style="margin:0 6px">Too cheap to list online under $<input class="sd-min" id="sdMin" type="number" min="0" step="1" value="{{ (int) $minDiscogsValue }}"></label>
         <button class="sd-btn" id="sdCopy" style="display:none">Copy results</button>
+        <button class="sd-btn" id="sdPrompt" style="display:none" title="Copies a pricing prompt for the checked items (or all shown) with each one's condition and suggested price, to paste into an AI">Copy pricing prompt</button>
         <button class="sd-btn" id="sdPickAll" style="display:none">Select all</button>
         <button class="sd-btn" id="sdPickNone" style="display:none">Clear</button>
         <button class="sd-btn primary" id="sdSend" style="display:none">Send checked to Mass Add</button>
@@ -89,7 +91,7 @@
     var input = document.getElementById('sdIn'), go = document.getElementById('sdGo'), status = document.getElementById('sdStatus');
     var out = document.getElementById('sdOut'), summary = document.getElementById('sdSummary'), copyBtn = document.getElementById('sdCopy');
     var catSel = document.getElementById('sdCat'), minIn = document.getElementById('sdMin');
-    var sendBtn = document.getElementById('sdSend'), pickAll = document.getElementById('sdPickAll'), pickNone = document.getElementById('sdPickNone');
+    var promptBtn = document.getElementById('sdPrompt'), sendBtn = document.getElementById('sdSend'), pickAll = document.getElementById('sdPickAll'), pickNone = document.getElementById('sdPickNone');
     var rows = [], filter = 'all', mode = 'music', runCat = '', runId = 0, otherStore = 'Other';
     var LABEL = { store: 'Store', discogs: 'Discogs', ebay: 'eBay', never_sold: 'Never sold', never_had: 'Never had for sale', cheap: 'Bargain bin', unknown: '?' };
     var ONLINE = { discogs: 1, ebay: 1, never_sold: 1, never_had: 1 };
@@ -176,6 +178,13 @@
         return '<span title="Estimate only: check condition and look it up before pricing"><b>~$' + Math.round(e[0]) + '</b><div class="sd-sub">' + esc(e[1]) + ' · estimate</div></span>';
     }
 
+    // Condition is picked by staff per row; it goes into the pricing prompt.
+    var CONDITIONS = ['Sealed', 'M', 'NM', 'VG+', 'VG', 'G+', 'G', 'F/P'];
+    function condCell(r, i) {
+        return '<select class="sd-cond" data-i="' + i + '"><option value="">–</option>'
+            + CONDITIONS.map(function (c) { return '<option' + (r.cond === c ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select>';
+    }
+
     // ---- Sorting: click a header to sort, again to reverse. null = the order pasted.
     var sortKey = null, sortDir = 1;
     // Verdict sorts best-to-worst: store, online, bargain bin, never sold, never had.
@@ -217,12 +226,12 @@
             return '<span class="sd-chip' + (filter === k ? ' on' : '') + '" data-f="' + k + '">' + (k === 'all' ? 'All' : LABEL[k]) + ' ' + (counts[k] || 0) + '</span>';
         }).join('');
         var shown = sorted(rows.filter(function (r) { return filter === 'all' || fin(r).v === filter; }));
-        if (!rows.length) { out.innerHTML = ''; [copyBtn, sendBtn, pickAll, pickNone].forEach(function (b) { b.style.display = 'none'; }); return; }
-        [copyBtn, sendBtn, pickAll, pickNone].forEach(function (b) { b.style.display = ''; });
+        if (!rows.length) { out.innerHTML = ''; [copyBtn, promptBtn, sendBtn, pickAll, pickNone].forEach(function (b) { b.style.display = 'none'; }); return; }
+        [copyBtn, promptBtn, sendBtn, pickAll, pickNone].forEach(function (b) { b.style.display = ''; });
         updateSendLabel();
         var music = mode === 'music';
         var allOn = shown.length && shown.every(function (r) { return r.picked; });
-        out.innerHTML = '<table class="sd-table"><thead><tr><th><input type="checkbox" id="sdAll" title="Check all shown"' + (allOn ? ' checked' : '') + '></th>' + th(music ? 'Album' : 'Item', 'name') + th('Verdict', 'verdict') + th('Suggested price', 'price', 'sd-num') + '<th>Why</th>'
+        out.innerHTML = '<table class="sd-table"><thead><tr><th><input type="checkbox" id="sdAll" title="Check all shown"' + (allOn ? ' checked' : '') + '></th>' + th(music ? 'Album' : 'Item', 'name') + th('Verdict', 'verdict') + '<th>Condition</th>' + th('Suggested price', 'price', 'sd-num') + '<th>Why</th>'
             + (music ? '<th>Format</th>' : '')
             + th(music ? 'Title sold' : 'Sold', 'sold', 'sd-num') + '<th class="sd-num">Value</th>'
             + th('Pico for sale', 'pico', 'sd-num') + th('Hollywood for sale', 'hollywood', 'sd-num') + th(esc(otherStore) + ' for sale', 'other', 'sd-num')
@@ -237,6 +246,7 @@
                     + (r.new_title_artist_sells ? '<div style="margin-top:4px"><span class="sd-v never_had">Never had this title · artist sold ' + num(sum(r.artist_sold)) + (r.artist_sold_12m ? ' (' + num(r.artist_sold_12m) + ' in 12 mo)' : '') + '</span></div>' : '')
                     + (r.never_had_at && r.never_had_at.length ? (r.never_had_at.map(function (st) { return '<div style="margin-top:4px"><span class="sd-v never_had">Never had for sale at ' + esc(st) + '</span></div>'; }).join('')) : '')
                     + (music && mainFormat(r) ? '<div class="sd-sub">mostly ' + esc(mainFormat(r)) + '</div>' : '') + '</td>'
+                    + '<td>' + condCell(r, rows.indexOf(r)) + '</td>'
                     + '<td class="sd-num">' + priceCell(r) + '</td>'
                     + '<td>' + esc(f.why) + shelfLine(r) + (r.artist_last_at ? '<div class="sd-sub">artist last sold ' + esc(r.artist_last_at) + '</div>' : '')
                     + (!music && r.title_last_at ? '<div class="sd-sub">last sold ' + esc(r.title_last_at) + '</div>' : '') + '</td>'
@@ -362,6 +372,8 @@
         if (e.target.id === 'sdAll') {
             rows.forEach(function (r) { if (filter === 'all' || fin(r).v === filter) r.picked = e.target.checked; });
             render();
+        } else if (e.target.classList.contains('sd-cond')) {
+            rows[+e.target.getAttribute('data-i')].cond = e.target.value;
         } else if (e.target.classList.contains('sd-pick')) {
             rows[+e.target.getAttribute('data-i')].picked = e.target.checked;
             updateSendLabel();
@@ -387,6 +399,21 @@
     summary.addEventListener('click', function (e) {
         var c = e.target.closest('.sd-chip'); if (!c) return;
         filter = c.getAttribute('data-f'); render();
+    });
+
+    // Pricing prompt for an AI: checked rows (or everything shown), one per line,
+    // each followed by its condition and our suggested price.
+    promptBtn.addEventListener('click', function () {
+        var list = rows.filter(function (r) { return r.picked; });
+        if (!list.length) list = sorted(rows.filter(function (r) { return filter === 'all' || fin(r).v === filter; }));
+        var lines = list.map(function (r) {
+            var e = estimate(r), name = r.artist ? r.artist + (r.title ? ' - ' + r.title : '') : r.title;
+            return name + ' | Condition: ' + (r.cond || 'not given') + ' | Suggested price: ' + (e ? '$' + Math.round(e[0]) : 'none');
+        });
+        var text = 'Price these items for a Hollywood / Pico Blvd retail record store, using fair current market value (Discogs / eBay) for the condition. '
+            + 'Fill in the best category and subcategory for each, and leave SKU blank. Return one item per line in this exact format, nothing else:\n'
+            + 'Product Name,Artist,Category,Subcategory,SKU,Price,\n\n' + lines.join('\n');
+        navigator.clipboard.writeText(text).then(function () { status.textContent = 'Pricing prompt for ' + list.length + ' copied — paste it into an AI.'; });
     });
 
     copyBtn.addEventListener('click', function () {
