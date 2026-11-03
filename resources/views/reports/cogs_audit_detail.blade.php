@@ -24,7 +24,7 @@
       <tr>
         <th>Date</th><th>Invoice</th><th>Store</th><th>Item</th>
         <th>Sold qty</th><th>Returned</th><th>Unit price</th>
-        <th>Costed qty</th><th>Unit cost</th><th>Line cost</th><th></th>
+        <th>Costed qty</th><th>Unit cost</th><th>Line cost</th><th>Bought on</th><th></th>
       </tr>
     </thead>
     <tbody>
@@ -46,10 +46,11 @@
         <td>{{ rtrim(rtrim(number_format($costQty, 2), '0'), '.') }}</td>
         <td>${{ number_format((float) $l->unit_cost, 2) }}</td>
         <td>${{ number_format($lineCost, 2) }}</td>
+        <td>@if($l->purchase_id)<a href="{{ url('/purchases/' . $l->purchase_id . '/edit') }}">{{ strip_tags($l->purchase_ref) }}</a>@endif</td>
         <td>@if($lineCost > $lineRev)<span class="cd-flag">cost above price</span>@endif</td>
       </tr>
     @empty
-      <tr><td colspan="11">No lines in this range.</td></tr>
+      <tr><td colspan="12">No lines in this range.</td></tr>
     @endforelse
     </tbody>
   </table>

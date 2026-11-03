@@ -237,6 +237,7 @@ class CogsAuditController extends Controller
             ->leftJoin('products as p', 'v.product_id', '=', 'p.id')
             ->leftJoin('transaction_sell_lines_purchase_lines as tspl', 'tsl.id', '=', 'tspl.sell_line_id')
             ->leftJoin('purchase_lines as pl', 'tspl.purchase_line_id', '=', 'pl.id')
+            ->leftJoin('transactions as pt', 'pl.transaction_id', '=', 'pt.id')
             ->where('s.business_id', $businessId)
             ->where('s.type', 'sell')
             ->where('s.status', 'final')
@@ -257,6 +258,7 @@ class CogsAuditController extends Controller
                 'p.name as product', 'tsl.quantity', 'tsl.quantity_returned', 'tsl.unit_price_inc_tax',
                 'tspl.quantity as mapped_qty', 'tspl.qty_returned as mapped_returned',
                 'pl.purchase_price_inc_tax as unit_cost',
+                'pt.id as purchase_id', 'pt.ref_no as purchase_ref',
             ]);
 
         return view('reports.cogs_audit_detail', [
