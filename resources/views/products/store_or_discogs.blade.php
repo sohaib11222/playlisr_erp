@@ -450,6 +450,11 @@
         else if (f.v === 'discogs' || f.v === 'ebay') loc = 'Discogs Warehouse';
         return [clean(r.title || r.artist), clean(r.title ? r.artist : ''), cat, '', '', String(priceOut(r)), '', loc].join(' | ');
     }
+    var GRADE_OUT = { 'Sealed': 'Sealed', 'M': 'M', 'NM': 'NM', 'VG+': 'VG+', 'VG': 'VG', 'G+': 'G+', 'G': 'G', 'F/P': 'F' };
+    function discogsLine(r) {
+        var p = priceOut(r);
+        return [rid(r), p === '' ? '' : String(p), r.cond ? GRADE_OUT[r.cond] || '' : ''].filter(Boolean).join(' ');
+    }
     function updateSendLabel() {
         var n = rows.filter(function (r) { return r.picked; }).length;
         // "Select all" follows the chip filter: on "Discogs" it selects just the Discogs rows.
@@ -520,10 +525,19 @@
     sendBtn.addEventListener('click', function () {
         var picked = rows.filter(function (r) { return r.picked; });
         if (!picked.length) return;
-        try { localStorage.setItem('massAddFromStoreOrOnline', picked.map(massAddLine).join('\n')); }
-        catch (e) { status.textContent = 'Could not hand off to Mass Add (browser storage blocked).'; return; }
+        // Rows with a Discogs release ID go to Mass Add's Discogs box ("ID price
+        // grade"), which fills in everything from Discogs; the rest go to the
+        // plain Bulk Product Entry box.
+        var viaDiscogs = picked.filter(function (r) { return mode === 'music' && hasRid(r) && /^\d+$/.test(rid(r)); });
+        var plain = picked.filter(function (r) { return viaDiscogs.indexOf(r) === -1; });
+        try {
+            localStorage.setItem('massAddFromStoreOrOnline', plain.map(massAddLine).join('\n'));
+            localStorage.setItem('massAddFromStoreOrOnlineDiscogs', viaDiscogs.map(discogsLine).join('\n'));
+        } catch (e) { status.textContent = 'Could not hand off to Mass Add (browser storage blocked).'; return; }
         window.open('/product/mass-create?from=store-or-online', '_blank');
-        status.textContent = picked.length + ' sent to Mass Add (new tab). Prices are only suggestions: check condition, look each one up and set your own price before pressing Parse & Add.';
+        status.textContent = picked.length + ' sent to Mass Add (new tab)'
+            + (viaDiscogs.length ? ': ' + viaDiscogs.length + ' with a release ID are filled in from Discogs' + (plain.length ? ', ' + plain.length + ' without one go to Bulk Product Entry' : '') : '')
+            + '. Check each one before saving.';
     });
 
     summary.addEventListener('click', function (e) {

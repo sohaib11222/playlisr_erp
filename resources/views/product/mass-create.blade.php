@@ -2603,8 +2603,20 @@ Nevermind,Nirvana,Cassettes - Used,Rock,,18.00,</pre>
     // staff check it and press Parse & Add as usual.
     (function () {
         if (!/[?&]from=store-or-online\b/.test(window.location.search)) return;
-        var text = null;
-        try { text = localStorage.getItem('massAddFromStoreOrOnline'); localStorage.removeItem('massAddFromStoreOrOnline'); } catch (e) {}
+        var text = null, ids = null;
+        try {
+            text = localStorage.getItem('massAddFromStoreOrOnline'); localStorage.removeItem('massAddFromStoreOrOnline');
+            ids = localStorage.getItem('massAddFromStoreOrOnlineDiscogs'); localStorage.removeItem('massAddFromStoreOrOnlineDiscogs');
+        } catch (e) {}
+        // Rows with a Discogs release ID: into the Discogs box and fetched, so
+        // every field (cover, label, genre, grade...) fills in like typing IDs there.
+        if (ids) setTimeout(function () {
+            var $ids = $('#bulk_discogs_ids'), $dbox = $ids.closest('.box');
+            $dbox.removeClass('collapsed-box').children('.box-body').show();
+            $ids.val(ids).trigger('input');
+            $('html, body').animate({ scrollTop: $dbox.offset().top - 60 }, 200);
+            $('#fetch_discogs_ids').trigger('click');
+        }, 800);
         if (!text) return;
         // After the page's own load-time input clearing.
         setTimeout(function () {
@@ -2613,7 +2625,7 @@ Nevermind,Nirvana,Cassettes - Used,Rock,,18.00,</pre>
             $ta.val(text);
             showBulkPreview(parseBulkProductText(text));
             $('#bulk_parse_status').html('<span class="text-info"><i class="fa fa-share"></i> ' + text.split('\n').length + ' sent from Store or Online? Check the preview, then press <strong>Parse &amp; Add Products</strong>.</span>');
-            $('html, body').animate({ scrollTop: $box.offset().top - 60 }, 200);
+            if (!ids) $('html, body').animate({ scrollTop: $box.offset().top - 60 }, 200);
         }, 800);
     })();
 
