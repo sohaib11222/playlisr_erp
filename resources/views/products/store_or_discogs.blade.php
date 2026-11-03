@@ -36,7 +36,7 @@
 .sd-table th[data-sort]:hover { color: #1F1B16; }
 .sd-arrow { font-size: 10px; margin-left: 3px; }
 .sd-cond { height: 32px; border: 1px solid #E1D7C4; border-radius: 8px; padding: 0 6px; font-size: 14px; background: #fff; }
-.sd-rid { width: 92px; height: 32px; border: 1px solid #E1D7C4; border-radius: 8px; padding: 0 6px; font-size: 14px; }
+.sd-rid { width: 110px; height: 32px; border: 1px solid #E1D7C4; border-radius: 8px; padding: 0 6px; font-size: 14px; }
 .sd-rm { border: 1px solid #E1D7C4; background: #fff; color: #9A3A1F; border-radius: 8px; width: 28px; height: 28px; font-size: 16px; line-height: 1; cursor: pointer; }
 .sd-rm:hover { background: #FBE3DC; }
 .sd-first { white-space: nowrap; }
@@ -218,12 +218,22 @@
         var f = catFormat() || mainFormat(r);
         return !f || !!RID_FORMATS[f];
     }
+    // Accepts 1873085, r1873085, [r1873085] or any Discogs release link
+    // (https://www.discogs.com/release/1873085-Fleetwood-Mac-Rumours, /fr/release/…,
+    // /sell/release/…). A master link returns null: it isn't one pressing.
+    function parseRid(t) {
+        t = String(t || '').trim();
+        var m = t.match(/\/release\/(\d+)/i) || t.match(/^\[?r(\d+)\]?$/i);
+        if (m) return m[1];
+        if (/\/master\/\d+/i.test(t) || /^\[?m\d+\]?$/i.test(t)) return null;
+        return /^\d+$/.test(t) ? t : t.replace(/[^0-9]/g, '');
+    }
     function rid(r) { return r.rid != null ? r.rid : (r.dv && r.dv.release_id ? String(r.dv.release_id) : ''); }
     function ridCell(r, i) {
         if (!hasRid(r)) return '<span class="sd-zero">–</span>';
         if (r.dv === 'pending' && r.rid == null) return '<span class="sd-sub">…</span>';
         var v = rid(r);
-        return '<input class="sd-rid" data-i="' + i + '" value="' + esc(v) + '" inputmode="numeric" placeholder="ID">'
+        return '<input class="sd-rid" data-i="' + i + '" value="' + esc(v) + '" placeholder="ID or link" title="Release ID, or paste the whole Discogs release link">'
             + (v ? '<div class="sd-sub"><a href="https://www.discogs.com/release/' + encodeURIComponent(v) + '" target="_blank" rel="noopener">open</a></div>' : '');
     }
 
@@ -432,7 +442,9 @@
             rows[+e.target.getAttribute('data-i')].cond = e.target.value;
             render();
         } else if (e.target.classList.contains('sd-rid')) {
-            rows[+e.target.getAttribute('data-i')].rid = e.target.value.replace(/^.*\/release\/(\d+).*$/i, '$1').replace(/[^0-9]/g, '');
+            var ri = rows[+e.target.getAttribute('data-i')], got = parseRid(e.target.value);
+            if (got === null) { status.textContent = 'That looks like a Discogs master link; open it and paste a release link (discogs.com/release/…) instead.'; e.target.value = rid(ri); return; }
+            ri.rid = got;
             render();
         } else if (e.target.classList.contains('sd-pick')) {
             rows[+e.target.getAttribute('data-i')].picked = e.target.checked;
