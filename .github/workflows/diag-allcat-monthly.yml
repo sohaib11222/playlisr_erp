@@ -1,0 +1,34 @@
+# One-off, read-only: monthly sales $ for every category (last 8 months)
+# plus monthly totals per location. SELECTs only. Writes nothing.
+
+
+name: Diag all-category monthly sales (read-only)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Run diag
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: true
+          command_timeout: 30m
+          script: |
+            set -e
+            cd /www/playlist.nivessa.com/app
+            echo 'PD9waHAKcmVxdWlyZSAndmVuZG9yL2F1dG9sb2FkLnBocCc7CiRhcHAgPSByZXF1aXJlICdib290c3RyYXAvYXBwLnBocCc7CiRhcHAtPm1ha2UoSWxsdW1pbmF0ZVxDb250cmFjdHNcQ29uc29sZVxLZXJuZWw6OmNsYXNzKS0+Ym9vdHN0cmFwKCk7CnVzZSBJbGx1bWluYXRlXFN1cHBvcnRcRmFjYWRlc1xEQjsKaW5pX3NldCgnbWVtb3J5X2xpbWl0JywgJzEwMjRNJyk7IHNldF90aW1lX2xpbWl0KDApOwpmdW5jdGlvbiBxKCRsYWJlbCwgJHNxbCwgJGIgPSBbXSkgewogIGVjaG8gIlxuIyMjICRsYWJlbFxuIjsKICB0cnkgeyAkcm93cyA9IERCOjpzZWxlY3QoJHNxbCwgJGIpOwogICAgZm9yZWFjaCAoJHJvd3MgYXMgJHIpIGVjaG8gaW1wbG9kZSgnIHwgJywgYXJyYXlfbWFwKGZ1bmN0aW9uKCRrLCR2KXtyZXR1cm4gIiRrPSIuKGlzX251bWVyaWMoJHYpP3JvdW5kKCR2LDIpOiR2KTt9LCBhcnJheV9rZXlzKChhcnJheSkkciksIChhcnJheSkkcikpLCAiXG4iOwogICAgcHJpbnRmKCIoJWQgcm93cylcbiIsIGNvdW50KCRyb3dzKSk7CiAgfSBjYXRjaCAoXFRocm93YWJsZSAkZSkgeyBlY2hvICJFUlIgIi5zdWJzdHIoJGUtPmdldE1lc3NhZ2UoKSwwLDMwMCkuIlxuIjsgfQp9CiRtb250aHM9W107IGZvcigkaT03OyRpPj0wOyRpLS0pICRtb250aHNbXT1kYXRlKCdZLW0nLCBzdHJ0b3RpbWUoImZpcnN0IGRheSBvZiAtJGkgbW9udGgiKSk7CiRjb2xzPWltcGxvZGUoJywgJywgYXJyYXlfbWFwKGZuKCRtKT0+IlJPVU5EKFNVTShDQVNFIFdIRU4gbT0nJG0nIFRIRU4gcmV2IEVORCkpIGAiLnN1YnN0cigkbSwyKS4iYCIsICRtb250aHMpKTsKJGJhc2UgPSAiU0VMRUNUIERBVEVfRk9STUFUKHQudHJhbnNhY3Rpb25fZGF0ZSwnJVktJW0nKSBtLCBDT0FMRVNDRShjLm5hbWUsJyhub25lKScpIGNhdCwKICAobC5xdWFudGl0eSAtIENPQUxFU0NFKGwucXVhbnRpdHlfcmV0dXJuZWQsMCkpICogbC51bml0X3ByaWNlIHJldgogIEZST00gdHJhbnNhY3Rpb25fc2VsbF9saW5lcyBsIEpPSU4gdHJhbnNhY3Rpb25zIHQgT04gdC5pZD1sLnRyYW5zYWN0aW9uX2lkCiAgSk9JTiBwcm9kdWN0cyBwIE9OIHAuaWQ9bC5wcm9kdWN0X2lkIExFRlQgSk9JTiBjYXRlZ29yaWVzIGMgT04gYy5pZD1wLmNhdGVnb3J5X2lkCiAgV0hFUkUgdC50eXBlPSdzZWxsJyBBTkQgdC5zdGF0dXM9J2ZpbmFsJyBBTkQgdC50cmFuc2FjdGlvbl9kYXRlID49ICd7JG1vbnRoc1swXX0tMDEnIEFORCBsLnBhcmVudF9zZWxsX2xpbmVfaWQgSVMgTlVMTCI7CnEoIm1vbnRobHkgXCQgYnkgY2F0ZWdvcnksIGFsbCBjYXRlZ29yaWVzLCBhbGwgbG9jYXRpb25zIiwgIlNFTEVDVCBjYXQsICRjb2xzLCBST1VORChTVU0ocmV2KSkgdG90YWwgRlJPTSAoJGJhc2UpIHogR1JPVVAgQlkgY2F0IE9SREVSIEJZIHRvdGFsIERFU0MiKTsKcSgibW9udGhseSBcJCBieSBsb2NhdGlvbiIsICJTRUxFQ1QgdC5sb2NhdGlvbl9pZCBsb2MsIERBVEVfRk9STUFUKHQudHJhbnNhY3Rpb25fZGF0ZSwnJVktJW0nKSBtLCBST1VORChTVU0odC5maW5hbF90b3RhbCkpIHRvdGFsIEZST00gdHJhbnNhY3Rpb25zIHQgV0hFUkUgdC50eXBlPSdzZWxsJyBBTkQgdC5zdGF0dXM9J2ZpbmFsJyBBTkQgdC50cmFuc2FjdGlvbl9kYXRlID49ICd7JG1vbnRoc1swXX0tMDEnIEdST1VQIEJZIGxvYywgbSBPUkRFUiBCWSBsb2MsIG0iKTsK' | base64 -d > /tmp/diag_allcat.php
+            php /tmp/diag_allcat.php
+            rm -f /tmp/diag_allcat.php
