@@ -554,7 +554,7 @@ Nevermind,Nirvana,Cassettes - Used,Rock,,18.00,</pre>
                     <strong>Supported Formats:</strong>
                     <ul style="margin-bottom: 0; padding-left: 20px;">
                         <li><code>Product Name - Artist</code> (Simple format)</li>
-                        <li><code>Product Name | Artist | Category | Subcategory | SKU | Price | Bin | Location</code> (Pipe-delimited)</li>
+                        <li><code>Product Name | Artist | Category | Subcategory | SKU | Price | Bin | Location | Media grade</code> (Pipe-delimited; grade is optional, e.g. VG+)</li>
                         <li><code>Product Name,Artist,Category,Subcategory,SKU,Price,Bin,Location</code> (CSV format)</li>
                         <li><code>Product Name,Artist,Category,Subcategory,SKU,Price,</code> (CSV format, no Bin/Location)</li>
                         <li><code>Product Name	Artist	Category	Subcategory	SKU	Price	Bin	Location</code> (Tab-delimited)</li>
@@ -2134,6 +2134,7 @@ Nevermind,Nirvana,Cassettes - Used,Rock,,18.00,</pre>
                 price: '',
                 bin_position: '',
                 listing_location: '',
+                condition: '',
                 raw_line: line,
                 lineNumber: index + 1
             };
@@ -2150,6 +2151,7 @@ Nevermind,Nirvana,Cassettes - Used,Rock,,18.00,</pre>
                 // Tab-delimited format
                 const parts = line.split('\t').map(p => p.trim());
                 product.name = parts[0] || '';
+                product.condition = parts[8] || ''; // optional 9th: media grade
                 product.artist = parts[1] || '';
                 product.category = parts[2] || '';
                 product.subcategory = parts[3] || '';
@@ -2162,6 +2164,7 @@ Nevermind,Nirvana,Cassettes - Used,Rock,,18.00,</pre>
                 // Pipe-delimited format: Product | Artist | Category | Subcategory | SKU | Price | Bin | Listing Location
                 const parts = line.split('|').map(p => p.trim());
                 product.name = parts[0] || '';
+                product.condition = parts[8] || ''; // optional 9th: media grade (Store or Online? sends it)
                 product.artist = parts[1] || '';
                 product.category = parts[2] || '';
                 product.subcategory = parts[3] || '';
@@ -2442,6 +2445,14 @@ Nevermind,Nirvana,Cassettes - Used,Rock,,18.00,</pre>
                             .attr('data-parsed-price', '1');
                     }
 
+                    // Media grade (optional 9th field): short grade or the full wording.
+                    if (productData.condition) {
+                        const GR = { 'SEALED': 'Sealed', 'M': 'Mint (M)', 'NM': 'Near Mint (NM or M-)', 'M-': 'Near Mint (NM or M-)', 'VG+': 'Very Good Plus (VG+)', 'VG': 'Very Good (VG)', 'G+': 'Good Plus (G+)', 'G': 'Good (G)', 'F': 'Fair (F)', 'P': 'Poor (P)' };
+                        const raw = String(productData.condition).trim(), g = GR[raw.toUpperCase()] || raw;
+                        const $cond = $row.find('.massadd_condition');
+                        if ($cond.find('option').filter(function () { return this.value === g; }).length) $cond.val(g);
+                    }
+
                     // Reinitialize Select2
                     $row.find('.select2').select2();
                     window.setupProductNameSelect2();
@@ -2518,7 +2529,7 @@ Nevermind,Nirvana,Cassettes - Used,Rock,,18.00,</pre>
                 p.price || '',
                 p.bin_position || '',
                 p.listing_location || ''
-            ].join(' | ');
+            ].concat(p.condition ? [p.condition] : []).join(' | ');
         }).join('\n');
         
         $('#bulk_product_text').val(formatted);

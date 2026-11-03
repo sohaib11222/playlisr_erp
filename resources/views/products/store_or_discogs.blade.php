@@ -94,7 +94,8 @@
         <button class="sd-btn" id="sdPrompt" style="display:none" title="Copies a pricing prompt for the checked items (or all shown) with each one's condition and suggested price, to paste into an AI">Copy pricing prompt</button>
         <button class="sd-btn" id="sdPickAll" style="display:none">Select all</button>
         <button class="sd-btn" id="sdPickNone" style="display:none">Clear</button>
-        <button class="sd-btn primary" id="sdSend" style="display:none">Send checked to Mass Add</button>
+        <button class="sd-btn primary" id="sdSend" style="display:none" title="Into Mass Add's Bulk Product Entry box, with price, location and media grade">Send checked to Mass Add</button>
+        <button class="sd-btn primary" id="sdSendDiscogs" style="display:none" title="Into Mass Add's Bulk Discogs Release IDs box (ID price grade), which fills in cover, label, genre etc. from Discogs">Send checked to Discogs Mass Add</button>
         <span class="sd-status" id="sdStatus"></span>
     </div>
     <div class="sd-summary" id="sdSummary"></div>
@@ -124,7 +125,7 @@
     var input = document.getElementById('sdIn'), go = document.getElementById('sdGo'), status = document.getElementById('sdStatus');
     var out = document.getElementById('sdOut'), summary = document.getElementById('sdSummary'), copyBtn = document.getElementById('sdCopy');
     var catSel = document.getElementById('sdCat'), minIn = document.getElementById('sdMin');
-    var promptBtn = document.getElementById('sdPrompt'), sendBtn = document.getElementById('sdSend'), pickAll = document.getElementById('sdPickAll'), pickNone = document.getElementById('sdPickNone');
+    var promptBtn = document.getElementById('sdPrompt'), sendBtn = document.getElementById('sdSend'), sendDiscogsBtn = document.getElementById('sdSendDiscogs'), pickAll = document.getElementById('sdPickAll'), pickNone = document.getElementById('sdPickNone');
     var rows = [], filter = 'all', mode = 'music', runCat = '', runId = 0, otherStore = 'Other';
     var LABEL = { store: 'Store', discogs: 'Discogs', ebay: 'eBay', never_sold: 'Never sold', never_had: 'Never had for sale', cheap: 'Bargain bin', unknown: '?' };
     var ONLINE = { discogs: 1, ebay: 1, never_sold: 1, never_had: 1 };
@@ -328,8 +329,8 @@
             return '<span class="sd-chip' + (filter === k ? ' on' : '') + '" data-f="' + k + '">' + (k === 'all' ? 'All' : LABEL[k]) + ' ' + (counts[k] || 0) + '</span>';
         }).join('');
         var shown = sorted(rows.filter(function (r) { return filter === 'all' || fin(r).v === filter; }));
-        if (!rows.length) { out.innerHTML = ''; [copyBtn, promptBtn, sendBtn, pickAll, pickNone].forEach(function (b) { b.style.display = 'none'; }); return; }
-        [copyBtn, promptBtn, sendBtn, pickAll, pickNone].forEach(function (b) { b.style.display = ''; });
+        if (!rows.length) { out.innerHTML = ''; [copyBtn, promptBtn, sendBtn, sendDiscogsBtn, pickAll, pickNone].forEach(function (b) { b.style.display = 'none'; }); return; }
+        [copyBtn, promptBtn, sendBtn, sendDiscogsBtn, pickAll, pickNone].forEach(function (b) { b.style.display = ''; });
         updateSendLabel();
         var music = mode === 'music';
         var allOn = shown.length && shown.every(function (r) { return r.picked; });
@@ -448,7 +449,13 @@
         var loc = '';
         if (f.v === 'store') loc = /pico/i.test(f.where) && !/hollywood/i.test(f.where) ? 'Pico' : (/hollywood/i.test(f.where) && !/pico/i.test(f.where) ? 'Hollywood' : '');
         else if (f.v === 'discogs' || f.v === 'ebay') loc = 'Discogs Warehouse';
-        return [clean(r.title || r.artist), clean(r.title ? r.artist : ''), cat, '', '', String(priceOut(r)), '', loc].join(' | ');
+        return [clean(r.title || r.artist), clean(r.title ? r.artist : ''), cat, '', '', String(priceOut(r)), '', loc].concat(r.cond ? [GRADE_OUT[r.cond] || r.cond] : []).join(' | ');
+    }
+    // A row without a release ID in the Discogs box: its CSV "typed" line
+    // (Name,Artist,Category,Subcategory,SKU,Price).
+    function discogsCsvLine(r) {
+        var f = massAddLine(r).split(' | ');
+        return f.slice(0, 6).map(function (t) { return /[",]/.test(t) ? '"' + t.replace(/"/g, "'") + '"' : t; }).join(',');
     }
     var GRADE_OUT = { 'Sealed': 'Sealed', 'M': 'M', 'NM': 'NM', 'VG+': 'VG+', 'VG': 'VG', 'G+': 'G+', 'G': 'G', 'F/P': 'F' };
     function discogsLine(r) {
@@ -462,6 +469,9 @@
         pickNone.disabled = !n;
         sendBtn.textContent = n ? 'Send ' + n + ' checked to Mass Add' : 'Send checked to Mass Add';
         sendBtn.disabled = !n;
+        sendDiscogsBtn.textContent = n ? 'Send ' + n + ' checked to Discogs Mass Add' : 'Send checked to Discogs Mass Add';
+        sendDiscogsBtn.disabled = !n;
+        sendDiscogsBtn.style.display = rows.length && mode === 'music' ? '' : 'none';
     }
     // Header click: first click sorts (numbers biggest first, names/verdict A-Z / best first), again reverses, third goes back to pasted order.
     out.addEventListener('click', function (e) {
@@ -522,22 +532,32 @@
         rows.forEach(function (r) { r.picked = false; });
         render();
     });
+    // Two ways in: the plain Bulk Product Entry box, or the Discogs release box
+    // (rows with a release ID fill in from Discogs; ones without go in as typed lines).
+    function handOff(plainText, discogsText) {
+        try {
+            localStorage.setItem('massAddFromStoreOrOnline', plainText);
+            localStorage.setItem('massAddFromStoreOrOnlineDiscogs', discogsText);
+        } catch (e) { status.textContent = 'Could not hand off to Mass Add (browser storage blocked).'; return false; }
+        window.open('/product/mass-create?from=store-or-online', '_blank');
+        return true;
+    }
     sendBtn.addEventListener('click', function () {
         var picked = rows.filter(function (r) { return r.picked; });
         if (!picked.length) return;
-        // Rows with a Discogs release ID go to Mass Add's Discogs box ("ID price
-        // grade"), which fills in everything from Discogs; the rest go to the
-        // plain Bulk Product Entry box.
-        var viaDiscogs = picked.filter(function (r) { return mode === 'music' && hasRid(r) && /^\d+$/.test(rid(r)); });
-        var plain = picked.filter(function (r) { return viaDiscogs.indexOf(r) === -1; });
-        try {
-            localStorage.setItem('massAddFromStoreOrOnline', plain.map(massAddLine).join('\n'));
-            localStorage.setItem('massAddFromStoreOrOnlineDiscogs', viaDiscogs.map(discogsLine).join('\n'));
-        } catch (e) { status.textContent = 'Could not hand off to Mass Add (browser storage blocked).'; return; }
-        window.open('/product/mass-create?from=store-or-online', '_blank');
-        status.textContent = picked.length + ' sent to Mass Add (new tab)'
-            + (viaDiscogs.length ? ': ' + viaDiscogs.length + ' with a release ID are filled in from Discogs' + (plain.length ? ', ' + plain.length + ' without one go to Bulk Product Entry' : '') : '')
-            + '. Check each one before saving.';
+        if (!handOff(picked.map(massAddLine).join('\n'), '')) return;
+        status.textContent = picked.length + ' sent to Mass Add (new tab), with price, location and media grade. Check each one before saving.';
+    });
+    sendDiscogsBtn.addEventListener('click', function () {
+        var picked = rows.filter(function (r) { return r.picked; });
+        if (!picked.length) return;
+        var withId = picked.filter(function (r) { return hasRid(r) && /^\d+$/.test(rid(r)); });
+        var lines = picked.map(function (r) { return withId.indexOf(r) !== -1 ? discogsLine(r) : discogsCsvLine(r); });
+        if (!handOff('', lines.join('\n'))) return;
+        var noId = picked.length - withId.length;
+        status.textContent = picked.length + ' sent to Discogs Mass Add (new tab): ' + withId.length + ' filled in from Discogs'
+            + (noId ? ', ' + noId + ' without a release ID added as typed (no grade); use 🔍 to find their IDs first if you want them filled in' : '')
+            + '. Set the store location there.';
     });
 
     summary.addEventListener('click', function (e) {
