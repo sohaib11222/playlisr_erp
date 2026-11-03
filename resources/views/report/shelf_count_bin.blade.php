@@ -6,7 +6,11 @@
 .sc-wrap { max-width: 760px; margin: 0 auto; padding: 18px 16px 80px; color: #1F1B16; }
 .sc-wrap h1 { font-size: 22px; font-weight: 700; margin: 4px 0; }
 .sc-small { color: #2B2620; font-size: 13px; }
-.sc-scan { display: flex; gap: 8px; margin: 12px 0 6px; position: sticky; top: 0; background: #F7F4EE; padding: 8px 0; z-index: 5; }
+.sc-sticky { position: sticky; top: 0; background: #F7F4EE; padding: 8px 0; margin: 12px 0 6px; z-index: 5; }
+.sc-scan { display: flex; gap: 8px; }
+.sc-find { display: flex; gap: 8px; margin-top: 8px; }
+.sc-find input { flex: 1; height: 44px; font-size: 17px; border: 1px solid #1F1B16; border-radius: 10px; padding: 0 12px; background: #fff; }
+.sc-find .sc-btn { height: 44px; padding: 0 14px; font-size: 15px; }
 .sc-scan input { flex: 1; height: 52px; font-size: 20px; border: 2px solid #1F1B16; border-radius: 12px; padding: 0 14px; }
 .sc-btn { border: 0; border-radius: 10px; padding: 0 20px; height: 52px; font-size: 17px; font-weight: 700; background: #2E6B2E; color: #fff; cursor: pointer; }
 .sc-btn.light { background: #F1EADF; color: #1F1B16; }
@@ -50,9 +54,15 @@
             <li>Tap the green <b>Done</b> button at the bottom, then <b>Save</b>.</li>
         </ol>
     </div>
+    <div class="sc-sticky">
     <div class="sc-scan">
         <input id="scQ" type="text" placeholder="Record not on the list? Scan it here" autocomplete="off">
         <button class="sc-btn light" id="scCamBtn" type="button">Camera</button>
+    </div>
+    <div class="sc-find">
+        <input id="scFind" type="search" placeholder="Search this list (artist, title, SKU)" autocomplete="off" enterkeyhint="go">
+        <button class="sc-btn light" id="scFindClear" type="button" style="display:none;">Clear</button>
+    </div>
     </div>
     <div id="scCam"></div>
     <div class="sc-flash" id="scFlash"></div>
@@ -130,14 +140,39 @@
     function render() {
         // Keep the cursor in the box she moved to while the list redraws.
         var ae = document.activeElement, keep = ae && ae.classList && ae.classList.contains('sc-n') ? ae.closest('.sc-item').getAttribute('data-id') : null;
-        document.getElementById('scList').innerHTML = items.map(row).join('');
+        var shown = items.filter(matches);
+        document.getElementById('scList').innerHTML = shown.length ? shown.map(row).join('') : (findQ ? '<div class="sc-small">Nothing on this list matches "' + esc(findQ) + '". Not on the list? Scan it in the box above.</div>' : '');
         if (pendingFocus) setTimeout(focusPending, 0);
         else if (keep) setTimeout(function () { var el = document.querySelector('.sc-item[data-id="' + keep + '"] .sc-n'); if (el) el.focus(); }, 0);
-        document.getElementById('scExtraH').style.display = extra.length ? '' : 'none';
-        document.getElementById('scExtra').innerHTML = extra.map(row).join('');
+        var shownX = extra.filter(matches);
+        document.getElementById('scExtraH').style.display = shownX.length ? '' : 'none';
+        document.getElementById('scExtra').innerHTML = shownX.map(row).join('');
         var seen = items.filter(function (i) { return count[i.id] > 0; }).length, done = items.filter(function (i) { return touched[i.id]; }).length;
-        document.getElementById('scProg').textContent = done + ' of ' + items.length + ' titles counted (' + seen + ' found). Counts save when you tap Done, then Save. Genre changes save right away.';
+        document.getElementById('scProg').textContent = done + ' of ' + items.length + ' titles counted (' + seen + ' found). Counts save when you tap Done, then Save. Genre changes save right away.'
+            + (findQ ? ' Showing ' + shown.length + ' matching "' + findQ + '".' : '');
     }
+    // Search this list as you type (Sarah 11/3). Every word has to match
+    // somewhere in artist, title, SKU or bin spot; accents ignored.
+    var findQ = '', findWords = [];
+    function fold(t) { return String(t == null ? '' : t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' '); }
+    function matches(i) {
+        if (!findWords.length) return true;
+        var hay = ' ' + fold([i.artist, i.artist ? fileAs(i.artist) : '', i.name, i.sku, i.bin].join(' ')) + ' ';
+        return findWords.every(function (w) { return hay.indexOf(w) !== -1; });
+    }
+    var findEl = document.getElementById('scFind'), findClr = document.getElementById('scFindClear');
+    function setFind(v) {
+        findQ = v.trim(); findWords = fold(findQ).split(' ').filter(Boolean);
+        findClr.style.display = findQ ? '' : 'none';
+        render();
+    }
+    findEl.addEventListener('input', function () { setFind(findEl.value); });
+    findEl.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { findEl.value = ''; setFind(''); return; }
+        // Enter jumps to the first match's count box.
+        if (e.key === 'Enter') { e.preventDefault(); var b = document.querySelector('#scList .sc-n, #scExtra .sc-n'); if (b) { b.focus(); b.scrollIntoView({ block: 'center', behavior: 'smooth' }); } }
+    });
+    findClr.addEventListener('click', function () { findEl.value = ''; setFind(''); findEl.focus(); });
     // Draft kept on this device after every scan, so closing the tab, a
     // dead battery or a refresh never loses a half-counted bin (Sarah 10/14).
     var DRAFT = 'shelfcount:' + LOC + ':{{ $kind }}:{{ (int) request('sub') }}', saved = true;
