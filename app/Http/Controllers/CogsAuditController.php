@@ -250,8 +250,8 @@ class CogsAuditController extends Controller
             }, function ($q) use ($channel) {
                 return $q->where('s.channel', $channel);
             })
-            ->orderBy('s.transaction_date')
-            ->limit(500)
+            ->orderByRaw('((tspl.quantity - tspl.qty_returned) * pl.purchase_price_inc_tax) DESC')
+            ->limit(1000)
             ->get([
                 's.id as transaction_id', 's.invoice_no', 's.transaction_date', 's.location_id',
                 'p.name as product', 'tsl.quantity', 'tsl.quantity_returned', 'tsl.unit_price_inc_tax',

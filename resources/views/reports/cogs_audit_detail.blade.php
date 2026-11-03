@@ -17,7 +17,7 @@
 <div class="cd-wrap">
   <a class="cd-back" href="{{ url('/reports/cogs-audit') }}?start_date={{ $start }}&end_date={{ $end }}">Back to all channels</a>
   <h1>{{ $channel }}</h1>
-  <p>Every sold line behind this channel for {{ \Carbon\Carbon::parse($start)->format('m/d/y') }} to {{ \Carbon\Carbon::parse($end)->format('m/d/y') }}. A line is flagged when the cost attached to it is more than the price it sold for.</p>
+  <p>Every sold line behind this channel for {{ \Carbon\Carbon::parse($start)->format('m/d/y') }} to {{ \Carbon\Carbon::parse($end)->format('m/d/y') }}. Dearest cost first, so anything mispriced shows up at the top. A line is flagged when the cost attached to it is more than the price it sold for.</p>
 
   <table class="cd-table">
     <thead>
