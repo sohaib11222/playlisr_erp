@@ -37,8 +37,15 @@ class CogsAuditController extends Controller
         }
 
         // Sold quantity and revenue per channel and variation.
+        // Discogs, web and space-rental sales are fetched live, not read from
+        // stored rows: the stored Discogs rows all point at one placeholder
+        // product with no purchase record, so costing them here would read
+        // every Discogs record at the used guide and show a 97% margin.
+        $live_channels = ['discogs', 'web', 'space_rental'];
+
         $sold = DB::table('transaction_sell_lines as tsl')
             ->join('transactions as s', 'tsl.transaction_id', '=', 's.id')
+            ->whereNotIn('s.channel', $live_channels)
             ->where('s.business_id', $businessId)
             ->where('s.type', 'sell')
             ->where('s.status', 'final')
@@ -56,6 +63,7 @@ class CogsAuditController extends Controller
             ->join('transactions as s', 'tsl.transaction_id', '=', 's.id')
             ->join('transaction_sell_lines_purchase_lines as tspl', 'tsl.id', '=', 'tspl.sell_line_id')
             ->join('purchase_lines as pl', 'tspl.purchase_line_id', '=', 'pl.id')
+            ->whereNotIn('s.channel', $live_channels)
             ->where('s.business_id', $businessId)
             ->where('s.type', 'sell')
             ->where('s.status', 'final')
@@ -192,6 +200,29 @@ class CogsAuditController extends Controller
                 $row['qty_nocost'] += $gap;
             }
             unset($row);
+        }
+
+        // Discogs, live. Its order items are matched to local listings for a
+        // real cost, falling back to the category rules, which is the same
+        // basis the Sales by Channel report uses.
+        $dgs = app(ReportController::class)
+            ->fetchDiscogsChannelTotals($businessId, $start, $end);
+        if ($dgs !== null && (float) ($dgs['revenue'] ?? 0) > 0) {
+            $matched = (int) ($dgs['matched_items'] ?? 0);
+            $unmatched = (int) ($dgs['unmatched_items'] ?? 0);
+            $rows['Discogs'] = [
+                'location_id'   => null,
+                'channel'       => 'discogs',
+                'revenue'       => (float) $dgs['revenue'],
+                'qty'           => $matched + $unmatched,
+                'cost_purchase' => (float) $dgs['revenue'] - (float) ($dgs['gross_profit'] ?? 0),
+                'cost_invoice'  => 0.0,
+                'cost_rule'     => 0.0,
+                'qty_purchase'  => $matched,
+                'qty_invoice'   => 0.0,
+                'qty_rule'      => $unmatched,
+                'qty_nocost'    => 0.0,
+            ];
         }
 
         foreach ($rows as $k => $row) {

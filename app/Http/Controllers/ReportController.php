@@ -9726,7 +9726,7 @@ class ReportController extends Controller
      * (initialised by the caller) so the view can surface why a fetch
      * came back empty without the user having to grep server logs.
      */
-    protected function fetchDiscogsChannelTotals($business_id, $start_date, $end_date)
+    public function fetchDiscogsChannelTotals($business_id, $start_date, $end_date)
     {
         try {
             $service = new \App\Services\DiscogsService($business_id);
