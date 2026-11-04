@@ -126,7 +126,7 @@
     var out = document.getElementById('sdOut'), summary = document.getElementById('sdSummary'), copyBtn = document.getElementById('sdCopy');
     var catSel = document.getElementById('sdCat'), minIn = document.getElementById('sdMin');
     var promptBtn = document.getElementById('sdPrompt'), sendBtn = document.getElementById('sdSend'), sendDiscogsBtn = document.getElementById('sdSendDiscogs'), pickAll = document.getElementById('sdPickAll'), pickNone = document.getElementById('sdPickNone');
-    var rows = [], filter = 'all', mode = 'music', runCat = '', runId = 0, otherStore = 'Other';
+    var rows = [], filter = 'all', mode = 'music', runCat = '', runId = 0, otherStore = 'Other', genrePace = [], fastGenreDays = 120;
     var LABEL = { store: 'Store', discogs: 'Discogs', ebay: 'eBay', never_sold: 'Never sold', never_had: 'Never had for sale', cheap: 'Bargain bin', unknown: '?' };
     var ONLINE = { discogs: 1, ebay: 1, never_sold: 1, never_had: 1 };
 
@@ -141,10 +141,38 @@
             .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
     }
 
-    // Final call = server verdict, then the online-price gate.
+    // Discogs genre/style (styles first: "Hardcore" before "Rock") → our genre and how fast it sells.
+    function gnorm(t) { return ' ' + String(t || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim() + ' '; }
+    function genreMatch(r) {
+        var tags = r.dv && r.dv.genres ? r.dv.genres.slice().reverse() : [];
+        for (var i = 0; i < tags.length; i++) {
+            var t = gnorm(tags[i]), exact = null, loose = null;
+            genrePace.forEach(function (g) {
+                var n = gnorm(g.name);
+                if (n === t) exact = g;
+                else if (!loose && n.length > 2 && t.length > 2 && (t.indexOf(n) !== -1 || n.indexOf(t) !== -1)) loose = g;
+            });
+            if (exact || loose) return { tag: tags[i], g: exact || loose };
+        }
+        return null;
+    }
+    // No (or almost no) artist history, but the record's genre always sells → try it in store (Sarah 2026-11-04).
+    function genreStore(r) {
+        var thin = r.verdict === 'never_had' || (r.verdict === 'discogs' && r.new_title_artist_sells && sum(r.artist_sold) <= 2);
+        if (!thin) return null;
+        var m = genreMatch(r);
+        return m && m.g.days <= fastGenreDays ? m : null;
+    }
+
+    // Final call = server verdict, then the genre fallback, then the online-price gate.
     function fin(r) {
         var p = r.dv && r.dv.price != null ? r.dv.price : null, cheap = p != null && p < minValue();
         var where = r.where || LABEL[r.verdict], src = r.dv && r.dv.source === 'ebay' ? 'eBay' : 'Discogs';
+        var gs = !cheap && genreStore(r);
+        if (gs) {
+            return { v: 'store', where: 'Pico or Hollywood', why: (r.verdict === 'never_had' ? 'Never carried this artist' : r.why)
+                + ' · ' + gs.tag + (gnorm(gs.tag) === gnorm(gs.g.name) ? '' : ' (' + gs.g.name + ')') + ' sells in ~' + gs.g.days + ' days for us (' + gs.g.units + ' in 12 mo), worth trying' };
+        }
         if (cheap && (r.verdict === 'discogs' || r.verdict === 'ebay')) {
             return { v: 'cheap', where: 'Bargain bin', why: r.why + ' · ' + src + ' ' + money(p) };
         }
@@ -393,6 +421,8 @@
                 mode = j.mode || 'music';
                 // The Discogs Warehouse holds what we sell online (Discogs and eBay); the ERP
                 // location keeps its name because imports and syncs look it up by name.
+                if (j.genre_pace) genrePace = j.genre_pace;
+                if (j.fast_genre_days) fastGenreDays = j.fast_genre_days;
                 if (j.other_store) otherStore = /warehouse/i.test(j.other_store) ? 'Online warehouse' : j.other_store;
                 rows = rows.concat(j.rows); done += b.length; render(); next();
             }).catch(function (e) {
