@@ -93,6 +93,18 @@ Route::middleware(['setData'])->group(function () {
     Route::get('/supplier-harvest/redeye-ids', 'SupplierHarvestController@redeyeIds');
     Route::post('/supplier-harvest/upload/{supplier}', 'SupplierHarvestController@upload');
 
+    // Website "Get a Quote" (nivessa.com Sell Your Stuff). Public, CORS, no
+    // CSRF (VerifyCsrfToken except list), throttled per IP. See SellQuoteController.
+    Route::options('/sell-quote/{any}', 'SellQuoteController@preflight')->where('any', '.*');
+    Route::middleware('throttle:60,1')->group(function () {
+        Route::get('/sell-quote/options', 'SellQuoteController@options');
+        Route::post('/sell-quote/start', 'SellQuoteController@start');
+        Route::get('/sell-quote/search', 'SellQuoteController@search');
+        Route::get('/sell-quote/release-value', 'SellQuoteController@releaseValue');
+        Route::post('/sell-quote/{token}/price', 'SellQuoteController@price')->where('token', '[A-Za-z0-9]{32}');
+        Route::get('/sell-quote/{token}', 'SellQuoteController@show')->where('token', '[A-Za-z0-9]{32}');
+    });
+
     // Instagram DM webhook — signature-verified in the controller. GET is
     // Meta's one-time verification handshake; POST is the actual message
     // delivery. Both outside auth (Meta calls us) and outside CSRF.
@@ -452,6 +464,10 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/products/review-2024/retire-below-cost', 'LegacyListingController@retireBelowCost2024');
     Route::get('/price-new-buys', 'PriceBuysController@index');
     Route::get('/stock-lookup', 'StockLookupController@index');
+    // Website sell quotes (staff side).
+    Route::get('/sell-quotes', 'SellQuoteController@index');
+    Route::get('/sell-quotes/{id}', 'SellQuoteController@staffShow')->where('id', '[0-9]+');
+    Route::post('/sell-quotes/{id}/start-buy', 'SellQuoteController@startBuy')->where('id', '[0-9]+');
     Route::get('/store-or-discogs', 'StoreOrDiscogsController@index');
     Route::post('/store-or-discogs/check', 'StoreOrDiscogsController@check');
     Route::get('/store-or-discogs/unpriced-buys', 'StoreOrDiscogsController@unpricedBuys');
