@@ -32,11 +32,9 @@
             <div class="sq-big">{{ $quote->item_count }}</div>
         </div>
         <div>
-            <div class="sq-muted">Good through</div>
+            <div class="sq-muted">{{ $quote->size_tier === 'large' ? 'Estimate valid through (appraisal needed)' : 'Valid through' }}</div>
             <div class="sq-big" style="font-size:20px">
-                @if($quote->size_tier === 'large')
-                    Appraisal needed
-                @elseif($quote->expires_at)
+                @if($quote->expires_at)
                     {{ \Carbon\Carbon::parse($quote->expires_at)->format('D n/j') }}{{ $expired ? ' (expired)' : '' }}
                 @else
                     &mdash;

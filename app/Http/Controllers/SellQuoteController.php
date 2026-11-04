@@ -490,7 +490,8 @@ class SellQuoteController extends StoreOrDiscogsController
 
         $estimateLow = $tier === 'large' ? BuyOfferCalculatorService::roundOffer($final * self::LARGE_LOW_SHARE) : null;
         $now = now();
-        $expires = $tier === 'large' ? null : $now->copy()->addDays(self::VALID_DAYS)->endOfDay();
+        // Every quote, estimates too, is valid VALID_DAYS (Sarah 11/4).
+        $expires = $now->copy()->addDays(self::VALID_DAYS)->endOfDay();
         DB::table('sell_quotes')->where('id', $quote->id)->update([
             'location_id' => $locationId,
             'size_tier' => $tier,
@@ -542,7 +543,8 @@ class SellQuoteController extends StoreOrDiscogsController
             $items = (int) $q->item_count . ' item' . ((int) $q->item_count === 1 ? '' : 's');
             $who = $esc($q->name) . ', ' . $esc($q->phone) . ($q->email ? ', ' . $esc($q->email) : '');
             if ($q->size_tier === 'large') {
-                $money = 'estimate ' . $m($q->estimate_low_cash) . '–' . $m($q->cash_total) . ' cash. Needs an appraisal: they were told to reply to the text or call.';
+                $money = 'estimate ' . $m($q->estimate_low_cash) . '–' . $m($q->cash_total) . ' cash, valid through '
+                    . \Carbon\Carbon::parse($q->expires_at)->format('D n/j') . '. Needs an appraisal: they were told to reply to the text or call.';
             } else {
                 $money = $m($q->cash_total) . ' cash / ' . $m($q->credit_total) . ' credit, good through '
                     . \Carbon\Carbon::parse($q->expires_at)->format('D n/j') . '.';
@@ -601,12 +603,12 @@ class SellQuoteController extends StoreOrDiscogsController
         if ($large) {
             $sms = 'Hi' . ($first !== '' ? ' ' . $first : '') . ', Nivessa here. Estimate ' . $number . ': '
                 . $m($q->estimate_low_cash) . '-' . $m($q->cash_total) . ' cash or ' . $m($q->estimate_low_cash * 1.5) . '-' . $m($q->credit_total)
-                . ' store credit for ' . $items . '. Reply to set up a quick look in person. '
+                . ' store credit for ' . $items . '. Valid through ' . $goodThroughShort . ', final price confirmed on appraisal. Reply to set up a quick look in person. '
                 . $link;
         } else {
             $sms = 'Hi' . ($first !== '' ? ' ' . $first : '') . ', Nivessa here. Quote ' . $number . ': '
                 . $m($q->cash_total) . ' cash or ' . $m($q->credit_total) . ' store credit for ' . $items
-                . '. Good through ' . $goodThroughShort . ' at ' . $store['name'] . ', ' . $street . '. Show this text at the counter. '
+                . '. Valid through ' . $goodThroughShort . ' at ' . $store['name'] . ', ' . $street . '. Final price confirmed on appraisal. Show this text at the counter. '
                 . $link;
         }
         try {
