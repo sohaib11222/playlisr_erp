@@ -10,6 +10,10 @@ on:
         description: "Artists, separated by ;"
         required: true
         default: "oasis;guns n;mazzy star;weezer;sublime;bob marley"
+      store:
+        description: "Only sales at this store (name contains; blank = all)"
+        required: false
+        default: ""
 
 concurrency:
   group: production-diag
@@ -43,6 +47,7 @@ jobs:
         uses: appleboy/ssh-action@v1.2.0
         env:
           DIAG_ARTISTS: ${{ github.event.inputs.artists }}
+          DIAG_STORE: ${{ github.event.inputs.store }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
@@ -50,12 +55,12 @@ jobs:
           port: ${{ steps.flags.outputs.ssh_port }}
           script_stop: false
           command_timeout: 180s
-          envs: DIAG_ARTISTS
+          envs: DIAG_ARTISTS,DIAG_STORE
           script: |
             set +e
             cd /www/playlist.nivessa.com/app
-            export DIAG_ARTISTS
+            export DIAG_ARTISTS DIAG_STORE
             php artisan tinker --no-ansi <<'PHP'
-            foreach (array_filter(array_map('trim', explode(';', (string) getenv('DIAG_ARTISTS')))) as $a) { $like = '%' . $a . '%'; $prods = \DB::table('products as p')->leftJoin('categories as c', 'c.id', '=', 'p.category_id')->where(fn($q) => $q->where('p.artist', 'like', $like)->orWhere('p.name', 'like', $like))->get(['p.id', 'p.name', 'p.artist', 'c.name as cat', 'p.created_at']); $ids = $prods->pluck('id')->all(); if (!$ids) { echo "ARTIST {$a}: no products\n"; continue; } $sales = \DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')->where('t.type', 'sell')->where('t.status', 'final')->whereIn('l.product_id', $ids)->selectRaw("l.product_id, bl.name as store, sum(l.quantity - coalesce(l.quantity_returned,0)) as units, sum(case when t.transaction_date >= now() - interval 30 day then l.quantity - coalesce(l.quantity_returned,0) else 0 end) as u30, sum(case when t.transaction_date >= now() - interval 90 day then l.quantity - coalesce(l.quantity_returned,0) else 0 end) as u90, sum(case when t.transaction_date >= now() - interval 365 day then l.quantity - coalesce(l.quantity_returned,0) else 0 end) as u365, avg(l.unit_price_inc_tax) as avgp, min(t.transaction_date) as first, max(t.transaction_date) as last")->groupBy('l.product_id', 'bl.name')->get()->groupBy('product_id'); $stock = \DB::table('variation_location_details as v')->leftJoin('business_locations as bl', 'bl.id', '=', 'v.location_id')->whereIn('v.product_id', $ids)->selectRaw('v.product_id, bl.name as store, sum(v.qty_available) as q')->groupBy('v.product_id', 'bl.name')->get()->groupBy('product_id'); foreach ($prods as $p) { $s = $sales[$p->id] ?? collect(); $k = $stock[$p->id] ?? collect(); if ($s->sum('units') == 0 && $k->sum('q') <= 0) continue; echo 'ROW ' . json_encode(['q' => $a, 'id' => $p->id, 'name' => $p->name, 'artist' => $p->artist, 'cat' => $p->cat, 'created' => substr((string) $p->created_at, 0, 10), 'u30' => (float) $s->sum('u30'), 'u90' => (float) $s->sum('u90'), 'u365' => (float) $s->sum('u365'), 'all' => (float) $s->sum('units'), 'avgp' => round((float) $s->avg('avgp'), 2), 'last' => substr((string) $s->max('last'), 0, 10), 'sold_by_store' => $s->mapWithKeys(fn($r) => [$r->store ?: '?' => (float) $r->u365])->all(), 'stock' => $k->mapWithKeys(fn($r) => [$r->store ?: '?' => (float) $r->q])->all()]) . "\n"; } }
+            foreach (array_filter(array_map('trim', explode(';', (string) getenv('DIAG_ARTISTS')))) as $a) { $like = '%' . $a . '%'; $prods = \DB::table('products as p')->leftJoin('categories as c', 'c.id', '=', 'p.category_id')->where(fn($q) => $q->where('p.artist', 'like', $like)->orWhere('p.name', 'like', $like))->get(['p.id', 'p.name', 'p.artist', 'c.name as cat', 'p.created_at']); $ids = $prods->pluck('id')->all(); if (!$ids) { echo "ARTIST {$a}: no products\n"; continue; } $sales = \DB::table('transaction_sell_lines as l')->join('transactions as t', 't.id', '=', 'l.transaction_id')->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')->where('t.type', 'sell')->where('t.status', 'final')->whereIn('l.product_id', $ids)->when(trim((string) getenv('DIAG_STORE')) !== '', fn($q) => $q->where('bl.name', 'like', '%' . trim((string) getenv('DIAG_STORE')) . '%'))->selectRaw("l.product_id, bl.name as store, sum(l.quantity - coalesce(l.quantity_returned,0)) as units, sum(case when t.transaction_date >= now() - interval 30 day then l.quantity - coalesce(l.quantity_returned,0) else 0 end) as u30, sum(case when t.transaction_date >= now() - interval 90 day then l.quantity - coalesce(l.quantity_returned,0) else 0 end) as u90, sum(case when t.transaction_date >= now() - interval 365 day then l.quantity - coalesce(l.quantity_returned,0) else 0 end) as u365, avg(l.unit_price_inc_tax) as avgp, min(t.transaction_date) as first, max(t.transaction_date) as last")->groupBy('l.product_id', 'bl.name')->get()->groupBy('product_id'); $stock = \DB::table('variation_location_details as v')->leftJoin('business_locations as bl', 'bl.id', '=', 'v.location_id')->whereIn('v.product_id', $ids)->selectRaw('v.product_id, bl.name as store, sum(v.qty_available) as q')->groupBy('v.product_id', 'bl.name')->get()->groupBy('product_id'); foreach ($prods as $p) { $s = $sales[$p->id] ?? collect(); $k = $stock[$p->id] ?? collect(); if ($s->sum('units') == 0 && $k->sum('q') <= 0) continue; echo 'ROW ' . json_encode(['q' => $a, 'id' => $p->id, 'name' => $p->name, 'artist' => $p->artist, 'cat' => $p->cat, 'created' => substr((string) $p->created_at, 0, 10), 'u30' => (float) $s->sum('u30'), 'u90' => (float) $s->sum('u90'), 'u365' => (float) $s->sum('u365'), 'all' => (float) $s->sum('units'), 'avgp' => round((float) $s->avg('avgp'), 2), 'last' => substr((string) $s->max('last'), 0, 10), 'sold_by_store' => $s->mapWithKeys(fn($r) => [$r->store ?: '?' => (float) $r->u365])->all(), 'stock' => $k->mapWithKeys(fn($r) => [$r->store ?: '?' => (float) $r->q])->all()]) . "\n"; } }
             PHP
             echo "=== done ==="
