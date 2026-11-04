@@ -508,17 +508,56 @@ class SellQuoteController extends StoreOrDiscogsController
         $fresh = DB::table('sell_quotes')->find($quote->id);
         $prevCalc = json_decode((string) $quote->calculation_json, true) ?: [];
         $sent = $this->notifySeller($fresh, $prevCalc['notified'] ?? null);
+        // Markers kept across re-prices: when the seller was last sent this
+        // number, and whether the store's Slack channel already heard about it.
+        $calcSaved = json_decode((string) $fresh->calculation_json, true) ?: [];
         if ($sent['sms'] || $sent['email']) {
-            $calcSaved = json_decode((string) $fresh->calculation_json, true) ?: [];
             $calcSaved['notified'] = ['cash' => (float) $fresh->cash_total, 'at' => $now->timestamp];
-            DB::table('sell_quotes')->where('id', $quote->id)->update(['calculation_json' => json_encode($calcSaved)]);
         } elseif (!empty($prevCalc['notified'])) {
-            // Same quote re-sent within the window: keep the marker.
-            $calcSaved = json_decode((string) $fresh->calculation_json, true) ?: [];
             $calcSaved['notified'] = $prevCalc['notified'];
-            DB::table('sell_quotes')->where('id', $quote->id)->update(['calculation_json' => json_encode($calcSaved)]);
         }
+        $calcSaved['slacked'] = !empty($prevCalc['slacked']) || $this->alertStore($fresh);
+        DB::table('sell_quotes')->where('id', $quote->id)->update(['calculation_json' => json_encode($calcSaved)]);
         return $this->json($this->publicQuote($fresh) + ['sent' => $sent]);
+    }
+
+    /**
+     * Sarah 11/4: post each NEW website quote to its store's Slack channel
+     * (#pico / #hollywood) so staff know someone may be coming in. Once per
+     * quote; later edits by the seller don't re-post. Never throws.
+     */
+    protected function alertStore($q)
+    {
+        try {
+            $storeRow = collect($this->stores())->firstWhere('id', (int) $q->location_id);
+            $storeKey = stripos((string) ($storeRow['name'] ?? ''), 'pico') !== false ? 'pico' : 'hollywood';
+            $esc = function ($s) {
+                return str_replace(['&', '<', '>'], ['&amp;', '&lt;', '&gt;'], (string) $s);
+            };
+            $m = function ($n) {
+                $n = (float) $n;
+                return '$' . (fmod($n, 1) ? number_format($n, 2) : number_format($n, 0));
+            };
+            $items = (int) $q->item_count . ' item' . ((int) $q->item_count === 1 ? '' : 's');
+            $who = $esc($q->name) . ', ' . $esc($q->phone) . ($q->email ? ', ' . $esc($q->email) : '');
+            if ($q->size_tier === 'large') {
+                $money = 'estimate ' . $m($q->estimate_low_cash) . '–' . $m($q->cash_total) . ' cash. Needs an appraisal: they were told to reply to the text or call.';
+            } else {
+                $money = $m($q->cash_total) . ' cash / ' . $m($q->credit_total) . ' credit, good through '
+                    . \Carbon\Carbon::parse($q->expires_at)->format('D n/j') . '.';
+            }
+            $text = ':moneybag: New website sell quote *' . self::number($q->id) . '*: ' . $who . ' · ' . $items . ' · ' . $money
+                . "\n<" . url('/sell-quotes/' . $q->id) . '|Open the quote>';
+            $resp = \App\Services\WebsiteBridge::erp('POST', '/slack-store-post', ['store' => $storeKey, 'text' => $text], 15);
+            if (empty($resp['success'])) {
+                \Log::warning('Sell quote Slack alert failed: ' . ($resp['error'] ?? $resp['message'] ?? 'unknown'));
+                return false;
+            }
+            return true;
+        } catch (\Throwable $e) {
+            \Log::warning('Sell quote Slack alert failed: ' . $e->getMessage());
+            return false;
+        }
     }
 
     /** nivessa.com link that reopens a saved quote. */
