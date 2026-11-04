@@ -17,7 +17,7 @@ use Illuminate\Support\Str;
  * quote before bringing her records in). nivessa.com /sell-your-stuff/quote
  * calls the public /sell-quote/* endpoints here, so the quote is priced by the
  * same BuyOfferCalculatorService + Beta demand levels as the in-store buy
- * form. Only ONE number goes out (the form's final offer, firm for 7 days if
+ * form. Only ONE number goes out (the form's final offer, firm for 3 days if
  * the condition matches); the starting / second offers never leave the ERP.
  *
  * Sizes (what the items actually come to, not what the seller picked):
@@ -36,7 +36,8 @@ class SellQuoteController extends StoreOrDiscogsController
     const LARGE_FROM = 200;
     // A listed record in a 10+ lot is priced on its own from this Discogs value.
     const CHERRY_MIN = 20;
-    const VALID_DAYS = 7;
+    // Sarah 11/4: 3 days (was 7) so sellers come in while it's fresh.
+    const VALID_DAYS = 3;
     const MAX_RECORDS = 60;
     const MAX_GROUPS = 40;
     const MAX_GROUP_QTY = 20000;
@@ -155,7 +156,7 @@ class SellQuoteController extends StoreOrDiscogsController
     /** GET /sell-quote/options */
     public function options()
     {
-        $data = Cache::remember('sellquote:options1', 600, function () {
+        $data = Cache::remember('sellquote:options2', 600, function () {
             $grades = [];
             foreach (array_reverse($this->calculator->getGradesForDropdown()) as $g) {
                 $grades[] = ['key' => $g, 'help' => self::GRADE_HELP[$g] ?? ''];
@@ -594,16 +595,18 @@ class SellQuoteController extends StoreOrDiscogsController
         };
         $large = $q->size_tier === 'large';
         $goodThrough = $q->expires_at ? \Carbon\Carbon::parse($q->expires_at)->format('l, F j') : '';
+        $goodThroughShort = $q->expires_at ? \Carbon\Carbon::parse($q->expires_at)->format('D n/j') : '';
+        $street = trim(explode(',', $store['address'])[0]);
 
         if ($large) {
-            $sms = 'Hi' . ($first !== '' ? ' ' . $first : '') . ', Nivessa Records here. Your estimate ' . $number . ': '
+            $sms = 'Hi' . ($first !== '' ? ' ' . $first : '') . ', Nivessa here. Estimate ' . $number . ': '
                 . $m($q->estimate_low_cash) . '-' . $m($q->cash_total) . ' cash or ' . $m($q->estimate_low_cash * 1.5) . '-' . $m($q->credit_total)
-                . ' in store credit for your ' . $items . '. Collections this size need a quick look in person. Reply to this text to set up an appraisal. '
+                . ' store credit for ' . $items . '. Reply to set up a quick look in person. '
                 . $link;
         } else {
-            $sms = 'Hi' . ($first !== '' ? ' ' . $first : '') . ', Nivessa Records here. Your quote ' . $number . ': we\'ll pay '
-                . $m($q->cash_total) . ' cash or ' . $m($q->credit_total) . ' in store credit for your ' . $items
-                . ', good through ' . $goodThrough . ' at ' . $store['name'] . ' (' . $store['address'] . ') if the condition matches. Show this text at the counter. '
+            $sms = 'Hi' . ($first !== '' ? ' ' . $first : '') . ', Nivessa here. Quote ' . $number . ': '
+                . $m($q->cash_total) . ' cash or ' . $m($q->credit_total) . ' store credit for ' . $items
+                . '. Good through ' . $goodThroughShort . ' at ' . $store['name'] . ', ' . $street . '. Show this text at the counter. '
                 . $link;
         }
         try {
