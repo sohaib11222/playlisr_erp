@@ -39,6 +39,8 @@ class StoreOrDiscogsController extends Controller
     const MIN_SELL_THROUGH = 0.2;
     /** Default "too cheap to list online" cutoff; editable on the page. */
     const MIN_DISCOGS_VALUE = 6;
+    /** A genre selling in this many days on average (purchase → sale, last 12 mo) counts as one that always sells. */
+    const FAST_GENRE_DAYS = 120;
     /** Never-had title + artist selling at least this many in 12 mo (~1 every 4 months) → try it in store. */
     const NEW_TITLE_ARTIST_12M = 3;
     /** Lines whose artist has less history than this (copies sold + on hand) also get tried as Title - Artist. */
@@ -134,7 +136,44 @@ class StoreOrDiscogsController extends Controller
         $rows = $music
             ? $this->checkMusic($business_id, $raws, $storeOf, $cat)
             : $this->checkItems($business_id, $raws, $storeOf, $cat);
-        return response()->json(['rows' => $rows, 'mode' => $music ? 'music' : 'item', 'other_store' => implode(' / ', $otherNames)]);
+        return response()->json(['rows' => $rows, 'mode' => $music ? 'music' : 'item', 'other_store' => implode(' / ', $otherNames),
+            'genre_pace' => $music ? $this->genrePace($business_id, $cat) : [], 'fast_genre_days' => self::FAST_GENRE_DAYS]);
+    }
+
+    /**
+     * How fast each genre (sub_category) sells, last 12 months, in the picked
+     * category (or all music): avg days from intake to sale, same math as
+     * Fastest Selling Genres. For records with no artist history (Sarah
+     * 2026-11-04: punk / metal / electronic always sell, we just never get the
+     * same one twice) the page matches the Discogs genre/style to these.
+     */
+    protected function genrePace($business_id, $cat)
+    {
+        $key = 'sod-genre-pace:' . $business_id . ':' . ($cat->id ?? 'music');
+        return \Cache::remember($key, now()->addHours(6), function () use ($business_id, $cat) {
+            $q = \DB::table('transaction_sell_lines_purchase_lines as tslp')
+                ->join('purchase_lines as pl', 'pl.id', '=', 'tslp.purchase_line_id')
+                ->join('transactions as purchase', 'purchase.id', '=', 'pl.transaction_id')
+                ->join('transaction_sell_lines as tsl', 'tsl.id', '=', 'tslp.sell_line_id')
+                ->join('transactions as sale', 'sale.id', '=', 'tsl.transaction_id')
+                ->join('products as p', 'p.id', '=', 'tsl.product_id')
+                ->join('categories as sc', 'sc.id', '=', 'p.sub_category_id')
+                ->join('categories as c', 'c.id', '=', 'p.category_id')
+                ->where('sale.business_id', $business_id)
+                ->where('sale.type', 'sell')->where('sale.status', 'final')
+                ->whereNull('sale.import_source')
+                ->where('sale.transaction_date', '>=', now()->subYear()->toDateTimeString())
+                ->whereNotNull('purchase.transaction_date')
+                ->whereRaw('DATEDIFF(sale.transaction_date, purchase.transaction_date) >= 0');
+            if ($cat) $q->where('p.category_id', $cat->id);
+            else $q->whereRaw("LOWER(c.name) REGEXP 'vinyl|cd|cassette|45 rpm|8 track|record'");
+            return $q->selectRaw("sc.name as name,
+                    SUM(DATEDIFF(sale.transaction_date, purchase.transaction_date) * tslp.quantity) / NULLIF(SUM(tslp.quantity), 0) as days,
+                    SUM(tslp.quantity) as units")
+                ->groupBy('sc.name')->havingRaw('SUM(tslp.quantity) >= 5')->get()
+                ->map(function ($r) { return ['name' => trim((string) $r->name), 'days' => (int) round((float) $r->days), 'units' => (int) $r->units]; })
+                ->filter(function ($r) { return $r['name'] !== ''; })->values()->all();
+        });
     }
 
     // ===================================================================
@@ -774,7 +813,7 @@ class StoreOrDiscogsController extends Controller
 
     protected function discogsValue($business_id, $artist, $title, $format = '')
     {
-        $key = 'sod-value5:' . md5($this->norm($artist) . '|' . $this->normTitle($title) . '|' . $format);
+        $key = 'sod-value6:' . md5($this->norm($artist) . '|' . $this->normTitle($title) . '|' . $format);
         if ($hit = \Cache::get($key)) {
             if (!array_key_exists('price', $hit)) $hit['price'] = $hit['lowest'] ?? null; // cached before 'price' existed
             return response()->json($hit + ['cached' => true]);
@@ -795,6 +834,7 @@ class StoreOrDiscogsController extends Controller
         }
         $out = $this->releasePrices($business_id, $discogs, (int) $hit->id, (int) ($hit->community->have ?? 0), (int) ($hit->community->want ?? 0));
         if ($out === null) return response()->json(['found' => false, 'rate_limited' => true], 429);
+        $out['genres'] = array_values(array_unique(array_merge((array) ($hit->genre ?? []), (array) ($hit->style ?? []))));
         \Cache::put($key, $out, now()->addDays(30));
         return response()->json($out);
     }
@@ -896,24 +936,27 @@ class StoreOrDiscogsController extends Controller
         $business_id = $request->session()->get('user.business_id');
         $id = (int) $request->input('release_id');
         if ($id <= 0) return response()->json(['found' => false]);
-        $key = 'sod-release-value:' . $id;
+        $key = 'sod-release-value2:' . $id;
         if ($hit = \Cache::get($key)) return response()->json($hit + ['cached' => true]);
         $discogs = new \App\Services\DiscogsService($business_id);
         if (!$discogs->isConfigured()) return response()->json(['found' => false, 'error' => 'Discogs not connected']);
         $have = (int) $request->input('have');
         $want = (int) $request->input('want');
+        $genres = [];
+        // Have/want (typed ID) and genres/styles for the genre fallback.
+        $rel = $discogs->callApi('https://api.discogs.com/releases/' . $id . '?token=' . urlencode($this->discogsToken($business_id)));
+        if (!empty($rel['error'])) {
+            if (strpos((string) $rel['message'], '429') !== false) return response()->json(['found' => false, 'rate_limited' => true], 429);
+            return response()->json(['found' => false, 'error' => 'No Discogs release ' . $id]);
+        }
         if (!$request->has('have')) {
-            // Typed ID: look the release up for its have/want counts.
-            $rel = $discogs->callApi('https://api.discogs.com/releases/' . $id . '?token=' . urlencode($this->discogsToken($business_id)));
-            if (!empty($rel['error'])) {
-                if (strpos((string) $rel['message'], '429') !== false) return response()->json(['found' => false, 'rate_limited' => true], 429);
-                return response()->json(['found' => false, 'error' => 'No Discogs release ' . $id]);
-            }
             $have = (int) ($rel['data']->community->have ?? 0);
             $want = (int) ($rel['data']->community->want ?? 0);
         }
+        $genres = array_values(array_unique(array_merge((array) ($rel['data']->genres ?? []), (array) ($rel['data']->styles ?? []))));
         $out = $this->releasePrices($business_id, $discogs, $id, $have, $want);
         if ($out === null) return response()->json(['found' => false, 'rate_limited' => true], 429);
+        $out['genres'] = $genres;
         \Cache::put($key, $out, now()->addDays(7));
         return response()->json($out);
     }
