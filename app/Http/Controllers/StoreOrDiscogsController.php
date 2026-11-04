@@ -39,6 +39,8 @@ class StoreOrDiscogsController extends Controller
     const MIN_SELL_THROUGH = 0.2;
     /** Default "too cheap to list online" cutoff; editable on the page. */
     const MIN_DISCOGS_VALUE = 6;
+    /** Never-had title + artist selling at least this many in 12 mo (~1 every 4 months) → try it in store. */
+    const NEW_TITLE_ARTIST_12M = 3;
     /** Lines whose artist has less history than this (copies sold + on hand) also get tried as Title - Artist. */
     const SWAP_CHECK_BELOW = 10;
     /** Category names that are music formats (artist-based matching, Discogs). */
@@ -419,6 +421,12 @@ class StoreOrDiscogsController extends Controller
             $note = 'Title last sold ' . $this->year($r['title_last_at']) . '. ';
         }
         if ($artistSold > 0) {
+            // Never had this title and the artist moves every ~4 months or faster: try it (Sarah 2026-11-04).
+            if ($titleNeverHad && $r['artist_sold_12m'] >= self::NEW_TITLE_ARTIST_12M) {
+                $days = (int) round(365 / $r['artist_sold_12m']);
+                return ['store', $this->bestStore($r['artist_sold']), 'Never had this title; artist sells about 1 every ' . $days . ' days ('
+                    . $this->n($r['artist_sold_12m']) . ' in 12 mo), worth trying' . ($overstocked ? ' (we have ' . $this->n($have) . ' of the artist)' : '')];
+            }
             if ($r['artist_sold_recent'] <= 0) {
                 return ['discogs', 'Discogs', $note . 'Artist last sold ' . $this->year($r['artist_last_at']) . ', nothing since'];
             }
