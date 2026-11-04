@@ -21,7 +21,7 @@ class NivessaVinylWorthController extends Controller
 
     public function publicFeed()
     {
-        $data = Cache::remember('vinylworth1', 86400, function () {
+        $data = Cache::remember('vinylworth2', 86400, function () {
             $businessId = (int) (config('services.nivessa_web.business_id') ?: 1);
             ini_set('memory_limit', '1024M');
 
@@ -71,7 +71,10 @@ class NivessaVinylWorthController extends Controller
                     : (preg_split('/\s+-\s+/u', $full, 2)[1] ?? '');
                 // Trailing format words: "Rumours LP", "Thriller 180g Vinyl".
                 $album = trim(preg_replace('/(\s+(-\s*)?(\d?x?LP|vinyl|180\s?g(ram)?|lp record|reissue|used))+\s*$/i', '', $album));
-                $album = trim($album, " \t-–—/:,");
+                // Bad bytes become "?"; drop that and any dash left in front ("?– Kind Of Blue").
+                $artist = mb_convert_encoding($artist, 'UTF-8', 'UTF-8');
+                $album = mb_convert_encoding($album, 'UTF-8', 'UTF-8');
+                $album = trim(preg_replace('/^[^\p{L}\p{N}"\'(]+/u', '', $album));
                 if ($album === '' || mb_strlen($album) > 120 || preg_match(self::JUNK_TITLE, $album)) {
                     continue;
                 }
@@ -111,8 +114,8 @@ class NivessaVinylWorthController extends Controller
                 $lo = (int) round($lo);
                 $hi = (int) round($hi);
                 $out[] = [
-                    'artist' => mb_convert_encoding($t['artist'], 'UTF-8', 'UTF-8'),
-                    'album' => mb_convert_encoding($t['album'], 'UTF-8', 'UTF-8'),
+                    'artist' => $t['artist'],
+                    'album' => $t['album'],
                     'worth' => $lo === $hi ? '$' . $lo : '$' . $lo . '-$' . $hi,
                 ];
             }
