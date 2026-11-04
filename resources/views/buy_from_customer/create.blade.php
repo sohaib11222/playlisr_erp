@@ -2285,7 +2285,17 @@ HTML;
                     $('#bfc_overpay_approval').show();
                 }
                 if (!msg) { $a.hide(); if (String($('#bfc_overpay_approval').data('force')) !== '1') $('#bfc_overpay_approval').hide(); return; }
-                $a.text(msg).show();
+                // Luis / Zak / managers approve their own buys at any amount: no
+                // "you cannot pay / call Zak" wall, just a heads-up (Sarah 2026-11-04).
+                if (String($a.data('can-overpay')) === '1') {
+                    var paidM = parseFloat($('#bfc_accept_final_amount').val());
+                    var autoM = Math.max(0, parseFloat($('#bfc_accept_pm').val() === 'store_credit' ? $a.data('auto-credit') : $a.data('auto-cash')));
+                    $a.removeClass('alert-danger').addClass('alert-warning')
+                        .text('You are paying $' + paidM.toFixed(2) + ' ' + bfcPmWord() + '. The system says $' + autoM.toFixed(2) + '. You are a manager, so you approve this yourself. Just add a reason below.')
+                        .show();
+                    return;
+                }
+                $a.removeClass('alert-warning').addClass('alert-danger').text(msg).show();
                 $('#bfc_overpay_approval').show();
             }
             $(document).on('input change', '#bfc_accept_final_amount, #bfc_accept_pm, #bfc_is_donated_checkbox', function () {
