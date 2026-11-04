@@ -505,7 +505,103 @@ class SellQuoteController extends StoreOrDiscogsController
             'expires_at' => $expires,
             'updated_at' => $now,
         ]);
-        return $this->json($this->publicQuote(DB::table('sell_quotes')->find($quote->id)));
+        $fresh = DB::table('sell_quotes')->find($quote->id);
+        $prevCalc = json_decode((string) $quote->calculation_json, true) ?: [];
+        $sent = $this->notifySeller($fresh, $prevCalc['notified'] ?? null);
+        if ($sent['sms'] || $sent['email']) {
+            $calcSaved = json_decode((string) $fresh->calculation_json, true) ?: [];
+            $calcSaved['notified'] = ['cash' => (float) $fresh->cash_total, 'at' => $now->timestamp];
+            DB::table('sell_quotes')->where('id', $quote->id)->update(['calculation_json' => json_encode($calcSaved)]);
+        } elseif (!empty($prevCalc['notified'])) {
+            // Same quote re-sent within the window: keep the marker.
+            $calcSaved = json_decode((string) $fresh->calculation_json, true) ?: [];
+            $calcSaved['notified'] = $prevCalc['notified'];
+            DB::table('sell_quotes')->where('id', $quote->id)->update(['calculation_json' => json_encode($calcSaved)]);
+        }
+        return $this->json($this->publicQuote($fresh) + ['sent' => $sent]);
+    }
+
+    /** nivessa.com link that reopens a saved quote. */
+    public static function quoteLink($token)
+    {
+        return 'https://nivessa.com/sell-your-stuff/quote?id=' . $token;
+    }
+
+    /**
+     * Text the quote from the store's Quo line, and email it when the seller
+     * gave an email (Sarah 11/4). Skipped when the same number already went
+     * out in the last NOTIFY_REPEAT_MIN minutes (seller pressed Get my quote
+     * twice). Never throws; a failed send never blocks the quote.
+     */
+    const NOTIFY_REPEAT_MIN = 30;
+
+    protected function notifySeller($q, $prev)
+    {
+        $out = ['sms' => false, 'email' => false];
+        if (is_array($prev) && abs((float) ($prev['cash'] ?? -1) - (float) $q->cash_total) < 0.005
+            && (time() - (int) ($prev['at'] ?? 0)) < self::NOTIFY_REPEAT_MIN * 60) {
+            return $out + ['repeat' => true];
+        }
+        $storeRow = collect($this->stores())->firstWhere('id', (int) $q->location_id);
+        $storeName = $storeRow['name'] ?? '';
+        $store = \App\Services\WantNotice::store($storeName);
+        $first = trim(explode(' ', trim((string) $q->name))[0] ?? '');
+        $number = self::number($q->id);
+        $link = self::quoteLink($q->token);
+        $items = (int) $q->item_count . ' item' . ((int) $q->item_count === 1 ? '' : 's');
+        $m = function ($n) {
+            $n = (float) $n;
+            return '$' . (fmod($n, 1) ? number_format($n, 2) : number_format($n, 0));
+        };
+        $large = $q->size_tier === 'large';
+        $goodThrough = $q->expires_at ? \Carbon\Carbon::parse($q->expires_at)->format('l, F j') : '';
+
+        if ($large) {
+            $sms = 'Hi' . ($first !== '' ? ' ' . $first : '') . ', Nivessa Records here. Your estimate ' . $number . ': '
+                . $m($q->estimate_low_cash) . '-' . $m($q->cash_total) . ' cash or ' . $m($q->estimate_low_cash * 1.5) . '-' . $m($q->credit_total)
+                . ' in store credit for your ' . $items . '. Collections this size need a quick look in person. Reply to this text to set up an appraisal. '
+                . $link;
+        } else {
+            $sms = 'Hi' . ($first !== '' ? ' ' . $first : '') . ', Nivessa Records here. Your quote ' . $number . ': we\'ll pay '
+                . $m($q->cash_total) . ' cash or ' . $m($q->credit_total) . ' in store credit for your ' . $items
+                . ', good through ' . $goodThrough . ' at ' . $store['name'] . ' (' . $store['address'] . ') if the condition matches. Show this text at the counter. '
+                . $link;
+        }
+        try {
+            $res = app(\App\Services\OpenPhoneService::class)->sendFromStore($storeName ?: $store['name'], (string) $q->phone, $sms);
+            $out['sms'] = (bool) ($res['success'] ?? false);
+            if (!$out['sms']) {
+                \Log::warning('Sell quote ' . $number . ' text failed: ' . ($res['msg'] ?? ''));
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('Sell quote ' . $number . ' text failed: ' . $e->getMessage());
+        }
+
+        if (!empty($q->email)) {
+            try {
+                $resp = \App\Services\WebsiteBridge::erp('POST', '/sell-quote/email', [
+                    'to' => $q->email,
+                    'firstName' => $first,
+                    'store' => $store['key'],
+                    'number' => $number,
+                    'tier' => $large ? 'large' : 'small',
+                    'cash' => (float) $q->cash_total,
+                    'credit' => (float) $q->credit_total,
+                    'lowCash' => (float) $q->estimate_low_cash,
+                    'lowCredit' => round((float) $q->estimate_low_cash * 1.5, 2),
+                    'itemCount' => (int) $q->item_count,
+                    'goodThrough' => $goodThrough,
+                    'link' => $link,
+                ], 15);
+                $out['email'] = !empty($resp['success']);
+                if (!$out['email']) {
+                    \Log::warning('Sell quote ' . $number . ' email failed: ' . ($resp['message'] ?? 'unknown'));
+                }
+            } catch (\Throwable $e) {
+                \Log::warning('Sell quote ' . $number . ' email failed: ' . $e->getMessage());
+            }
+        }
+        return $out;
     }
 
     /** What the website shows for a saved quote (never the offer ladder). */
