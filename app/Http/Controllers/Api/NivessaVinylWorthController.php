@@ -111,8 +111,8 @@ class NivessaVinylWorthController extends Controller
                 $lo = (int) round($lo);
                 $hi = (int) round($hi);
                 $out[] = [
-                    'artist' => $t['artist'],
-                    'album' => $t['album'],
+                    'artist' => mb_convert_encoding($t['artist'], 'UTF-8', 'UTF-8'),
+                    'album' => mb_convert_encoding($t['album'], 'UTF-8', 'UTF-8'),
                     'worth' => $lo === $hi ? '$' . $lo : '$' . $lo . '-$' . $hi,
                 ];
             }
@@ -123,7 +123,8 @@ class NivessaVinylWorthController extends Controller
             return ['updated' => now()->toDateTimeString(), 'records' => $out];
         });
 
-        return response()->json($data)
+        // Some catalog names carry stray Latin-1 bytes.
+        return response()->json($data, 200, [], JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_UNICODE)
             ->header('Access-Control-Allow-Origin', '*')
             ->header('Cache-Control', 'public, max-age=3600');
     }
