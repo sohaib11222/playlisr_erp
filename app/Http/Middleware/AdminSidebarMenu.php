@@ -568,6 +568,11 @@ class AdminSidebarMenu
                                 'Buy from Customer',
                                 ['icon' => 'fa fas fa-calculator', 'active' => request()->segment(1) == 'buy-from-customer']
                             );
+                            $sub->url(
+                                url('/sell-quotes'),
+                                'Website Sell Quotes',
+                                ['icon' => 'fa fas fa-globe', 'active' => request()->segment(1) == 'sell-quotes']
+                            );
                         }
                         if (auth()->user()->can('product.update')) {
                             $sub->url(
