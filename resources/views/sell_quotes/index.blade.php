@@ -6,7 +6,7 @@
 @include('sell_quotes._style')
 <div class="sq-wrap">
     <h1>Website Sell Quotes</h1>
-    <p class="sub">Quotes sellers made on nivessa.com (Sell Your Stuff &rarr; Get a Quote). Each quote is good for 7 days if the condition matches. Open one and press <strong>Start buy</strong> to load it into the buy form.</p>
+    <p class="sub">Quotes sellers made on nivessa.com (Sell Your Stuff &rarr; Get a Quote). Each quote is good for 3 days if the condition matches. Open one and press <strong>Start buy</strong> to load it into the buy form.</p>
 
     <div class="sq-card">
         <form method="GET" action="{{ url('/sell-quotes') }}" class="sq-toolbar">
