@@ -1,0 +1,41 @@
+# Read-only: website Get a Quote usage (sell_quotes counts by day/hour/store/size,
+# repeat sellers, who came in to sell after quoting) + form-view hits from access logs.
+# SELECTs only. Writes nothing.
+
+name: Diag sell quotes usage (read-only)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Run diag
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          command_timeout: 10m
+          script: |
+            cd /www/playlist.nivessa.com/app
+            echo 'PD9waHAKcmVxdWlyZSAndmVuZG9yL2F1dG9sb2FkLnBocCc7CiRhcHAgPSByZXF1aXJlICdib290c3RyYXAvYXBwLnBocCc7CiRhcHAtPm1ha2UoSWxsdW1pbmF0ZVxDb250cmFjdHNcQ29uc29sZVxLZXJuZWw6OmNsYXNzKS0+Ym9vdHN0cmFwKCk7CnVzZSBJbGx1bWluYXRlXFN1cHBvcnRcRmFjYWRlc1xEQjsKZnVuY3Rpb24gcSgkbGFiZWwsICRzcWwsICRiID0gW10pIHsKICBlY2hvICJcbiMjIyAkbGFiZWxcbiI7CiAgdHJ5IHsgJHJvd3MgPSBEQjo6c2VsZWN0KCRzcWwsICRiKTsKICAgIGZvcmVhY2ggKCRyb3dzIGFzICRyKSBlY2hvIGltcGxvZGUoJyB8ICcsIGFycmF5X21hcChmdW5jdGlvbigkaywkdil7cmV0dXJuICIkaz0iLihpc19udW1lcmljKCR2KT9yb3VuZCgkdiwyKTokdik7fSwgYXJyYXlfa2V5cygoYXJyYXkpJHIpLCAoYXJyYXkpJHIpKSwgIlxuIjsKICAgIHByaW50ZigiKCVkIHJvd3MpXG4iLCBjb3VudCgkcm93cykpOwogIH0gY2F0Y2ggKFxUaHJvd2FibGUgJGUpIHsgZWNobyAiRVJSICIuc3Vic3RyKCRlLT5nZXRNZXNzYWdlKCksMCwzMDApLiJcbiI7IH0KfQokcmVhbCA9ICJuYW1lIE5PVCBMSUtFICclVEVTVCUnIEFORCBuYW1lIE5PVCBMSUtFICclQ2xhdWRlJScgQU5EIHBob25lIE5PVCBMSUtFICclNTU1MDEwMCUnIjsKcSgndG90YWxzJywgIlNFTEVDVCBDT1VOVCgqKSBuLCBTVU0oc3RhdHVzPD4nc3RhcnRlZCcpIHF1b3RlZCwgU1VNKHN0YXR1cz0naW5fYnV5JykgaW5fYnV5LCBDT1VOVChESVNUSU5DVCBwaG9uZSkgcGhvbmVzLCBDT1VOVChESVNUSU5DVCBpcCkgaXBzLCBTVU0oZW1haWwgSVMgTk9UIE5VTEwgQU5EIGVtYWlsPD4nJykgd2l0aF9lbWFpbCwgUk9VTkQoU1VNKGNhc2hfdG90YWwpLDApIGNhc2hfc3VtLCBNSU4oY3JlYXRlZF9hdCkgZmlyc3QsIE1BWChjcmVhdGVkX2F0KSBsYXN0IEZST00gc2VsbF9xdW90ZXMgV0hFUkUgJHJlYWwiKTsKcSgndGVzdHMgZXhjbHVkZWQnLCAiU0VMRUNUIENPVU5UKCopIG4gRlJPTSBzZWxsX3F1b3RlcyBXSEVSRSBOT1QgKCRyZWFsKSIpOwpxKCdieSBkYXkgKExBKScsICJTRUxFQ1QgREFURShDT05WRVJUX1RaKGNyZWF0ZWRfYXQsJyswMDowMCcsJ0FtZXJpY2EvTG9zX0FuZ2VsZXMnKSkgZCwgQ09VTlQoKikgbiwgU1VNKHN0YXR1czw+J3N0YXJ0ZWQnKSBxdW90ZWQsIENPVU5UKERJU1RJTkNUIHBob25lKSBwaG9uZXMsIFJPVU5EKFNVTShjYXNoX3RvdGFsKSwwKSBjYXNoIEZST00gc2VsbF9xdW90ZXMgV0hFUkUgJHJlYWwgR1JPVVAgQlkgZCBPUkRFUiBCWSBkIik7CnEoJ2J5IGhvdXIgKHJhdyBjcmVhdGVkX2F0KScsICJTRUxFQ1QgREFURV9GT1JNQVQoY3JlYXRlZF9hdCwnJW0tJWQgJUg6MDAnKSBoLCBDT1VOVCgqKSBuLCBTVU0oc3RhdHVzPD4nc3RhcnRlZCcpIHF1b3RlZCBGUk9NIHNlbGxfcXVvdGVzIFdIRVJFICRyZWFsIEdST1VQIEJZIGggT1JERVIgQlkgaCIpOwpxKCdieSBzdG9yZScsICJTRUxFQ1QgQ09BTEVTQ0UobC5uYW1lLCc/Jykgc3RvcmUsIENPVU5UKCopIG4sIFNVTShxLnN0YXR1czw+J3N0YXJ0ZWQnKSBxdW90ZWQsIFJPVU5EKFNVTShxLmNhc2hfdG90YWwpLDApIGNhc2ggRlJPTSBzZWxsX3F1b3RlcyBxIExFRlQgSk9JTiBidXNpbmVzc19sb2NhdGlvbnMgbCBPTiBsLmlkPXEubG9jYXRpb25faWQgV0hFUkUgJHJlYWwgR1JPVVAgQlkgc3RvcmUiKTsKcSgnYnkgc2l6ZScsICJTRUxFQ1Qgc2l6ZV9waWNrZWQsIHNpemVfdGllciwgQ09VTlQoKikgbiwgUk9VTkQoQVZHKGl0ZW1fY291bnQpLDApIGF2Z19pdGVtcywgUk9VTkQoQVZHKGNhc2hfdG90YWwpLDApIGF2Z19jYXNoLCBST1VORChNQVgoY2FzaF90b3RhbCksMCkgbWF4X2Nhc2ggRlJPTSBzZWxsX3F1b3RlcyBXSEVSRSAkcmVhbCBHUk9VUCBCWSBzaXplX3BpY2tlZCwgc2l6ZV90aWVyIik7CnEoJ3JlcGVhdCBwaG9uZXMnLCAiU0VMRUNUIFJJR0hUKHBob25lLDQpIGxhc3Q0LCBDT1VOVCgqKSBuIEZST00gc2VsbF9xdW90ZXMgV0hFUkUgJHJlYWwgR1JPVVAgQlkgcGhvbmUgSEFWSU5HIG4+MSBPUkRFUiBCWSBuIERFU0MgTElNSVQgMTAiKTsKcSgnZWFjaCBxdW90ZScsICJTRUxFQ1QgaWQrMTAwMCBudW0sIERBVEVfRk9STUFUKGNyZWF0ZWRfYXQsJyVtLSVkICVIOiVpJykgYXRfdXRjLCBzdGF0dXMsIHNpemVfdGllciwgaXRlbV9jb3VudCBpdGVtcywgUk9VTkQoY2FzaF90b3RhbCwwKSBjYXNoLCBST1VORChlc3RpbWF0ZV9sb3dfY2FzaCwwKSBsb3csIGxvY2F0aW9uX2lkIGxvYywgKGVtYWlsIElTIE5PVCBOVUxMIEFORCBlbWFpbDw+JycpIGVtIEZST00gc2VsbF9xdW90ZXMgV0hFUkUgJHJlYWwgT1JERVIgQlkgaWQiKTsKLy8gV2hvIHdhbGtlZCBpbiBhZnRlcndhcmRzOiBhIHB1cmNoYXNlICh3ZSBib3VnaHQgZnJvbSB0aGVtKSBmcm9tIGEgY29udGFjdCB3aXRoIHRoZSBzYW1lIHBob25lLCBhZnRlciB0aGUgcXVvdGUuCnEoJ2NhbWUgaW4gYWZ0ZXIgcXVvdGluZyAocHVyY2hhc2UgZnJvbSBtYXRjaGluZyBwaG9uZSknLCAiU0VMRUNUIHEuaWQrMTAwMCBudW0sIERBVEUocS5jcmVhdGVkX2F0KSBxdW90ZWQsIERBVEUodC50cmFuc2FjdGlvbl9kYXRlKSBib3VnaHQsIFJPVU5EKHQuZmluYWxfdG90YWwsMCkgcGFpZCBGUk9NIHNlbGxfcXVvdGVzIHEgSk9JTiBjb250YWN0cyBjIE9OIGMuYnVzaW5lc3NfaWQ9cS5idXNpbmVzc19pZCBBTkQgUklHSFQoUkVHRVhQX1JFUExBQ0UoQ09BTEVTQ0UoYy5tb2JpbGUsJycpLCdbXjAtOV0nLCcnKSwxMCk9UklHSFQoUkVHRVhQX1JFUExBQ0UocS5waG9uZSwnW14wLTldJywnJyksMTApIEFORCBMRU5HVEgoUkVHRVhQX1JFUExBQ0UocS5waG9uZSwnW14wLTldJywnJykpPj0xMCBKT0lOIHRyYW5zYWN0aW9ucyB0IE9OIHQuY29udGFjdF9pZD1jLmlkIEFORCB0LnR5cGU9J3B1cmNoYXNlJyBBTkQgdC50cmFuc2FjdGlvbl9kYXRlPj1xLmNyZWF0ZWRfYXQgV0hFUkUgcS5uYW1lIE5PVCBMSUtFICclVEVTVCUnIEFORCBxLm5hbWUgTk9UIExJS0UgJyVDbGF1ZGUlJyBPUkRFUiBCWSBxLmlkIik7CmVjaG8gIlxuIyMjIGZvcm0gdmlld3MgKGFjY2VzcyBsb2cgaGl0cyBvbiAvc2VsbC1xdW90ZS9vcHRpb25zKVxuIjsKZm9yZWFjaCAoZ2xvYignL3d3dy9wbGF5bGlzdC5uaXZlc3NhLmNvbS97bG9ncyxsb2d9LyphY2Nlc3MqJywgR0xPQl9CUkFDRSkgPzogW10gYXMgJGYpIGVjaG8gImxvZzogJGZcbiI7Cg==' | base64 -d > /tmp/diag_sq.php
+            php /tmp/diag_sq.php
+            rm -f /tmp/diag_sq.php
+            echo "### access logs"
+            for f in $(ls -d /www/playlist.nivessa.com/logs/* /www/playlist.nivessa.com/log/* /var/log/nginx/*access* /var/log/apache2/*access* /var/log/httpd/*access* 2>/dev/null); do echo "log file: $f"; done
+            for f in $(ls /www/playlist.nivessa.com/logs/*access* /www/playlist.nivessa.com/log/*access* /var/log/nginx/*access* 2>/dev/null); do
+              echo "== $f"
+              zgrep -h 'sell-quote/options' "$f" 2>/dev/null | grep -o '\[[0-9]*/[A-Za-z]*/[0-9]*:[0-9]*' | sort | uniq -c | tail -30
+              echo "-- distinct IPs viewing form:"; zgrep -h 'sell-quote/options' "$f" 2>/dev/null | awk '{print $1}' | sort -u | wc -l
+              echo "-- start/price posts:"; zgrep -h -E 'POST /sell-quote/(start|[A-Za-z0-9]+/price)' "$f" 2>/dev/null | grep -o '\[[0-9]*/[A-Za-z]*/[0-9]*' | sort | uniq -c
+            done
+            true
