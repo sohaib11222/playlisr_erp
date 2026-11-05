@@ -1,0 +1,51 @@
+# Zero stock on duplicate product records left by the repeated Dec 6–7, 2025
+# Pico sealed punk import (one record kept per SKU, never-sold groups only).
+#
+# Runs `php artisan stock:zero-import-dupes`. DRY RUN by default — tick
+# "commit" to apply. Undo at /admin/admin-action-history.
+
+name: Zero import duplicate stock
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: 'Actually zero the duplicates? (leave unchecked for a dry run)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  zero-dupes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Run stock:zero-import-dupes
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 15m
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app || { echo "cd failed"; exit 0; }
+            if [ "${{ github.event.inputs.commit }}" = "true" ]; then
+              echo "=== COMMIT run ==="
+              php artisan stock:zero-import-dupes --commit 2>&1
+            else
+              echo "=== DRY RUN — no changes ==="
+              php artisan stock:zero-import-dupes 2>&1
+            fi
+            echo "=== artisan exit code: $? ==="
+            exit 0
