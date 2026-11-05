@@ -2000,6 +2000,7 @@ class ProductController extends Controller
             }
 
             $product->brand_id = $product_details['brand_id'];
+            $artistBefore = trim((string) $product->artist);
             // Same casing standard as the name: "DEFTONES" -> "Deftones".
             $product->artist = trim((string) ($product_details['artist'] ?? '')) !== ''
                 ? \App\Services\ProductNameNormalizer::properArtistCase($product_details['artist'])
@@ -2194,7 +2195,12 @@ class ProductController extends Controller
             // product doesn't exist on the site yet, the website handler
             // creates it. Never let a website/network hiccup fail the save.
             try {
-                (new \App\Services\NivessaStockNotifier())->pushProductChanged([(int) $id]);
+                // A hand-corrected artist must reach the website too, or the
+                // listing keeps the old artist and its cover lookup (Janet
+                // Jackson entered as Gary Numan showed Numan's cover, 11/5/26).
+                $artistChanged = strcasecmp($artistBefore, trim((string) $product->artist)) !== 0
+                    && trim((string) $product->artist) !== '';
+                (new \App\Services\NivessaStockNotifier())->pushProductChanged([(int) $id], $artistChanged ? ['artist'] : []);
             } catch (\Throwable $pushEx) {
                 \Log::warning('Product update website push failed: ' . $pushEx->getMessage());
             }
