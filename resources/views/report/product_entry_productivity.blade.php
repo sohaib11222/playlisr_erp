@@ -61,6 +61,7 @@
                         <th>Packages Picked</th>
                         <th>Packages Shipped</th>
                         <th>Hours Worked</th>
+                        <th title="Mass Add count divided by hours worked">Listings / Hour</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -73,9 +74,10 @@
                             <td>{{ (int) ($r->packages_picked_count ?? 0) }}</td>
                             <td>{{ (int) ($r->packages_shipped_count ?? 0) }}</td>
                             <td>{{ ($r->hours_worked ?? 0) > 0 ? number_format($r->hours_worked, 1) . 'h' : '—' }}</td>
+                            <td>{{ ($r->hours_worked ?? 0) > 0 ? number_format($r->mass_add_count / $r->hours_worked, 1) : '—' }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="text-center text-muted">No data found for this range.</td></tr>
+                        <tr><td colspan="8" class="text-center text-muted">No data found for this range.</td></tr>
                     @endforelse
                 </tbody>
             </table>
