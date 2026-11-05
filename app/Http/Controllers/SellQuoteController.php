@@ -59,8 +59,8 @@ class SellQuoteController extends StoreOrDiscogsController
 
     // Customer-facing groups for the bulk item types, matched on the type key.
     const TYPE_GROUPS = [
-        ['Vinyl LPs (used)', '/^bulk_vinyl_(?!sealed)/'],
-        ['Vinyl LPs (sealed)', '/^bulk_vinyl_sealed/'],
+        ['Bulk Vinyl Used', '/^bulk_vinyl_(?!sealed)/'],
+        ['Bulk Vinyl Sealed', '/^bulk_vinyl_sealed/'],
         ['45s / 7-inch', '/^rpm45/'],
         ['CDs', '/^cd_(?!player)/'],
         ['Cassettes', '/^cassette_(?!player)/'],
@@ -156,7 +156,7 @@ class SellQuoteController extends StoreOrDiscogsController
     /** GET /sell-quote/options */
     public function options()
     {
-        $data = Cache::remember('sellquote:options2', 600, function () {
+        $data = Cache::remember('sellquote:options3', 600, function () {
             $grades = [];
             foreach (array_reverse($this->calculator->getGradesForDropdown()) as $g) {
                 $grades[] = ['key' => $g, 'help' => self::GRADE_HELP[$g] ?? ''];
