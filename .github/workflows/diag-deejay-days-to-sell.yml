@@ -1,0 +1,59 @@
+# READ-ONLY (2026-11-04): how many days deejay.de stock takes to sell.
+# One PL line per purchase line (receive date, qty, cost, sold qty) and one
+# S line per sale matched to it via transaction_sell_lines_purchase_lines.
+name: Diag deejay days to sell
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+
+      - name: Days to sell (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 300s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $cids = \DB::table('contacts')->where(fn($q) => $q->whereRaw('LOWER(name) LIKE ?', ['%deejay%'])->orWhereRaw("LOWER(COALESCE(supplier_business_name,'')) LIKE ?", ['%deejay%']))->pluck('id')->all(); echo 'CONTACTS ' . json_encode($cids) . "\n";
+            $pls = \DB::table('purchase_lines as pl')->join('transactions as t', 't.id', '=', 'pl.transaction_id')->join('products as p', 'p.id', '=', 'pl.product_id')->leftJoin('categories as c', 'c.id', '=', 'p.category_id')->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')->whereIn('t.contact_id', $cids)->where('t.type', 'purchase')->get(['pl.id', 'pl.product_id', 'p.name', 'p.artist', 'c.name as cat', 'sc.name as sub', 't.id as tid', 't.ref_no', 't.transaction_date as d', 't.status', 'bl.name as store', 'pl.quantity', 'pl.quantity_sold', 'pl.quantity_returned', 'pl.purchase_price_inc_tax as cost']);
+            echo 'PL_COUNT ' . count($pls) . "\n";
+            foreach ($pls as $r) echo 'PL ' . json_encode($r) . "\n";
+            $ids = $pls->pluck('id')->all();
+            foreach (array_chunk($ids, 2000) as $ch) { foreach (\DB::table('transaction_sell_lines_purchase_lines as m')->join('transaction_sell_lines as sl', 'sl.id', '=', 'm.sell_line_id')->join('transactions as t', 't.id', '=', 'sl.transaction_id')->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')->whereIn('m.purchase_line_id', $ch)->where('t.type', 'sell')->get(['m.purchase_line_id as pl', 'm.quantity as q', 'm.qty_returned as r', 't.transaction_date as d', 't.status', 'sl.unit_price_inc_tax as price', 'bl.name as store']) as $s) echo 'S ' . json_encode($s) . "\n"; }
+            $pids = $pls->pluck('product_id')->unique()->all();
+            foreach (array_chunk($pids, 2000) as $ch) { foreach (\DB::table('variation_location_details as v')->leftJoin('business_locations as bl', 'bl.id', '=', 'v.location_id')->whereIn('v.product_id', $ch)->where('v.qty_available', '>', 0)->get(['v.product_id', 'bl.name as store', 'v.qty_available as q']) as $k) echo 'K ' . json_encode($k) . "\n"; }
+            PHP
+            echo "=== done ==="
