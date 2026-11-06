@@ -241,10 +241,14 @@
         var z = e.target.closest('.sc-zero'); if (z) { var zi = byId[z.closest('.sc-item').getAttribute('data-id')]; count[zi.id] = 0; bump(zi, 0); return; }
         var all = e.target.closest('.sc-all'); if (all) { var ai = byId[all.closest('.sc-item').getAttribute('data-id')]; bump(ai, Math.round(ai.erp) - (count[ai.id] || 0)); return; }
         var b = e.target.closest('.sc-pm'); if (b) { var id = b.closest('.sc-item').getAttribute('data-id'); bump(byId[id], parseInt(b.getAttribute('data-d'), 10)); return; }
-        var c = e.target.closest('.sc-choice'); if (c) { var x = JSON.parse(c.getAttribute('data-i')); bump(byId[x.id] || x, 1); document.getElementById('scChoices').innerHTML = ''; document.getElementById('scQ').focus(); }
+        // Tap a "Which one?" pick (fixed 11/6: the old data-i JSON attribute was cut off at the first quote, so taps did nothing).
+        var c = e.target.closest('.sc-choice'); if (c) { var x = choices[+c.getAttribute('data-k')]; if (x) bump(byId[x.id] || x, 1); clearChoices(); document.getElementById('scQ').focus(); }
     });
+    var choices = [];
+    function clearChoices() { choices = []; document.getElementById('scChoices').innerHTML = ''; }
     function lookup(q) {
         q = q.trim(); if (!q) return;
+        clearChoices();
         var digits = q.replace(/[\s-]/g, '');
         // Barcode already in this bin: count it without a server call.
         if (/^\d{8,14}$/.test(digits)) {
@@ -256,8 +260,9 @@
             var f = document.getElementById('scFlash');
             if (!j.items.length) { f.className = 'sc-flash bad'; f.textContent = 'Not found in the ERP: ' + q; return; }
             if (j.items.length === 1) { bump(byId[j.items[0].id] || j.items[0], 1); return; }
-            document.getElementById('scChoices').innerHTML = '<div class="sc-small">Which one?</div>' + j.items.map(function (x) {
-                return '<div class="sc-item sc-choice" data-i="' + esc(JSON.stringify(x)) + '" style="cursor:pointer;"><div class="t">' + esc(label(x)) + '<div class="sc-small">' + esc(x.sku) + '</div></div></div>';
+            choices = j.items;
+            document.getElementById('scChoices').innerHTML = '<div class="sc-small">Which one? Tap it to add 1.</div>' + j.items.map(function (x, k) {
+                return '<div class="sc-item sc-choice" role="button" tabindex="0" data-k="' + k + '" style="cursor:pointer;"><div class="t">' + esc(label(x)) + '<div class="sc-small">' + esc(x.sku) + '</div></div></div>';
             }).join('');
         });
     }
