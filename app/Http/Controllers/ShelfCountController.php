@@ -329,7 +329,16 @@ class ShelfCountController extends Controller
         try {
             $svc = new \App\Services\DiscogsService($business_id);
             if (!$svc->isConfigured()) return response()->json($out);
-            $res = $svc->searchByBarcode($code);
+            // Try the barcode as scanned, then with leading zeros dropped / one or two added
+            // (Jon 11/6): a UPC often reads as a 13-digit EAN with a leading 0 and Discogs stores either.
+            $tries = array_values(array_unique(array_filter([$code, ltrim($code, '0'), '0' . $code, '00' . $code],
+                function ($c) { return preg_match('/^\d{8,14}$/', $c); })));
+            $res = null;
+            foreach ($tries as $n => $c) {
+                if ($n > 0) usleep(300000);
+                $res = $svc->searchByBarcode($c);
+                if (!empty($res['data']->results)) break;
+            }
             $want = strpos($kind, 'vinyl-') === 0 ? 'vinyl' : (strpos($kind, 'cd-') === 0 ? 'cd' : null);
             $hits = [];
             foreach ((array) ($res['data']->results ?? []) as $x) {
