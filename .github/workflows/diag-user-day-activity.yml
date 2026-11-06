@@ -114,6 +114,10 @@ jobs:
               foreach ($al->take(150) as $r) echo json_encode([substr($r->created_at, 11, 5), $r->log_name, $r->description, $r->subject_type, $r->subject_id]) . "\n";
             }
 
+            if ($S->hasTable('activity_log')) {
+              echo "\n=== STOCK_CHANGED DETAIL ===\n";
+              foreach (\DB::table('activity_log as a')->leftJoin('products as p', 'p.id', '=', 'a.subject_id')->whereIn('a.causer_id', $uids)->whereBetween('a.created_at', [$from, $to])->where('a.description', 'stock_changed')->orderBy('a.created_at')->get(['a.created_at', 'a.subject_id', 'p.artist', 'p.name', 'p.sku', 'a.properties']) as $r) echo json_encode([substr($r->created_at, 11, 5), $r->subject_id, $r->artist, $r->name, $r->sku, substr((string) $r->properties, 0, 300)]) . "\n";
+            }
             echo "\n=== PRODUCTS EDITED that day (updated_at, created earlier) - product rows only, no attribution ===\n";
             echo 'all-staff count=' . \DB::table('products')->whereBetween('updated_at', [$from, $to])->where('created_at', '<', $from)->count() . "\n";
 
