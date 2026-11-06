@@ -20,6 +20,7 @@
 .sc-qty { margin-left: 6px; min-width: 52px; height: 40px; border: 2px solid #2E6B2E; border-radius: 10px; background: #fff; color: #2E6B2E; font-size: 20px; font-weight: 800; cursor: pointer; vertical-align: middle; }
 .sc-qin { margin-left: 6px; width: 76px; height: 40px; border: 2px solid #2E6B2E; border-radius: 10px; font-size: 20px; font-weight: 800; text-align: center; vertical-align: middle; }
 .sc-flash .sc-small { font-weight: 400; }
+.sc-aprice { margin-left: 8px; width: 110px; height: 40px; border: 2px solid #2E6B2E; border-radius: 10px; font-size: 18px; padding: 0 8px; vertical-align: middle; }
 .sc-addbtn { margin-left: 8px; height: 40px; border: 0; border-radius: 10px; background: #2E6B2E; color: #fff; font-size: 15px; font-weight: 700; padding: 0 14px; cursor: pointer; vertical-align: middle; }
 #scAdd .sc-shade { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1050; display: flex; align-items: flex-end; justify-content: center; }
 .sc-addbox { background: #fff; border-radius: 16px 16px 0 0; padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); width: 100%; max-width: 520px; max-height: 92vh; overflow-y: auto; box-shadow: 0 -4px 20px rgba(0,0,0,.25); }
@@ -306,19 +307,19 @@
     // Not in the ERP: add it from here (Jon 11/6). Discogs fills in title, artist,
     // cover and a price from the barcode; one tap creates it like Mass Add does
     // (1 copy in stock at this store, this bin's format + genre) and counts it.
-    function openAdd(code) {
+    function openAdd(code, price) {
         var box = document.getElementById('scAdd'), f = document.getElementById('scFlash');
-        f.className = 'sc-flash'; f.textContent = 'Adding ' + code + ': looking it up on Discogs...';
+        f.className = 'sc-flash'; f.textContent = 'Adding ' + code + ': getting artist and title from Discogs...';
         box.innerHTML = '';
         fetch('/reports/shelf-count/barcode-info?' + new URLSearchParams({ code: code, kind: KIND, sub: SUB, location_id: LOC }), { headers: { 'Accept': 'application/json' } })
             .then(function (r) { return r.json(); }, function () { return {}; })
             .then(function (d) {
                 d = d || {};
-                // Jon 11/6: "even better if we just submit the item". Discogs knows it and has a price: add it now, no popup.
-                if (d.found && d.price && d.name && d.artist) {
-                    submitAdd(code, d, { name: d.name, artist: d.artist, price: d.price, qty: 1 }, function (err) { showAddForm(code, d, err); });
+                // Jon 11/6: just submit it. Discogs knows the artist + title: add it now with the typed price, no popup.
+                if (d.found && d.name && d.artist) {
+                    submitAdd(code, d, { name: d.name, artist: d.artist, price: price, qty: 1 }, function (err) { showAddForm(code, d, err, price); });
                 } else {
-                    showAddForm(code, d, '');
+                    showAddForm(code, d, '', price);
                 }
             });
     }
@@ -334,21 +335,21 @@
                 bump(byId[j.item.id] || j.item, j.existing ? 1 : Math.max(1, parseInt(v.qty, 10) || 1));
                 beepOk();
                 f.insertAdjacentHTML('beforeend', '<div class="sc-small" style="margin-top:4px;">'
-                    + (j.existing ? 'It was already in the ERP, so it was counted.' : 'New in the ERP at $' + esc(Number(v.price).toFixed(2)) + ', SKU ' + esc(j.item.sku) + '.')
+                    + (j.existing ? 'It was already in the ERP, so it was counted.' : 'New in the ERP: ' + esc(label(j.item)) + ', $' + esc(Number(v.price).toFixed(2)) + ', SKU ' + esc(j.item.sku) + '.')
                     + ' <a href="' + esc(j.edit_url) + '" target="_blank">Edit price</a></div>');
                 document.getElementById('scQ').focus();
             }, function () { onFail('Could not add it. Check the connection.'); });
     }
     // Only when Discogs can't fill it in: a small phone popup for artist, title and price.
-    function showAddForm(code, d, err) {
+    function showAddForm(code, d, err, price) {
         var box = document.getElementById('scAdd'), f = document.getElementById('scFlash');
         f.className = 'sc-flash'; f.textContent = '';
-        var hint = d.found ? 'Discogs has no price for it. Type the price, then tap Add.' : 'Not on Discogs. Type the artist, title and price, then tap Add.';
+        var hint = d.found ? 'Check the artist and title, then tap Add.' : 'Not on Discogs. Type the artist and title, then tap Add.';
         box.innerHTML = '<div class="sc-shade"><div class="sc-addbox" role="dialog" aria-label="Add to ERP"><h3>Add to ERP</h3><div class="row2">' + (d.image_url ? '<img src="' + esc(d.image_url) + '" alt="">' : '')
             + '<div style="flex:1;"><div class="sc-small">' + esc(hint) + ' Barcode ' + esc(code) + '</div>'
             + '<label>Artist</label><input id="scAArtist" value="' + esc(d.artist || '') + '" autocomplete="off">'
             + '<label>Title</label><input id="scAName" value="' + esc(d.name || '') + '" autocomplete="off"></div></div>'
-            + '<div class="prices"><div><label>Selling price $</label><input id="scAPrice" type="number" inputmode="decimal" step="0.01" min="0" value="' + (d.price || '') + '"></div>'
+            + '<div class="prices"><div><label>Selling price $</label><input id="scAPrice" type="number" inputmode="decimal" step="0.01" min="0" value="' + esc(price || '') + '"></div>'
             + '<div><label>Copies here</label><input id="scAQty" type="number" inputmode="numeric" min="1" step="1" value="1"></div></div>'
             + '<div class="acts"><button class="sc-btn" id="scAGo" type="button">Add</button><button class="sc-btn light" id="scACancel" type="button">Cancel</button></div>'
             + '<div class="sc-small" id="scAMsg" style="color:#8E1B1B;font-weight:700;margin-top:6px;">' + esc(err || '') + '</div></div></div>';
@@ -368,6 +369,12 @@
         if (first) first.focus();
     }
     var choices = [];
+    function showChoices(list) {
+        choices = list;
+        document.getElementById('scChoices').innerHTML = '<div class="sc-small">Which one? Tap it to add 1.</div>' + list.map(function (x, k) {
+            return '<div class="sc-item sc-choice" role="button" tabindex="0" data-k="' + k + '" style="cursor:pointer;"><div class="t">' + esc(label(x)) + '<div class="sc-small">' + esc(x.sku) + '</div></div></div>';
+        }).join('');
+    }
     function clearChoices() { choices = []; document.getElementById('scChoices').innerHTML = ''; }
     function lookup(q) {
         q = q.trim(); if (!q) return;
@@ -384,14 +391,34 @@
             var f = document.getElementById('scFlash');
             if (!j.items.length) {
                 beepBad(); f.className = 'sc-flash bad'; f.textContent = 'Not found in the ERP: ' + q;
-                if (CAN_ADD) { var ab = document.createElement('button'); ab.type = 'button'; ab.className = 'sc-addbtn'; ab.textContent = '+ Add to ERP'; ab.addEventListener('click', function () { openAdd(q); }); f.appendChild(ab); }
+                // Add it right here (Jon 11/6): type the price, Enter. Artist + title come from Discogs, the barcode is the SKU.
+                if (CAN_ADD) {
+                    var row = document.createElement('div'); row.style.marginTop = '6px';
+                    row.innerHTML = '<span class="sc-small">Add it:</span><input class="sc-aprice" type="number" inputmode="decimal" step="0.01" min="0" placeholder="$ price" enterkeyhint="done"><button type="button" class="sc-addbtn">Add to ERP</button>';
+                    f.appendChild(row);
+                    // Or it's in the ERP under another barcode / no barcode (Jon 11/6): find it by artist or title.
+                    var srow = document.createElement('div'); srow.style.marginTop = '6px';
+                    srow.innerHTML = '<span class="sc-small">Or find it:</span><input class="sc-aprice sc-afind" type="search" placeholder="Type artist or title" enterkeyhint="search" style="width:220px;"><button type="button" class="sc-addbtn sc-afindgo">Find</button>';
+                    f.insertBefore(srow, row);
+                    var fi = srow.querySelector('.sc-afind');
+                    var find = function () {
+                        var t = fi.value.trim(); if (t.length < 2) { fi.focus(); return; }
+                        fetch('/reports/shelf-count/lookup?q=' + encodeURIComponent(t), { headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); }).then(function (k) {
+                            if (!k.items.length) { document.getElementById('scChoices').innerHTML = '<div class="sc-small">Nothing in the ERP matches "' + esc(t) + '". Add it below with a price.</div>'; return; }
+                            showChoices(k.items);
+                        });
+                    };
+                    srow.querySelector('.sc-afindgo').addEventListener('click', find);
+                    fi.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); find(); } });
+                    var pr = row.querySelector('.sc-aprice'), go = row.querySelector('.sc-addbtn');
+                    var send = function () { if (!(parseFloat(pr.value) > 0)) { pr.focus(); pr.style.borderColor = '#8E1B1B'; return; } go.disabled = true; openAdd(q, pr.value); };
+                    go.addEventListener('click', send);
+                    pr.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); send(); } });
+                }
                 return;
             }
             if (j.items.length === 1) { bump(byId[j.items[0].id] || j.items[0], 1); return; }
-            choices = j.items;
-            document.getElementById('scChoices').innerHTML = '<div class="sc-small">Which one? Tap it to add 1.</div>' + j.items.map(function (x, k) {
-                return '<div class="sc-item sc-choice" role="button" tabindex="0" data-k="' + k + '" style="cursor:pointer;"><div class="t">' + esc(label(x)) + '<div class="sc-small">' + esc(x.sku) + '</div></div></div>';
-            }).join('');
+            showChoices(j.items);
         });
     }
     document.getElementById('scQ').addEventListener('keydown', function (e) {
