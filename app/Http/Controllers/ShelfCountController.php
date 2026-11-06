@@ -431,6 +431,7 @@ class ShelfCountController extends Controller
         if (!$p) return response()->json(['ok' => false, 'msg' => 'Could not add it.'], 422);
         return response()->json(['ok' => true, 'existing' => $existing,
             'item' => ['id' => (int) $p->id, 'name' => $p->name, 'artist' => $p->artist, 'sku' => $p->sku],
+            'edit_url' => action('ProductController@edit', [(int) $p->id]),
             'label_url' => action('LabelsController@show') . '?product_id=' . (int) $p->id]);
     }
 

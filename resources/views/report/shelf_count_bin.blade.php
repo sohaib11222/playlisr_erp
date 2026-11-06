@@ -308,47 +308,64 @@
     // (1 copy in stock at this store, this bin's format + genre) and counts it.
     function openAdd(code) {
         var box = document.getElementById('scAdd'), f = document.getElementById('scFlash');
-        f.className = 'sc-flash'; f.textContent = '';
-        box.innerHTML = '<div class="sc-shade"><div class="sc-addbox"><h3>Add to ERP</h3><div class="sc-small">Looking up ' + esc(code) + ' on Discogs...</div></div></div>';
+        f.className = 'sc-flash'; f.textContent = 'Adding ' + code + ': looking it up on Discogs...';
+        box.innerHTML = '';
         fetch('/reports/shelf-count/barcode-info?' + new URLSearchParams({ code: code, kind: KIND, sub: SUB, location_id: LOC }), { headers: { 'Accept': 'application/json' } })
             .then(function (r) { return r.json(); }, function () { return {}; })
             .then(function (d) {
                 d = d || {};
-                var hint = d.found ? 'Found on Discogs. Check the price, then tap Add.' : 'Not on Discogs. Type the artist, title and price, then tap Add.';
-                box.innerHTML = '<div class="sc-shade"><div class="sc-addbox" role="dialog" aria-label="Add to ERP"><h3>Add to ERP</h3><div class="row2">' + (d.image_url ? '<img src="' + esc(d.image_url) + '" alt="">' : '')
-                    + '<div style="flex:1;"><div class="sc-small">' + esc(hint) + ' Barcode ' + esc(code) + '</div>'
-                    + '<label>Artist</label><input id="scAArtist" value="' + esc(d.artist || '') + '" autocomplete="off">'
-                    + '<label>Title</label><input id="scAName" value="' + esc(d.name || '') + '" autocomplete="off"></div></div>'
-                    + '<div class="prices"><div><label>Selling price $</label><input id="scAPrice" type="number" inputmode="decimal" step="0.01" min="0" value="' + (d.price || '') + '"></div>'
-                    + '<div><label>Copies here</label><input id="scAQty" type="number" inputmode="numeric" min="1" step="1" value="1"></div></div>'
-                    + (d.price_note ? '<div class="sc-small" style="margin-top:4px;">' + esc(d.price_note) + '</div>' : '')
-                    + '<div class="acts"><button class="sc-btn" id="scAGo" type="button">Add</button><button class="sc-btn light" id="scACancel" type="button">Cancel</button></div><div class="sc-small" id="scAMsg" style="color:#8E1B1B;font-weight:700;margin-top:6px;"></div></div></div>';
-                function closeAdd() { box.innerHTML = ''; f.textContent = ''; document.getElementById('scQ').focus(); }
-                document.getElementById('scACancel').addEventListener('click', closeAdd);
-                box.querySelector('.sc-shade').addEventListener('click', function (e) { if (e.target === this) closeAdd(); });
-                // Enter in any box = Add (one less tap on the phone keyboard).
-                box.querySelectorAll('input').forEach(function (el) { el.setAttribute('enterkeyhint', 'done'); el.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('scAGo').click(); } }); });
-                document.getElementById('scAGo').addEventListener('click', function () {
-                    var btn = this, msg = document.getElementById('scAMsg');
-                    btn.disabled = true; msg.textContent = 'Adding...';
-                    fetch('/reports/shelf-count/quick-add', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
-                        body: JSON.stringify({ code: code, kind: KIND, sub: SUB, location_id: LOC, name: document.getElementById('scAName').value, artist: document.getElementById('scAArtist').value,
-                            price: document.getElementById('scAPrice').value, qty: document.getElementById('scAQty').value, image_url: d.image_url || '', discogs_release_id: d.discogs_release_id || '' }) })
-                        .then(function (r) { return r.json(); }).then(function (j) {
-                            if (!j.ok) { btn.disabled = false; msg.textContent = j.msg || 'Could not add it.'; return; }
-                            var q = Math.max(1, parseInt(document.getElementById('scAQty').value, 10) || 1);
-                            box.innerHTML = '';
-                            bump(byId[j.item.id] || j.item, j.existing ? 1 : q);
-                            beepOk();
-                            var fl = document.getElementById('scFlash');
-                            fl.insertAdjacentHTML('beforeend', '<div class="sc-small" style="margin-top:4px;">' + (j.existing ? 'It was already in the ERP, so it was counted.' : 'Added to the ERP (SKU ' + esc(j.item.sku) + '). ')
-                                + ' <a href="' + esc(j.label_url) + '" target="_blank">Print label</a></div>');
-                            document.getElementById('scQ').focus();
-                        }, function () { btn.disabled = false; msg.textContent = 'Could not add it. Check the connection.'; });
-                });
-                var first = d.found ? document.getElementById('scAPrice') : document.getElementById(d.artist ? 'scAName' : 'scAArtist');
-                if (first) first.focus();
+                // Jon 11/6: "even better if we just submit the item". Discogs knows it and has a price: add it now, no popup.
+                if (d.found && d.price && d.name && d.artist) {
+                    submitAdd(code, d, { name: d.name, artist: d.artist, price: d.price, qty: 1 }, function (err) { showAddForm(code, d, err); });
+                } else {
+                    showAddForm(code, d, '');
+                }
             });
+    }
+    function submitAdd(code, d, v, onFail) {
+        var f = document.getElementById('scFlash');
+        f.className = 'sc-flash'; f.textContent = 'Adding to the ERP...';
+        fetch('/reports/shelf-count/quick-add', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+            body: JSON.stringify({ code: code, kind: KIND, sub: SUB, location_id: LOC, name: v.name, artist: v.artist, price: v.price, qty: v.qty,
+                image_url: d.image_url || '', discogs_release_id: d.discogs_release_id || '' }) })
+            .then(function (r) { return r.json(); }).then(function (j) {
+                if (!j.ok) { onFail(j.msg || 'Could not add it.'); return; }
+                document.getElementById('scAdd').innerHTML = '';
+                bump(byId[j.item.id] || j.item, j.existing ? 1 : Math.max(1, parseInt(v.qty, 10) || 1));
+                beepOk();
+                f.insertAdjacentHTML('beforeend', '<div class="sc-small" style="margin-top:4px;">'
+                    + (j.existing ? 'It was already in the ERP, so it was counted.' : 'New in the ERP at $' + esc(Number(v.price).toFixed(2)) + ', SKU ' + esc(j.item.sku) + '.')
+                    + ' <a href="' + esc(j.edit_url) + '" target="_blank">Edit price</a> &middot; <a href="' + esc(j.label_url) + '" target="_blank">Print label</a></div>');
+                document.getElementById('scQ').focus();
+            }, function () { onFail('Could not add it. Check the connection.'); });
+    }
+    // Only when Discogs can't fill it in: a small phone popup for artist, title and price.
+    function showAddForm(code, d, err) {
+        var box = document.getElementById('scAdd'), f = document.getElementById('scFlash');
+        f.className = 'sc-flash'; f.textContent = '';
+        var hint = d.found ? 'Discogs has no price for it. Type the price, then tap Add.' : 'Not on Discogs. Type the artist, title and price, then tap Add.';
+        box.innerHTML = '<div class="sc-shade"><div class="sc-addbox" role="dialog" aria-label="Add to ERP"><h3>Add to ERP</h3><div class="row2">' + (d.image_url ? '<img src="' + esc(d.image_url) + '" alt="">' : '')
+            + '<div style="flex:1;"><div class="sc-small">' + esc(hint) + ' Barcode ' + esc(code) + '</div>'
+            + '<label>Artist</label><input id="scAArtist" value="' + esc(d.artist || '') + '" autocomplete="off">'
+            + '<label>Title</label><input id="scAName" value="' + esc(d.name || '') + '" autocomplete="off"></div></div>'
+            + '<div class="prices"><div><label>Selling price $</label><input id="scAPrice" type="number" inputmode="decimal" step="0.01" min="0" value="' + (d.price || '') + '"></div>'
+            + '<div><label>Copies here</label><input id="scAQty" type="number" inputmode="numeric" min="1" step="1" value="1"></div></div>'
+            + '<div class="acts"><button class="sc-btn" id="scAGo" type="button">Add</button><button class="sc-btn light" id="scACancel" type="button">Cancel</button></div>'
+            + '<div class="sc-small" id="scAMsg" style="color:#8E1B1B;font-weight:700;margin-top:6px;">' + esc(err || '') + '</div></div></div>';
+        function closeAdd() { box.innerHTML = ''; document.getElementById('scQ').focus(); }
+        document.getElementById('scACancel').addEventListener('click', closeAdd);
+        box.querySelector('.sc-shade').addEventListener('click', function (e) { if (e.target === this) closeAdd(); });
+        // Enter in any box = Add (one less tap on the phone keyboard).
+        box.querySelectorAll('input').forEach(function (el) { el.setAttribute('enterkeyhint', 'done'); el.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('scAGo').click(); } }); });
+        document.getElementById('scAGo').addEventListener('click', function () {
+            var btn = this, msg = document.getElementById('scAMsg');
+            btn.disabled = true; msg.textContent = '';
+            submitAdd(code, d, { name: document.getElementById('scAName').value, artist: document.getElementById('scAArtist').value,
+                price: document.getElementById('scAPrice').value, qty: document.getElementById('scAQty').value },
+                function (e) { btn.disabled = false; msg.textContent = e; });
+        });
+        var first = !d.artist ? document.getElementById('scAArtist') : !d.name ? document.getElementById('scAName') : document.getElementById('scAPrice');
+        if (first) first.focus();
     }
     var choices = [];
     function clearChoices() { choices = []; document.getElementById('scChoices').innerHTML = ''; }
