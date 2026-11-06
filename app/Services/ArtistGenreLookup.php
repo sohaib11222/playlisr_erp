@@ -104,6 +104,16 @@ class ArtistGenreLookup
         return trim($s);
     }
 
+    /**
+     * Whole sheet: normalized artist => bin label.
+     *
+     * @return array<string,string>
+     */
+    public function allArtists(): array
+    {
+        return $this->map();
+    }
+
     /** @return array<string,string> */
     private function map(): array
     {
