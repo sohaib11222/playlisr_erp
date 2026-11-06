@@ -222,12 +222,18 @@
     };
     $interestCounts = ['vinyl' => 0, 'cd' => 0, 'both' => 0, 'not_sure' => 0, 'no' => 0];
     $interestAnswered = 0;
+    $vinylUnits = 0; $cdUnits = 0;
     foreach ($rsvps as $r) {
       $v = $r['interestedInPurchase'] ?? null;
-      if ($v !== null && isset($interestCounts[$v])) { $interestCounts[$v]++; $interestAnswered++; }
+      if ($v === null || trim((string) $v) === '') { continue; }
+      $interestAnswered++;
+      foreach (array_unique(array_map('trim', explode(',', (string) $v))) as $tok) {
+        if (isset($interestCounts[$tok])) { $interestCounts[$tok]++; }
+      }
+      [$wv, $wc] = \App\Http\Controllers\EventsController::interestWants($v);
+      if ($wv) { $vinylUnits++; }
+      if ($wc) { $cdUnits++; }
     }
-    $vinylUnits = $interestCounts['vinyl'] + $interestCounts['both'];
-    $cdUnits = $interestCounts['cd'] + $interestCounts['both'];
 
     // Per-store order split: bucket each RSVP's vinyl/CD interest by the
     // store they're attending (eventLocationKey). "Both" counts toward each
@@ -235,13 +241,13 @@
     $storeLabels = ['hollywood' => 'Hollywood', 'pico' => 'Pico', 'unspecified' => 'Store not specified'];
     $byStore = [];
     foreach ($rsvps as $r) {
-      $v = $r['interestedInPurchase'] ?? null;
-      if (!in_array($v, ['vinyl', 'cd', 'both'], true)) { continue; }
+      [$wv, $wc] = \App\Http\Controllers\EventsController::interestWants($r['interestedInPurchase'] ?? null);
+      if (!$wv && !$wc) { continue; }
       $sk = $r['eventLocationKey'] ?? '';
       $sk = ($sk === 'hollywood' || $sk === 'pico') ? $sk : 'unspecified';
       if (!isset($byStore[$sk])) { $byStore[$sk] = ['vinyl' => 0, 'cd' => 0]; }
-      if ($v === 'vinyl' || $v === 'both') { $byStore[$sk]['vinyl']++; }
-      if ($v === 'cd' || $v === 'both') { $byStore[$sk]['cd']++; }
+      if ($wv) { $byStore[$sk]['vinyl']++; }
+      if ($wc) { $byStore[$sk]['cd']++; }
     }
 
     // Attending split by store (eventLocationKey) so the Hollywood vs Pico

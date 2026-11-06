@@ -5,13 +5,13 @@
 @php
   $byStore = [];
   foreach ((array) ($bridge['rsvps'] ?? []) as $r) {
-    $v = $r['interestedInPurchase'] ?? null;
-    if (!in_array($v, ['vinyl', 'cd', 'both'], true)) { continue; }
+    [$wv, $wc] = \App\Http\Controllers\EventsController::interestWants($r['interestedInPurchase'] ?? null);
+    if (!$wv && !$wc) { continue; }
     $sk = $r['eventLocationKey'] ?? '';
     $sk = ($sk === 'hollywood' || $sk === 'pico') ? $sk : 'unspecified';
     if (!isset($byStore[$sk])) { $byStore[$sk] = ['vinyl' => 0, 'cd' => 0]; }
-    if ($v === 'vinyl' || $v === 'both') { $byStore[$sk]['vinyl']++; }
-    if ($v === 'cd' || $v === 'both') { $byStore[$sk]['cd']++; }
+    if ($wv) { $byStore[$sk]['vinyl']++; }
+    if ($wc) { $byStore[$sk]['cd']++; }
   }
 
   $ord = (array) ($event['ordered'] ?? []);

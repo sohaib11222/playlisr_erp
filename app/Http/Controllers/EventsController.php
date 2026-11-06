@@ -680,6 +680,19 @@ class EventsController extends Controller
      * CD?" question — "both" counts toward each, mirroring the per-event
      * estimate on the edit page. Empty maps when the bridge is off/unreachable.
      */
+    /**
+     * RSVP buy-interest is a comma-joined multi-select ("vinyl,cassette",
+     * "cd,not_sure"); legacy rows hold one value, and legacy "both" means
+     * vinyl + CD. Returns [wantsVinyl, wantsCd]. Exact-match checks used to
+     * skip anyone who picked more than one format.
+     */
+    public static function interestWants($v): array
+    {
+        $toks = array_map('trim', explode(',', strtolower((string) $v)));
+        $both = in_array('both', $toks, true);
+        return [$both || in_array('vinyl', $toks, true), $both || in_array('cd', $toks, true)];
+    }
+
     protected function bridgeCounts(): array
     {
         $out = ['rsvps' => [], 'vinyl' => [], 'cd' => [], 'store' => []];
@@ -760,8 +773,7 @@ class EventsController extends Controller
             $guests = (int) ($r['guests'] ?? 0);
             $out['attending'] += 1 + $guests;
             $interest = $r['interestedInPurchase'] ?? null;
-            $wantsVinyl = ($interest === 'vinyl' || $interest === 'both');
-            $wantsCd = ($interest === 'cd' || $interest === 'both');
+            [$wantsVinyl, $wantsCd] = self::interestWants($interest);
             if ($wantsVinyl) { $out['vinyl']++; }
             if ($wantsCd) { $out['cd']++; }
             $sk = $r['eventLocationKey'] ?? '';
