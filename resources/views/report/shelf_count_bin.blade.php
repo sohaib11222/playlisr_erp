@@ -17,6 +17,9 @@
 .sc-flash { min-height: 24px; font-size: 15px; font-weight: 600; }
 .sc-flash.bad { color: #8E1B1B; }
 .sc-flash.ok { color: #2E6B2E; }
+.sc-qty { margin-left: 6px; min-width: 52px; height: 40px; border: 2px solid #2E6B2E; border-radius: 10px; background: #fff; color: #2E6B2E; font-size: 20px; font-weight: 800; cursor: pointer; vertical-align: middle; }
+.sc-qin { margin-left: 6px; width: 76px; height: 40px; border: 2px solid #2E6B2E; border-radius: 10px; font-size: 20px; font-weight: 800; text-align: center; vertical-align: middle; }
+.sc-flash .sc-small { font-weight: 400; }
 .sc-item { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid #E6DCCF; border-radius: 10px; padding: 10px 12px; margin-bottom: 6px; }
 .sc-item .t { flex: 1; font-size: 15px; }
 .sc-item .n { font-size: 22px; font-weight: 800; min-width: 34px; text-align: center; }
@@ -193,13 +196,41 @@
         }
     } catch (e) {}
     window.addEventListener('beforeunload', function (e) { if (!saved) { e.preventDefault(); e.returnValue = ''; } });
+    // Scan sounds (Jon 11/6): high beep on every scan, low buzz when it isn't in the ERP.
+    // Phones only allow sound after a tap/keypress, so the audio is unlocked on the first one.
+    var actx = null;
+    function unlockAudio() {
+        try { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch (e) {}
+    }
+    document.addEventListener('pointerdown', unlockAudio, true);
+    document.addEventListener('keydown', unlockAudio, true);
+    function tone(freq, ms, type) {
+        try {
+            unlockAudio(); if (!actx) return;
+            var o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+            o.type = type || 'square'; o.frequency.value = freq;
+            g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + ms / 1000);
+            o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t + ms / 1000 + 0.02);
+        } catch (e) {}
+    }
+    function beepOk() { tone(1760, 120); }
+    function beepBad() { tone(220, 160, 'sawtooth'); setTimeout(function () { tone(180, 220, 'sawtooth'); }, 180); }
     function bump(i, d) {
         if (!byId[i.id]) { byId[i.id] = i; extra.unshift(i); count[i.id] = 0; }
         count[i.id] = Math.max(0, (count[i.id] || 0) + d);
         touched[i.id] = true;
         keepDraft();
         render();
-        var f = document.getElementById('scFlash'); f.className = 'sc-flash ok'; f.textContent = (d > 0 ? 'Added: ' : (count[i.id] ? 'Removed: ' : 'None here: ')) + label(i) + (count[i.id] || d > 0 ? ' (' + count[i.id] + ')' : '');
+        var f = document.getElementById('scFlash'); f.className = 'sc-flash ok';
+        // The count is a button (Jon 11/6): tap it to type the right number, e.g. after scanning the same record twice.
+        f.innerHTML = esc((d > 0 ? 'Added: ' : (count[i.id] ? 'Changed: ' : 'None here: ')) + label(i))
+            + (count[i.id] || d > 0 ? ' <button class="sc-qty" type="button" data-id="' + i.id + '" aria-label="Copies counted, tap to change">' + count[i.id] + '</button> <span class="sc-small">tap the number to change it</span>' : '');
+    }
+    function setQty(inp) {
+        var it = byId[inp.getAttribute('data-id')]; if (!it || inp.dataset.done) return;
+        inp.dataset.done = '1';
+        var v = Math.max(0, parseInt(inp.value, 10) || 0);
+        bump(it, v - (count[it.id] || 0));
     }
     // Type the number of copies on the shelf (Sarah 10/20: "key in instead of + and -").
     document.querySelector('.sc-wrap').addEventListener('change', function (e) {
@@ -216,6 +247,7 @@
                 }, function () { gs.disabled = false; f.className = 'sc-flash bad'; f.textContent = 'Could not change the genre. Check the connection.'; });
             return;
         }
+        var qi = e.target.closest('.sc-qin'); if (qi) { setQty(qi); return; }
         var inp = e.target.closest('.sc-n'); if (!inp) return;
         var it = byId[inp.closest('.sc-item').getAttribute('data-id')];
         if (inp.value === '') { delete touched[it.id]; count[it.id] = 0; keepDraft(); render(); return; }
@@ -232,6 +264,7 @@
         if (el) { el.focus(); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
     }
     document.querySelector('.sc-wrap').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && e.target.closest('.sc-qin')) { e.preventDefault(); setQty(e.target); document.getElementById('scQ').focus(); return; }
         if (e.key !== 'Enter' || !e.target.closest('.sc-n')) return;
         e.preventDefault();
         var next = e.target.closest('.sc-item').nextElementSibling;
@@ -240,6 +273,15 @@
         setTimeout(focusPending, 0);
     });
     document.querySelector('.sc-wrap').addEventListener('click', function (e) {
+        var qb = e.target.closest('.sc-qty');
+        if (qb) {
+            var qin = document.createElement('input');
+            qin.type = 'number'; qin.className = 'sc-qin'; qin.min = '0'; qin.step = '1'; qin.setAttribute('inputmode', 'numeric'); qin.setAttribute('enterkeyhint', 'done');
+            qin.setAttribute('data-id', qb.getAttribute('data-id')); qin.value = qb.textContent; qin.setAttribute('aria-label', 'Copies here');
+            qb.replaceWith(qin); qin.focus(); qin.select();
+            qin.addEventListener('blur', function () { setQty(qin); });
+            return;
+        }
         var gb = e.target.closest('.sc-genre'); if (gb) { var gid = +gb.closest('.sc-item').getAttribute('data-id'); editing = editing === gid ? null : gid; render(); return; }
         var z = e.target.closest('.sc-zero'); if (z) { var zi = byId[z.closest('.sc-item').getAttribute('data-id')]; count[zi.id] = 0; bump(zi, 0); return; }
         var all = e.target.closest('.sc-all'); if (all) { var ai = byId[all.closest('.sc-item').getAttribute('data-id')]; bump(ai, Math.round(ai.erp) - (count[ai.id] || 0)); return; }
@@ -252,6 +294,7 @@
     function lookup(q) {
         q = q.trim(); if (!q) return;
         clearChoices();
+        beepOk();
         var digits = q.replace(/[\s-]/g, '');
         // Barcode already in this bin: count it without a server call.
         if (/^\d{8,14}$/.test(digits)) {
@@ -261,7 +304,7 @@
         }
         fetch('/reports/shelf-count/lookup?q=' + encodeURIComponent(q), { headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); }).then(function (j) {
             var f = document.getElementById('scFlash');
-            if (!j.items.length) { f.className = 'sc-flash bad'; f.textContent = 'Not found in the ERP: ' + q; return; }
+            if (!j.items.length) { beepBad(); f.className = 'sc-flash bad'; f.textContent = 'Not found in the ERP: ' + q; return; }
             if (j.items.length === 1) { bump(byId[j.items[0].id] || j.items[0], 1); return; }
             choices = j.items;
             document.getElementById('scChoices').innerHTML = '<div class="sc-small">Which one? Tap it to add 1.</div>' + j.items.map(function (x, k) {
@@ -323,7 +366,10 @@
                     if (!me.on) return;
                     var code = codes && codes.length ? String(codes[0].rawValue || '').trim() : '';
                     var now = Date.now();
-                    if (code && !(code === last && now - lastAt < 2500)) {
+                    // Same barcode only counts again after it has left the camera for 1.5s, so holding
+                    // a record in view no longer adds a copy every few seconds.
+                    if (code && code === last && now - lastAt < 1500) { lastAt = now; }
+                    else if (code) {
                         last = code; lastAt = now;
                         try { if (navigator.vibrate) navigator.vibrate(80); } catch (e) {}
                         flash.className = 'sc-flash ok'; flash.textContent = 'Read ' + code + ', looking it up...';
