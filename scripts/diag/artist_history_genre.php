@@ -12,8 +12,11 @@ $mapper = new App\Services\DiscogsReleaseImportMapper($lookup);
 $cats = App\Category::where('business_id', $bid)->pluck('name', 'id');
 $artists = DB::table('products')->where('business_id', $bid)->whereNotNull('sub_category_id')
     ->whereNotNull('artist')->where('artist', '!=', '')
-    ->groupBy('artist')->orderByRaw('COUNT(*) DESC')->limit(400)->pluck('artist');
+    ->groupBy('artist')->orderByRaw('COUNT(*) DESC')->limit(400)->pluck('artist')->all();
+print_r(DB::select("SHOW COLUMNS FROM products LIKE 'artist'"));
+foreach (DB::select("SHOW INDEX FROM products") as $ix) { if (stripos($ix->Column_name, 'artist') !== false) echo "INDEX {$ix->Key_name} {$ix->Column_name}\n"; }
 $shown = 0;
+foreach (['Various', 'Pokemon', 'Dionne Warwick', 'lou rawls', 'Unknown Artist'] as $x) { array_unshift($artists, $x); }
 foreach ($artists as $a) {
     if ($lookup->binForArtist($a) !== null) continue;
     $t = microtime(true);

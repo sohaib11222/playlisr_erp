@@ -304,6 +304,11 @@ class DiscogsReleaseImportMapper
             }
         }
 
+        // Placeholder "artists" span every genre — let Discogs decide.
+        $candidates = array_values(array_filter($candidates, static function ($n) {
+            return !preg_match('/^(various|various artists|unknown|unknown artist|no artist|n\/a|none|soundtrack|original soundtrack)$/u', $n);
+        }));
+
         foreach ($candidates as $name) {
             $key = $businessId . '|' . $name;
             if (!array_key_exists($key, $memo)) {
@@ -311,9 +316,13 @@ class DiscogsReleaseImportMapper
                 try {
                     $rows = DB::table('products as p')
                         ->join('categories as c', 'c.id', '=', 'p.sub_category_id')
+                        ->join('categories as pc', 'pc.id', '=', 'p.category_id')
                         ->where('p.business_id', $businessId)
-                        ->whereRaw('LOWER(TRIM(p.artist)) = ?', [$name])
+                        // Case-insensitive collation; = keeps any artist index usable.
+                        ->where('p.artist', $name)
                         ->whereNotNull('p.sub_category_id')
+                        // Only music shelves — skip merch, cards, VHS, magazines.
+                        ->whereRaw("LOWER(pc.name) REGEXP 'vinyl|cd|cassette|record|lp|45|7\"|10\"|12\"|reel'")
                         ->groupBy(DB::raw('LOWER(TRIM(c.name))'))
                         ->orderByDesc('n')
                         ->get([DB::raw('LOWER(TRIM(c.name)) as genre'), DB::raw('COUNT(*) as n')]);
@@ -345,12 +354,37 @@ class DiscogsReleaseImportMapper
      */
     private function resolveFromExistingArtistProducts(int $businessId, string $artist, array $formatTokens = [], ?int $releaseYear = null): ?array
     {
+        $medium = in_array('cd', $formatTokens, true) ? 'cd'
+            : (in_array('cassette', $formatTokens, true) ? 'cassette' : 'vinyl');
+        $parentNames = null;
+
         foreach ($this->existingArtistGenreCounts($businessId, $artist) as $genre => $count) {
-            $resolved = $this->resolveCategoryFromGenres($businessId, [$genre], [], $formatTokens, [], $releaseYear);
-            if ($resolved['category_id'] !== null && $resolved['sub_category_id'] !== null) {
-                $resolved['genre'] = $genre;
-                return $resolved;
+            // "R&B, Soul & Funk" on the vinyl wall may be "Soul" on the CD
+            // wall — try the full name first, then its pieces.
+            $terms = [$genre];
+            foreach (preg_split('/\s*(?:,|&|\/|\(|\)|\band\b)\s*/u', $genre) as $piece) {
+                $piece = trim($piece);
+                if (mb_strlen($piece) >= 3 && $piece !== 'new' && $piece !== 'used') {
+                    $terms[] = $piece;
+                }
             }
+            $resolved = $this->resolveCategoryFromGenres($businessId, array_values(array_unique($terms)), [], $formatTokens, [], $releaseYear);
+            if ($resolved['category_id'] === null || $resolved['sub_category_id'] === null) {
+                continue;
+            }
+            // Only accept a shelf for the right medium (no CD into a vinyl bin).
+            if ($parentNames === null) {
+                $parentNames = Category::where('business_id', $businessId)->where('parent_id', 0)->pluck('name', 'id');
+            }
+            $pn = mb_strtolower((string) ($parentNames[$resolved['category_id']] ?? ''));
+            $isCd = mb_strpos($pn, 'cd') !== false;
+            $isCass = mb_strpos($pn, 'cassette') !== false;
+            $ok = $medium === 'cd' ? $isCd : ($medium === 'cassette' ? $isCass : (!$isCd && !$isCass));
+            if (!$ok) {
+                continue;
+            }
+            $resolved['genre'] = $genre;
+            return $resolved;
         }
         return null;
     }
