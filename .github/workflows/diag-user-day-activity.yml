@@ -1,0 +1,128 @@
+# READ-ONLY (2026-11-06): what did a given employee do on a given day?
+# Inventory-focused: products added/edited, purchases/BFC/mass add, stock
+# adjustments, transfers, inventory checks, activity_log, plus a generic
+# sweep of every table with a user column + created_at. No writes.
+name: Diag user day activity
+
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: "Employee name fragment (first/last/username)"
+        required: true
+        default: "quent"
+      date:
+        description: "Date YYYY-MM-DD (app timezone)"
+        required: true
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+
+      - name: User day activity (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DIAG_NAME: ${{ github.event.inputs.name }}
+          DIAG_DATE: ${{ github.event.inputs.date }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 300s
+          envs: DIAG_NAME,DIAG_DATE
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            export DIAG_NAME DIAG_DATE
+            php artisan tinker --no-ansi <<'PHP'
+            $n = '%' . getenv('DIAG_NAME') . '%';
+            $day = getenv('DIAG_DATE');
+            $from = $day . ' 00:00:00'; $to = $day . ' 23:59:59';
+            echo 'TZ app=' . config('app.timezone') . ' db_now=' . \DB::selectOne('select now() as n')->n . "\n";
+            $users = \DB::table('users')->where(fn ($q) => $q->where('first_name', 'like', $n)->orWhere('last_name', 'like', $n)->orWhere('username', 'like', $n))->get(['id', 'first_name', 'last_name', 'username']);
+            echo 'USERS ' . json_encode($users) . "\n";
+            $uids = $users->pluck('id')->all();
+            if (!$uids) { echo "no user\n"; return; }
+            $S = \Schema::getFacadeRoot();
+
+            echo "\n=== GENERIC SWEEP: rows created that day by user, per table/column ===\n";
+            $db = \DB::getDatabaseName();
+            $cols = \DB::select("select table_name t, column_name c from information_schema.columns where table_schema=? and column_name in ('created_by','user_id','updated_by','added_by','scanned_by','counted_by','causer_id','received_by','assigned_by','completed_by','listed_by','checked_by')", [$db]);
+            foreach ($cols as $cc) {
+              $t = $cc->t ?? $cc->TABLE_NAME; $c = $cc->c ?? $cc->COLUMN_NAME;
+              $tsCol = $S->hasColumn($t, 'created_at') ? 'created_at' : null;
+              if (!$tsCol) continue;
+              try {
+                $cnt = \DB::table($t)->whereIn($c, $uids)->whereBetween($tsCol, [$from, $to])->count();
+                $upd = $S->hasColumn($t, 'updated_at') ? \DB::table($t)->whereIn($c, $uids)->whereBetween('updated_at', [$from, $to])->count() : 0;
+                if ($cnt || $upd) echo str_pad("$t.$c", 50) . " created=$cnt touched=$upd\n";
+              } catch (\Throwable $e) {}
+            }
+
+            echo "\n=== PRODUCTS CREATED (by created_by) ===\n";
+            $prods = \DB::table('products as p')->leftJoin('categories as c', 'c.id', '=', 'p.category_id')->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')->whereIn('p.created_by', $uids)->whereBetween('p.created_at', [$from, $to])->orderBy('p.created_at')->get(['p.id', 'p.created_at', 'p.artist', 'p.name', 'p.sku', 'c.name as cat', 'sc.name as sub']);
+            echo 'COUNT ' . $prods->count() . "\n";
+            echo 'BY CATEGORY ' . json_encode($prods->groupBy(fn ($r) => trim(($r->cat ?? '?') . ' / ' . ($r->sub ?? '')))->map->count()->sortDesc()) . "\n";
+            echo 'BY HOUR ' . json_encode($prods->groupBy(fn ($r) => substr($r->created_at, 11, 2))->map->count()) . "\n";
+            foreach ($prods->take(400) as $r) echo json_encode([substr($r->created_at, 11, 5), $r->id, $r->artist, $r->name, $r->sku, $r->cat, $r->sub]) . "\n";
+
+            echo "\n=== TRANSACTIONS CREATED (non-sell types) ===\n";
+            $tx = \DB::table('transactions as t')->leftJoin('business_locations as bl', 'bl.id', '=', 't.location_id')->leftJoin('contacts as c', 'c.id', '=', 't.contact_id')->whereIn('t.created_by', $uids)->whereBetween('t.created_at', [$from, $to])->where('t.type', '!=', 'sell')->orderBy('t.created_at')->get(['t.id', 't.created_at', 't.type', 't.status', 't.ref_no', 'bl.name as loc', 'c.name as contact', 't.final_total', 't.additional_notes']);
+            echo 'BY TYPE ' . json_encode($tx->groupBy('type')->map->count()) . "\n";
+            foreach ($tx as $r) {
+              $lines = 0; $qty = 0;
+              if (in_array($r->type, ['purchase', 'opening_stock', 'purchase_transfer'])) { $lines = \DB::table('purchase_lines')->where('transaction_id', $r->id)->count(); $qty = \DB::table('purchase_lines')->where('transaction_id', $r->id)->sum('quantity'); }
+              elseif ($r->type == 'stock_adjustment' && $S->hasTable('stock_adjustment_lines')) { $lines = \DB::table('stock_adjustment_lines')->where('transaction_id', $r->id)->count(); $qty = \DB::table('stock_adjustment_lines')->where('transaction_id', $r->id)->sum('quantity'); }
+              elseif ($r->type == 'sell_transfer') { $lines = \DB::table('transaction_sell_lines')->where('transaction_id', $r->id)->count(); $qty = \DB::table('transaction_sell_lines')->where('transaction_id', $r->id)->sum('quantity'); }
+              echo json_encode([substr($r->created_at, 11, 5), 'tx#' . $r->id, $r->type, $r->status, $r->ref_no, $r->loc, $r->contact, 'total=' . round($r->final_total, 2), "lines=$lines qty=$qty", substr((string) $r->additional_notes, 0, 100)]) . "\n";
+            }
+
+            echo "\n=== SALES RUNG (summary) ===\n";
+            $sells = \DB::table('transactions')->whereIn('created_by', $uids)->whereBetween('transaction_date', [$from, $to])->where('type', 'sell')->where('status', 'final');
+            echo 'count=' . (clone $sells)->count() . ' total=' . round((clone $sells)->sum('final_total'), 2) . "\n";
+
+            if ($S->hasTable('activity_log')) {
+              echo "\n=== ACTIVITY_LOG (causer = user) ===\n";
+              $al = \DB::table('activity_log')->whereIn('causer_id', $uids)->whereBetween('created_at', [$from, $to])->orderBy('created_at')->get(['created_at', 'log_name', 'description', 'subject_type', 'subject_id']);
+              echo 'GROUPED ' . json_encode($al->groupBy(fn ($r) => $r->subject_type . ' ' . $r->description)->map->count()) . "\n";
+              foreach ($al->take(150) as $r) echo json_encode([substr($r->created_at, 11, 5), $r->log_name, $r->description, $r->subject_type, $r->subject_id]) . "\n";
+            }
+
+            echo "\n=== PRODUCTS EDITED that day (updated_at, created earlier) - product rows only, no attribution ===\n";
+            echo 'all-staff count=' . \DB::table('products')->whereBetween('updated_at', [$from, $to])->where('created_at', '<', $from)->count() . "\n";
+
+            foreach (['inventory_check_sessions', 'inventory_check_notes', 'transfer_receipts', 'product_markdowns', 'barcode_scan_misses', 'receiving_packages'] as $t) {
+              if (!$S->hasTable($t)) continue;
+              $c = collect(['created_by', 'user_id', 'scanned_by', 'received_by'])->first(fn ($c) => $S->hasColumn($t, $c));
+              if (!$c) continue;
+              $rows = \DB::table($t)->whereIn($c, $uids)->where(fn ($q) => $q->whereBetween('created_at', [$from, $to])->orWhereBetween('updated_at', [$from, $to]))->limit(60)->get();
+              if ($rows->count()) { echo "\n=== $t ($c) ===\n"; foreach ($rows as $r) echo json_encode($r) . "\n"; }
+            }
+            PHP
+            echo "=== done ==="
