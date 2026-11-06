@@ -297,7 +297,7 @@
         beepOk();
         var digits = q.replace(/[\s-]/g, '');
         // Barcode already in this bin: count it without a server call.
-        if (/^\d{8,14}$/.test(digits)) {
+        if (/^\d{4,14}$/.test(digits)) {
             var key = digits.replace(/^0+/, '');
             var hit = items.concat(extra).filter(function (i) { return String(i.sku || '').replace(/[\s-]/g, '').replace(/^0+/, '') === key; });
             if (hit.length === 1) { bump(hit[0], 1); return; }
