@@ -21,14 +21,18 @@
 .sc-qin { margin-left: 6px; width: 76px; height: 40px; border: 2px solid #2E6B2E; border-radius: 10px; font-size: 20px; font-weight: 800; text-align: center; vertical-align: middle; }
 .sc-flash .sc-small { font-weight: 400; }
 .sc-addbtn { margin-left: 8px; height: 40px; border: 0; border-radius: 10px; background: #2E6B2E; color: #fff; font-size: 15px; font-weight: 700; padding: 0 14px; cursor: pointer; vertical-align: middle; }
-.sc-addbox { background: #fff; border: 2px solid #2E6B2E; border-radius: 12px; padding: 12px; margin: 6px 0 10px; }
+#scAdd .sc-shade { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1050; display: flex; align-items: flex-end; justify-content: center; }
+.sc-addbox { background: #fff; border-radius: 16px 16px 0 0; padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); width: 100%; max-width: 520px; max-height: 92vh; overflow-y: auto; box-shadow: 0 -4px 20px rgba(0,0,0,.25); }
+.sc-addbox h3 { margin: 0 0 8px; font-size: 18px; font-weight: 800; }
+@media (min-width: 600px) { #scAdd .sc-shade { align-items: center; } .sc-addbox { border-radius: 16px; } }
 .sc-addbox .row2 { display: flex; gap: 10px; align-items: flex-start; }
 .sc-addbox img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; background: #F1EADF; flex: none; }
 .sc-addbox label { display: block; font-size: 13px; color: #2B2620; margin: 6px 0 2px; }
 .sc-addbox input { width: 100%; height: 44px; font-size: 17px; border: 1px solid #1F1B16; border-radius: 10px; padding: 0 10px; }
 .sc-addbox .prices { display: flex; gap: 10px; }
 .sc-addbox .prices > div { flex: 1; }
-.sc-addbox .acts { display: flex; gap: 8px; margin-top: 10px; align-items: center; flex-wrap: wrap; }
+.sc-addbox .acts { display: flex; gap: 8px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
+.sc-addbox .acts #scAGo { flex: 1; }
 .sc-item { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid #E6DCCF; border-radius: 10px; padding: 10px 12px; margin-bottom: 6px; }
 .sc-item .t { flex: 1; font-size: 15px; }
 .sc-item .n { font-size: 22px; font-weight: 800; min-width: 34px; text-align: center; }
@@ -304,22 +308,26 @@
     // (1 copy in stock at this store, this bin's format + genre) and counts it.
     function openAdd(code) {
         var box = document.getElementById('scAdd'), f = document.getElementById('scFlash');
-        f.className = 'sc-flash'; f.textContent = 'Looking up ' + code + ' on Discogs...';
-        box.innerHTML = '';
+        f.className = 'sc-flash'; f.textContent = '';
+        box.innerHTML = '<div class="sc-shade"><div class="sc-addbox"><h3>Add to ERP</h3><div class="sc-small">Looking up ' + esc(code) + ' on Discogs...</div></div></div>';
         fetch('/reports/shelf-count/barcode-info?' + new URLSearchParams({ code: code, kind: KIND, sub: SUB, location_id: LOC }), { headers: { 'Accept': 'application/json' } })
             .then(function (r) { return r.json(); }, function () { return {}; })
             .then(function (d) {
                 d = d || {};
-                f.className = 'sc-flash'; f.textContent = d.found ? 'Found on Discogs. Check the price, then tap Add.' : 'Not on Discogs. Type the title and price, then tap Add.';
-                box.innerHTML = '<div class="sc-addbox"><div class="row2">' + (d.image_url ? '<img src="' + esc(d.image_url) + '" alt="">' : '')
-                    + '<div style="flex:1;"><div class="sc-small">Barcode ' + esc(code) + '</div>'
+                var hint = d.found ? 'Found on Discogs. Check the price, then tap Add.' : 'Not on Discogs. Type the artist, title and price, then tap Add.';
+                box.innerHTML = '<div class="sc-shade"><div class="sc-addbox" role="dialog" aria-label="Add to ERP"><h3>Add to ERP</h3><div class="row2">' + (d.image_url ? '<img src="' + esc(d.image_url) + '" alt="">' : '')
+                    + '<div style="flex:1;"><div class="sc-small">' + esc(hint) + ' Barcode ' + esc(code) + '</div>'
                     + '<label>Artist</label><input id="scAArtist" value="' + esc(d.artist || '') + '" autocomplete="off">'
                     + '<label>Title</label><input id="scAName" value="' + esc(d.name || '') + '" autocomplete="off"></div></div>'
                     + '<div class="prices"><div><label>Selling price $</label><input id="scAPrice" type="number" inputmode="decimal" step="0.01" min="0" value="' + (d.price || '') + '"></div>'
                     + '<div><label>Copies here</label><input id="scAQty" type="number" inputmode="numeric" min="1" step="1" value="1"></div></div>'
                     + (d.price_note ? '<div class="sc-small" style="margin-top:4px;">' + esc(d.price_note) + '</div>' : '')
-                    + '<div class="acts"><button class="sc-btn" id="scAGo" type="button">Add to ERP + count</button><button class="sc-btn light" id="scACancel" type="button">Cancel</button><span class="sc-small" id="scAMsg"></span></div></div>';
-                document.getElementById('scACancel').addEventListener('click', function () { box.innerHTML = ''; f.textContent = ''; document.getElementById('scQ').focus(); });
+                    + '<div class="acts"><button class="sc-btn" id="scAGo" type="button">Add</button><button class="sc-btn light" id="scACancel" type="button">Cancel</button></div><div class="sc-small" id="scAMsg" style="color:#8E1B1B;font-weight:700;margin-top:6px;"></div></div></div>';
+                function closeAdd() { box.innerHTML = ''; f.textContent = ''; document.getElementById('scQ').focus(); }
+                document.getElementById('scACancel').addEventListener('click', closeAdd);
+                box.querySelector('.sc-shade').addEventListener('click', function (e) { if (e.target === this) closeAdd(); });
+                // Enter in any box = Add (one less tap on the phone keyboard).
+                box.querySelectorAll('input').forEach(function (el) { el.setAttribute('enterkeyhint', 'done'); el.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('scAGo').click(); } }); });
                 document.getElementById('scAGo').addEventListener('click', function () {
                     var btn = this, msg = document.getElementById('scAMsg');
                     btn.disabled = true; msg.textContent = 'Adding...';
