@@ -400,8 +400,9 @@ class ShelfCountController extends Controller
         if (!$catId) return response()->json(['ok' => false, 'msg' => 'Could not tell which category this bin is.'], 422);
         $catName = strtolower((string) \DB::table('categories')->where('id', $catId)->value('name'));
         $sealed = strpos($catName, 'sealed') !== false || substr($kind, -4) === '-new';
-        // Sealed: the barcode is the SKU (Sarah 10/8). Used: the ERP makes a SKU and you print a label.
-        $sku = ($sealed && preg_match('/^\d{8,14}$/', $code)) ? $code : '';
+        // The scanned barcode is the SKU, sealed or used (Jon 11/6: no labels), so the next scan finds it.
+        // Not a barcode (typed text): the ERP makes a SKU.
+        $sku = preg_match('/^\d{8,14}$/', $code) ? $code : '';
 
         $row = [
             'name' => $name, 'artist' => $artist, 'sku' => $sku,
@@ -431,8 +432,7 @@ class ShelfCountController extends Controller
         if (!$p) return response()->json(['ok' => false, 'msg' => 'Could not add it.'], 422);
         return response()->json(['ok' => true, 'existing' => $existing,
             'item' => ['id' => (int) $p->id, 'name' => $p->name, 'artist' => $p->artist, 'sku' => $p->sku],
-            'edit_url' => action('ProductController@edit', [(int) $p->id]),
-            'label_url' => action('LabelsController@show') . '?product_id=' . (int) $p->id]);
+            'edit_url' => action('ProductController@edit', [(int) $p->id])]);
     }
 
     public function lookup(Request $request)

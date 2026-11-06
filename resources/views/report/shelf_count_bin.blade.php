@@ -335,7 +335,7 @@
                 beepOk();
                 f.insertAdjacentHTML('beforeend', '<div class="sc-small" style="margin-top:4px;">'
                     + (j.existing ? 'It was already in the ERP, so it was counted.' : 'New in the ERP at $' + esc(Number(v.price).toFixed(2)) + ', SKU ' + esc(j.item.sku) + '.')
-                    + ' <a href="' + esc(j.edit_url) + '" target="_blank">Edit price</a> &middot; <a href="' + esc(j.label_url) + '" target="_blank">Print label</a></div>');
+                    + ' <a href="' + esc(j.edit_url) + '" target="_blank">Edit price</a></div>');
                 document.getElementById('scQ').focus();
             }, function () { onFail('Could not add it. Check the connection.'); });
     }
