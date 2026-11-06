@@ -27,7 +27,7 @@ class NivessaGenreBibleController extends Controller
     const BIN_PATTERNS = [
         'Soundtrack'          => '/soundtrack|\bscore\b|\bost\b/',
         'Gospel'              => '/gospel|christian/',
-        'New Wave'            => '/new wave|synth/',
+        'New Wave'            => '/new wave|synth|post[\s-]?punk/',
         'Hip-Hop / Rap'       => '/hip[\s-]?hop|\brap\b/',
         'R&B/Funk/Soul'       => '/r\s?&\s?b|\brnb\b|soul|funk|disco/',
         'Alternative / Indie' => '/\balt\b|alternative|indie|grunge|\bemo\b/',
@@ -48,7 +48,7 @@ class NivessaGenreBibleController extends Controller
 
     public function publicFeed(ArtistGenreLookup $lookup)
     {
-        $data = Cache::remember('genrebible2', 21600, function () use ($lookup) {
+        $data = Cache::remember('genrebible3', 21600, function () use ($lookup) {
             $businessId = (int) (config('services.nivessa_web.business_id') ?: 1);
             $sheet = $lookup->allArtists();
             if (!$sheet) {
