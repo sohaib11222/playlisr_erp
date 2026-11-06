@@ -270,17 +270,35 @@
         if (e.key === 'Enter') { e.preventDefault(); lookup(this.value); this.value = ''; }
     });
     var cam = null;
+    // Camera barcode reader (fixed 11/6: it was set up for QR codes, with a narrow box, low-res video
+    // and every format on, so record UPC/EAN barcodes almost never decoded).
     document.getElementById('scCamBtn').addEventListener('click', function () {
-        var box = document.getElementById('scCam');
-        if (cam) { cam.stop().then(function () { cam = null; box.style.display = 'none'; }); return; }
-        if (!window.Html5Qrcode) return;
+        var box = document.getElementById('scCam'), btn = this;
+        if (cam) { cam.stop().then(function () { cam = null; box.style.display = 'none'; btn.textContent = 'Camera'; }); return; }
+        if (!window.Html5Qrcode) { alert('Camera scanner did not load. Reload the page and try again.'); return; }
         box.style.display = 'block';
-        cam = new Html5Qrcode('scCam');
+        var F = window.Html5QrcodeSupportedFormats;
+        cam = new Html5Qrcode('scCam', {
+            verbose: false,
+            formatsToSupport: [F.EAN_13, F.UPC_A, F.EAN_8, F.UPC_E, F.CODE_128, F.CODE_39],
+            experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+        });
         var last = '', lastAt = 0;
-        cam.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 280, height: 120 } }, function (code) {
+        cam.start({ facingMode: 'environment' }, {
+            fps: 15,
+            // Wide, short box sized to the actual video: barcodes are wide, and a fixed 280px box overflowed small phones.
+            qrbox: function (w, h) { return { width: Math.floor(w * 0.9), height: Math.max(60, Math.floor(h * 0.45)) }; },
+            videoConstraints: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+        }, function (code) {
             var now = Date.now(); if (code === last && now - lastAt < 2500) return;
-            last = code; lastAt = now; lookup(code);
-        }).catch(function () { box.style.display = 'none'; cam = null; alert('Camera not available'); });
+            last = code; lastAt = now;
+            try { if (navigator.vibrate) navigator.vibrate(80); } catch (e) {}
+            lookup(code);
+        }).then(function () { btn.textContent = 'Stop camera'; }).catch(function (err) {
+            box.style.display = 'none'; cam = null;
+            var m = String(err && (err.name || err.message || err) || '');
+            alert(/NotAllowed|Permission/i.test(m) ? 'Camera is blocked. Allow camera access for this site in your browser settings, then try again.' : 'Camera not available: ' + m);
+        });
     });
     document.getElementById('scFinish').addEventListener('click', function () {
         var missing = items.filter(function (i) { return touched[i.id] && (count[i.id] || 0) < i.erp; });
