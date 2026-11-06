@@ -317,7 +317,9 @@ class ShelfCountController extends Controller
         $business_id = (int) $request->session()->get('user.business_id');
         $q = trim((string) $request->input('q'));
         $digits = preg_replace('/\D+/', '', $q);
-        if (strlen($digits) >= 8 && strlen($digits) === strlen(preg_replace('/[\s-]+/', '', $q))) {
+        // Barcodes: UPC/EAN (8+ digits) and ERP shelf-label SKUs, which are short (e.g. 151403). Fixed 11/6:
+        // anything under 8 digits used to fall through to the title search and came back 'not found'.
+        if (strlen($digits) >= 4 && strlen($digits) === strlen(preg_replace('/[\s-]+/', '', $q))) {
             $key = ltrim($digits, '0');
             $rows = \DB::table('products as p')->join('variations as va', 'va.product_id', '=', 'p.id')
                 ->where('p.business_id', $business_id)->where('p.is_inactive', 0)->whereNull('va.deleted_at')
