@@ -61,7 +61,7 @@ class EmployeeChecklistController extends Controller
                 'emergency'    => 'Get an emergency contact on file.',
             ],
             'Clover (register access)' => [
-                'clover_add'   => 'Add the employee in Clover and assign a unique 4-digit POS login code.',
+                'clover_add'   => 'Add the employee in Clover. Their 4-digit POS login code is the last 4 digits of their phone number (if another employee already has it, add 1 to the last digit until it is free).',
             ],
             'ERP (playlist.nivessa.com)' => [
                 'erp_create'   => 'Create their ERP user (status Active, login enabled) with the correct role.',
