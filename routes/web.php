@@ -32,6 +32,8 @@ Route::get('/rsd-ordered.json', 'RsdOrderController@publicOrdered');
 Route::get('/buy-premiums.json', [\App\Http\Controllers\Api\NivessaBuyPremiumsController::class, 'publicFeed']);
 // Used-vinyl titles + typical sold price for the nivessa.com /vinyl-worth value database.
 Route::get('/vinyl-worth.json', [\App\Http\Controllers\Api\NivessaVinylWorthController::class, 'publicFeed']);
+// Artist genre overrides (how we actually file each sheet artist) for the nivessa.com /genre-bible page.
+Route::get('/genre-bible.json', [\App\Http\Controllers\Api\NivessaGenreBibleController::class, 'publicFeed']);
 // Texted order links: public preview page (signed), then on to the order.
 Route::get('/o/{id}/{sig}', 'WebsiteOrdersController@sharePreview')->name('website-orders.share');
 // Short form (Sarah 10/22 "shorten these urls"): /o/100103-ab12cd
