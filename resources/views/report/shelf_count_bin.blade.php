@@ -27,7 +27,10 @@
 .sc-item.none .sc-n { border-color: #8E1B1B; color: #8E1B1B; }
 .sc-pm { width: 44px; height: 44px; border-radius: 10px; border: 1px solid #E1D7C4; background: #fff; font-size: 22px; font-weight: 700; cursor: pointer; }
 .sc-h { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #2B2620; margin: 16px 0 6px; }
-#scCam { width: 100%; max-width: 420px; margin: 6px 0; display: none; }
+#scCam { width: 100%; max-width: 420px; margin: 6px 0; display: none; position: relative; }
+#scCam video { width: 100%; display: block; border-radius: 10px; background: #000; }
+#scCam .sc-aim { position: absolute; left: 6%; right: 6%; top: 50%; height: 2px; background: #E0342B; box-shadow: 0 0 6px #E0342B; }
+#scCam .sc-camhint { position: absolute; left: 0; right: 0; bottom: 6px; text-align: center; color: #fff; font-size: 13px; text-shadow: 0 1px 2px #000; }
 .sc-bottom { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 2px solid #2E6B2E; padding: 10px 16px; display: flex; gap: 14px; justify-content: center; align-items: center; z-index: 10; }
 #scProg { font-size: 15px; color: #1F1B16; }
 .sc-sum td { padding: 6px 8px; border-top: 1px solid #F3ECE1; font-size: 14px; }
@@ -80,7 +83,7 @@
 @endsection
 
 @section('javascript')
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/barcode-detector@3.2.2/dist/iife/ponyfill.min.js"></script>
 <script>
 (function () {
     var csrf = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
@@ -269,35 +272,70 @@
     document.getElementById('scQ').addEventListener('keydown', function (e) {
         if (e.key === 'Enter') { e.preventDefault(); lookup(this.value); this.value = ''; }
     });
+    // Camera barcode reader (rewritten 11/6: html5-qrcode's JS decoder almost never read record UPC/EAN
+    // barcodes on phones). Uses the phone's built-in BarcodeDetector when it has one (Android Chrome),
+    // otherwise ZXing-C++ compiled to WebAssembly (iPhone), which reads 1D barcodes well.
     var cam = null;
-    // Camera barcode reader (fixed 11/6: it was set up for QR codes, with a narrow box, low-res video
-    // and every format on, so record UPC/EAN barcodes almost never decoded).
-    document.getElementById('scCamBtn').addEventListener('click', function () {
-        var box = document.getElementById('scCam'), btn = this;
-        if (cam) { cam.stop().then(function () { cam = null; box.style.display = 'none'; btn.textContent = 'Camera'; }); return; }
-        if (!window.Html5Qrcode) { alert('Camera scanner did not load. Reload the page and try again.'); return; }
-        box.style.display = 'block';
-        var F = window.Html5QrcodeSupportedFormats;
-        cam = new Html5Qrcode('scCam', {
-            verbose: false,
-            formatsToSupport: [F.EAN_13, F.UPC_A, F.EAN_8, F.UPC_E, F.CODE_128, F.CODE_39],
-            experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+    function stopCam() {
+        if (!cam) return;
+        cam.on = false; clearTimeout(cam.t);
+        cam.stream.getTracks().forEach(function (t) { t.stop(); });
+        cam = null;
+        var box = document.getElementById('scCam'); box.innerHTML = ''; box.style.display = 'none';
+        document.getElementById('scCamBtn').textContent = 'Camera';
+    }
+    function makeDetector() {
+        var fmts = ['ean_13', 'upc_a', 'ean_8', 'upc_e', 'code_128', 'code_39'];
+        var Native = window.BarcodeDetector;
+        var Pony = window.BarcodeDetectionAPI && window.BarcodeDetectionAPI.BarcodeDetector;
+        var p = (Native && Native.getSupportedFormats) ? Native.getSupportedFormats().catch(function () { return []; }) : Promise.resolve([]);
+        return p.then(function (have) {
+            if (have.indexOf('ean_13') >= 0) return new Native({ formats: fmts.filter(function (f) { return have.indexOf(f) >= 0; }) });
+            if (Pony) return new Pony({ formats: fmts });
+            throw new Error('Barcode reader did not load. Reload the page and try again.');
         });
-        var last = '', lastAt = 0;
-        cam.start({ facingMode: 'environment' }, {
-            fps: 15,
-            // Wide, short box sized to the actual video: barcodes are wide, and a fixed 280px box overflowed small phones.
-            qrbox: function (w, h) { return { width: Math.floor(w * 0.9), height: Math.max(60, Math.floor(h * 0.45)) }; },
-            videoConstraints: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
-        }, function (code) {
-            var now = Date.now(); if (code === last && now - lastAt < 2500) return;
-            last = code; lastAt = now;
-            try { if (navigator.vibrate) navigator.vibrate(80); } catch (e) {}
-            lookup(code);
-        }).then(function () { btn.textContent = 'Stop camera'; }).catch(function (err) {
-            box.style.display = 'none'; cam = null;
-            var m = String(err && (err.name || err.message || err) || '');
-            alert(/NotAllowed|Permission/i.test(m) ? 'Camera is blocked. Allow camera access for this site in your browser settings, then try again.' : 'Camera not available: ' + m);
+    }
+    document.getElementById('scCamBtn').addEventListener('click', function () {
+        if (cam) { stopCam(); return; }
+        var box = document.getElementById('scCam'), btn = this;
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { alert('This browser cannot open the camera.'); return; }
+        btn.textContent = 'Starting...';
+        var flash = document.getElementById('scFlash');
+        Promise.all([
+            navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } }),
+            makeDetector()
+        ]).then(function (r) {
+            var stream = r[0], det = r[1];
+            box.innerHTML = '<video playsinline muted autoplay></video><div class="sc-aim"></div><div class="sc-camhint">Fill the screen with the barcode, line across the bars</div>';
+            box.style.display = 'block';
+            var v = box.querySelector('video'); v.srcObject = stream; v.setAttribute('playsinline', ''); v.muted = true;
+            var p = v.play(); if (p && p.catch) p.catch(function () {});
+            // Ask for continuous autofocus where the phone allows it.
+            try { var tr = stream.getVideoTracks()[0], caps = tr.getCapabilities ? tr.getCapabilities() : {};
+                if (caps.focusMode && caps.focusMode.indexOf('continuous') >= 0) tr.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(function () {}); } catch (e) {}
+            btn.textContent = 'Stop camera';
+            cam = { stream: stream, on: true, t: null };
+            var me = cam, last = '', lastAt = 0;
+            (function tick() {
+                if (!me.on) return;
+                if (v.readyState < 2) { me.t = setTimeout(tick, 150); return; }
+                det.detect(v).then(function (codes) {
+                    if (!me.on) return;
+                    var code = codes && codes.length ? String(codes[0].rawValue || '').trim() : '';
+                    var now = Date.now();
+                    if (code && !(code === last && now - lastAt < 2500)) {
+                        last = code; lastAt = now;
+                        try { if (navigator.vibrate) navigator.vibrate(80); } catch (e) {}
+                        flash.className = 'sc-flash ok'; flash.textContent = 'Read ' + code + ', looking it up...';
+                        lookup(code);
+                    }
+                    me.t = setTimeout(tick, 120);
+                }, function () { if (me.on) me.t = setTimeout(tick, 300); });
+            })();
+        }).catch(function (err) {
+            stopCam(); btn.textContent = 'Camera';
+            var m = String(err && (err.name + ': ' + err.message) || err);
+            alert(/NotAllowed|Permission|Security/i.test(m) ? 'Camera is blocked. Allow camera access for this site in your browser settings, then try again.' : 'Camera not available. ' + m);
         });
     });
     document.getElementById('scFinish').addEventListener('click', function () {
