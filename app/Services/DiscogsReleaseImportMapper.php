@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Category;
+use Illuminate\Support\Facades\DB;
 
 class DiscogsReleaseImportMapper
 {
@@ -111,6 +112,17 @@ class DiscogsReleaseImportMapper
                 $warnings[] = 'Category from store artist-genre list (overrode Discogs genres).';
             } else {
                 $warnings[] = 'Artist in store genre list but its bin has no matching ERP category — used Discogs genres.';
+            }
+        }
+        // Sarah 2026-11-06: when the artist isn't in the sheet, follow how we
+        // already file this artist's existing products (their most common
+        // genre subcategory) before trusting Discogs' genres — keeps new
+        // adds binned next to the copies already on the shelf.
+        if ($resolved === null && $artistStr !== '') {
+            $history = $this->resolveFromExistingArtistProducts($businessId, $artistStr, $formatTokens, $releaseYear);
+            if ($history !== null) {
+                $resolved = $history;
+                $warnings[] = 'Category matched to how we already file this artist (' . $history['genre'] . ') instead of Discogs genres.';
             }
         }
         if ($resolved === null) {
@@ -244,6 +256,19 @@ class DiscogsReleaseImportMapper
         $bin = $this->artistGenreLookup->binForArtist($artist);
         $terms = $this->artistGenreLookup->termsForArtist($artist);
         if ($terms === []) {
+            // Not in the sheet — fall back to how we already file this
+            // artist's existing products.
+            $history = ($artist !== null && trim($artist) !== '')
+                ? $this->resolveFromExistingArtistProducts($businessId, $artist, $formatTokens)
+                : null;
+            if ($history !== null) {
+                return [
+                    'matched' => true,
+                    'bin' => $history['genre'],
+                    'category_id' => $history['category_id'],
+                    'sub_category_id' => $history['sub_category_id'],
+                ];
+            }
             return ['matched' => false, 'bin' => null, 'category_id' => null, 'sub_category_id' => null];
         }
         $resolved = $this->resolveCategoryFromGenres($businessId, $terms, [], $formatTokens, []);
@@ -253,6 +278,81 @@ class DiscogsReleaseImportMapper
             'category_id' => $resolved['category_id'],
             'sub_category_id' => $resolved['sub_category_id'],
         ];
+    }
+
+    /**
+     * Genre subcategory names this business already uses for an artist's
+     * products, most common first (e.g. ['rock' => 12, 'pop' => 2]). Matches
+     * the artist case-insensitively, and also the primary artist of an
+     * "A, B" multi-artist string. Memoized per request.
+     *
+     * @return array<string,int> lowercase subcategory name => product count
+     */
+    private function existingArtistGenreCounts(int $businessId, string $artist): array
+    {
+        static $memo = [];
+
+        $candidates = [];
+        $full = $this->artistGenreLookup->normalizeArtist($artist);
+        if ($full !== '') {
+            $candidates[] = $full;
+        }
+        if (mb_strpos($artist, ',') !== false) {
+            $primary = $this->artistGenreLookup->normalizeArtist(explode(',', $artist)[0]);
+            if ($primary !== '' && $primary !== $full) {
+                $candidates[] = $primary;
+            }
+        }
+
+        foreach ($candidates as $name) {
+            $key = $businessId . '|' . $name;
+            if (!array_key_exists($key, $memo)) {
+                $memo[$key] = [];
+                try {
+                    $rows = DB::table('products as p')
+                        ->join('categories as c', 'c.id', '=', 'p.sub_category_id')
+                        ->where('p.business_id', $businessId)
+                        ->whereRaw('LOWER(TRIM(p.artist)) = ?', [$name])
+                        ->whereNotNull('p.sub_category_id')
+                        ->groupBy(DB::raw('LOWER(TRIM(c.name))'))
+                        ->orderByDesc('n')
+                        ->get([DB::raw('LOWER(TRIM(c.name)) as genre'), DB::raw('COUNT(*) as n')]);
+                    foreach ($rows as $r) {
+                        if ((string) $r->genre !== '') {
+                            $memo[$key][(string) $r->genre] = (int) $r->n;
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    $memo[$key] = [];
+                }
+            }
+            if ($memo[$key] !== []) {
+                return $memo[$key];
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * Resolve a category from the artist's existing products: try their genre
+     * subcategory names most-common first, through the same format-aware
+     * resolver (so a CD lands in "Used CD > Rock", an LP in "Used Vinyl >
+     * Rock"). Returns null when we have no filed products for the artist.
+     *
+     * @param  string[]  $formatTokens
+     * @return array{category_id: int, sub_category_id: int|null, warnings: string[], genre: string}|null
+     */
+    private function resolveFromExistingArtistProducts(int $businessId, string $artist, array $formatTokens = [], ?int $releaseYear = null): ?array
+    {
+        foreach ($this->existingArtistGenreCounts($businessId, $artist) as $genre => $count) {
+            $resolved = $this->resolveCategoryFromGenres($businessId, [$genre], [], $formatTokens, [], $releaseYear);
+            if ($resolved['category_id'] !== null && $resolved['sub_category_id'] !== null) {
+                $resolved['genre'] = $genre;
+                return $resolved;
+            }
+        }
+        return null;
     }
 
     /**
