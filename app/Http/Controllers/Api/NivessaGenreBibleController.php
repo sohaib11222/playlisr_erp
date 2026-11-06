@@ -48,7 +48,7 @@ class NivessaGenreBibleController extends Controller
 
     public function publicFeed(ArtistGenreLookup $lookup)
     {
-        $data = Cache::remember('genrebible1', 21600, function () use ($lookup) {
+        $data = Cache::remember('genrebible2', 21600, function () use ($lookup) {
             $businessId = (int) (config('services.nivessa_web.business_id') ?: 1);
             $sheet = $lookup->allArtists();
             if (!$sheet) {
@@ -58,6 +58,7 @@ class NivessaGenreBibleController extends Controller
             // artist (normalized) => bin => product count
             $counts = [];
             $unmapped = [];
+            $mapped = [];
             foreach (array_chunk(array_keys($sheet), 1000) as $chunk) {
                 $rows = DB::table('products as p')
                     ->join('categories as c', 'c.id', '=', 'p.sub_category_id')
@@ -74,6 +75,9 @@ class NivessaGenreBibleController extends Controller
                         continue;
                     }
                     $bin = self::binForSubcategory((string) $r->genre);
+                    if ($bin !== null) {
+                        $mapped[mb_strtolower(trim((string) $r->genre))] = $bin;
+                    }
                     if ($bin === null) {
                         $g = mb_strtolower(trim((string) $r->genre));
                         $unmapped[$g] = ($unmapped[$g] ?? 0) + (int) $r->n;
@@ -101,6 +105,7 @@ class NivessaGenreBibleController extends Controller
                 'min_products' => self::MIN_PRODUCTS,
                 'overrides' => (object) $overrides,
                 'unmapped_subcategories' => (object) $unmapped,
+                'subcategory_bins' => (object) $mapped,
             ];
         });
 
