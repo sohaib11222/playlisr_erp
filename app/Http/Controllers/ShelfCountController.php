@@ -311,6 +311,129 @@ class ShelfCountController extends Controller
     }
 
     /** Barcode (or words) -> product, for the scan box. */
+    /**
+     * Not in the ERP? Add it from the count (Jon 11/6: "add it to our system and
+     * make a purchase with the least work possible"). Step 1: look the scanned
+     * barcode up on Discogs (same format as this bin) and suggest name, artist,
+     * cover and a price. Nothing is saved here.
+     */
+    public function barcodeInfo(Request $request)
+    {
+        if (!auth()->user()->can('product.create')) abort(403);
+        $business_id = (int) $request->session()->get('user.business_id');
+        $code = preg_replace('/[\s-]+/', '', (string) $request->input('code'));
+        $kind = $this->pickKind($request, $business_id);
+        $isNew = substr($kind, -4) === '-new';
+        $out = ['found' => false, 'name' => '', 'artist' => '', 'image_url' => null, 'discogs_release_id' => null, 'price' => null, 'price_note' => null];
+        if (!preg_match('/^\d{8,14}$/', $code)) return response()->json($out);
+        try {
+            $svc = new \App\Services\DiscogsService($business_id);
+            if (!$svc->isConfigured()) return response()->json($out);
+            $res = $svc->searchByBarcode($code);
+            $want = strpos($kind, 'vinyl-') === 0 ? 'vinyl' : (strpos($kind, 'cd-') === 0 ? 'cd' : null);
+            $hits = [];
+            foreach ((array) ($res['data']->results ?? []) as $x) {
+                $fmts = mb_strtolower(implode(' ', (array) ($x->format ?? [])));
+                if ($want === 'vinyl' && strpos($fmts, 'vinyl') === false) continue;
+                if ($want === 'cd' && !preg_match('/\bcd\b/', $fmts)) continue;
+                $hits[] = $x;
+            }
+            if (!$hits) $hits = (array) ($res['data']->results ?? []);
+            if (!$hits) return response()->json($out);
+            // The pressing most people own.
+            usort($hits, function ($a, $b) { return ((int) ($b->community->have ?? 0)) <=> ((int) ($a->community->have ?? 0)); });
+            $rid = (int) $hits[0]->id;
+            $rel = $svc->getReleaseById($rid);
+            if (!empty($rel['data']) && is_object($rel['data'])) {
+                $m = (new \App\Services\DiscogsReleaseImportMapper())->mapFromApiPayload($business_id, $rel['data'], $rid);
+                $out['name'] = (string) ($m['name'] ?? '');
+                $out['artist'] = (string) ($m['artist'] ?? '');
+                $out['image_url'] = $m['image_url'] ?? null;
+            } else {
+                $parts = explode(' - ', (string) ($hits[0]->title ?? ''), 2);
+                $out['artist'] = trim(preg_replace('/\s*\(\d+\)$/', '', $parts[0]));
+                $out['name'] = trim($parts[1] ?? $parts[0]);
+                $out['image_url'] = $hits[0]->cover_image ?? null;
+            }
+            $out['found'] = true;
+            $out['discogs_release_id'] = $rid;
+            // Price hint: Discogs suggestion for Mint (sealed) or VG+ (used), rounded to whole dollars.
+            $ps = $svc->getPriceSuggesions($rid);
+            $grade = $isNew ? 'Mint (M)' : 'Very Good Plus (VG+)';
+            $v = null;
+            foreach ((array) ($ps['data'] ?? []) as $cond => $p) { if ($cond === $grade) $v = (float) ($p->value ?? 0); }
+            if ($v && $v > 0) { $out['price'] = max(1, round($v)); $out['price_note'] = 'Discogs ' . ($isNew ? 'Mint' : 'VG+') . ' suggests $' . number_format($v, 2); }
+        } catch (\Throwable $e) {
+            \Log::warning('shelf-count barcodeInfo ' . $code . ': ' . $e->getMessage());
+        }
+        return response()->json($out);
+    }
+
+    /**
+     * Step 2: create it the same way Mass Add does (duplicate guard, sealed =
+     * barcode SKU, Discogs cover, opening stock = the purchase) with 1 copy at
+     * this store, in this bin's format and genre. Returns the product so the
+     * page counts it right away. If it already exists, that product is returned.
+     */
+    public function quickAdd(Request $request)
+    {
+        if (!auth()->user()->can('product.create')) abort(403);
+        [$business_id, $locations, $loc] = $this->location($request);
+        $kind = $this->pickKind($request, $business_id);
+        $sub = (int) $request->input('sub');
+        $name = trim((string) $request->input('name'));
+        $artist = trim((string) $request->input('artist'));
+        $price = (float) $request->input('price');
+        $qty = max(1, (int) $request->input('qty', 1));
+        $code = preg_replace('/[\s-]+/', '', (string) $request->input('code'));
+        if ($name === '') return response()->json(['ok' => false, 'msg' => 'Type the title.'], 422);
+        if ($price <= 0) return response()->json(['ok' => false, 'msg' => 'Type the selling price.'], 422);
+
+        // Format = this bin's: the genre's parent, else the kind's category.
+        $catId = $sub ? (int) \DB::table('categories')->where('business_id', $business_id)->where('id', $sub)->value('parent_id') : 0;
+        if (!$catId && strpos($kind, 'cat-') === 0) $catId = (int) substr($kind, 4);
+        if (!$catId) {
+            $q = \DB::table('categories as c')->where('c.business_id', $business_id)->where('c.parent_id', 0)->whereNull('c.deleted_at');
+            $this->kindQuery($q, $kind);
+            $catId = (int) $q->orderBy('c.id')->value('c.id');
+        }
+        if (!$catId) return response()->json(['ok' => false, 'msg' => 'Could not tell which category this bin is.'], 422);
+        $catName = strtolower((string) \DB::table('categories')->where('id', $catId)->value('name'));
+        $sealed = strpos($catName, 'sealed') !== false || substr($kind, -4) === '-new';
+        // Sealed: the barcode is the SKU (Sarah 10/8). Used: the ERP makes a SKU and you print a label.
+        $sku = ($sealed && preg_match('/^\d{8,14}$/', $code)) ? $code : '';
+
+        $row = [
+            'name' => $name, 'artist' => $artist, 'sku' => $sku,
+            'category_id' => $catId, 'sub_category_id' => $sub ?: null,
+            'single_dsp_inc_tax' => $price, 'single_dpp_inc_tax' => 0,
+            'business_locations' => [$loc],
+            'stock_locations' => [$loc => ['stock' => $qty]],
+            'image_url' => $request->input('image_url') ?: null,
+            'discogs_release_id' => (int) $request->input('discogs_release_id') ?: null,
+        ];
+        $sub_req = Request::create('/product/mass-store', 'POST', ['products' => [$row]]);
+        $sub_req->setLaravelSession($request->session());
+        $sub_req->setUserResolver($request->getUserResolver());
+        $sub_req->headers->set('X-Requested-With', 'XMLHttpRequest');
+        $sub_req->headers->set('Accept', 'application/json');
+        $resp = app(\App\Http\Controllers\ProductController::class)->massStore($sub_req);
+        $j = json_decode($resp->getContent(), true) ?: [];
+        if (empty($j['success'])) {
+            $err = $j['errors'] ?? null;
+            $msg = $err ? implode(' ', array_map(function ($e) { return is_array($e) ? implode(' ', $e) : $e; }, $err)) : ($j['error'] ?? ($j['msg'] ?? 'Could not add it.'));
+            return response()->json(['ok' => false, 'msg' => $msg], 422);
+        }
+        $existing = false;
+        $pid = (int) ($j['product_ids'][0] ?? 0);
+        if (!$pid && !empty($j['duplicates_skipped'][0]['existing_product_id'])) { $pid = (int) $j['duplicates_skipped'][0]['existing_product_id']; $existing = true; }
+        $p = \DB::table('products')->where('business_id', $business_id)->where('id', $pid)->first(['id', 'name', 'artist', 'sku']);
+        if (!$p) return response()->json(['ok' => false, 'msg' => 'Could not add it.'], 422);
+        return response()->json(['ok' => true, 'existing' => $existing,
+            'item' => ['id' => (int) $p->id, 'name' => $p->name, 'artist' => $p->artist, 'sku' => $p->sku],
+            'label_url' => action('LabelsController@show') . '?product_id=' . (int) $p->id]);
+    }
+
     public function lookup(Request $request)
     {
         if (!auth()->user()->can('product.view')) abort(403);
