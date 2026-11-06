@@ -1938,9 +1938,11 @@ class EventsController extends Controller
         // Details: only the known keys. eventHostHollywood/eventHostPico hold
         // the per-store event lead when a party runs at both stores.
         $incomingDetails = (array) $request->input('details', []);
-        foreach (['eventHost', 'eventHostHollywood', 'eventHostPico', 'eventLink', 'boxTracking', 'boxLocation'] as $k) {
+        foreach (['eventHost', 'eventHostHollywood', 'eventHostPico', 'eventLink', 'boxTracking', 'boxLocation', 'staffInstructions'] as $k) {
             if (array_key_exists($k, $incomingDetails)) {
-                $details[$k] = mb_substr(trim((string) $incomingDetails[$k]), 0, 2000);
+                // Staff instructions are a full run-of-show, so they get more room.
+                $max = $k === 'staffInstructions' ? 6000 : 2000;
+                $details[$k] = mb_substr(trim((string) $incomingDetails[$k]), 0, $max);
             }
         }
         if (!empty($incomingDetails)) {

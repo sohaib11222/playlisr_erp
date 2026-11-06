@@ -57,6 +57,17 @@
   @if(session('status'))<div class="alert-ok">{{ session('status') }}</div>@endif
   @if(session('error'))<div class="alert-err">{{ session('error') }}</div>@endif
 
+  {{-- Staff instructions: the run-of-show for whoever works the event, shown
+       first so nobody has to open the collapsed sections to find it. Edited
+       in Listening-party prep below. --}}
+  @php $staffInstr = trim((string) ($details['staffInstructions'] ?? '')); @endphp
+  @if($staffInstr !== '')
+    <div class="ev-card" style="border:2px solid #1c2150;background:#F4F7FF;">
+      <h2 style="font-size:20px;font-weight:800;margin:0 0 8px;color:#1c2150;">Staff instructions</h2>
+      <div style="font-size:16px;line-height:1.55;color:var(--pos-ink);white-space:pre-line;">{{ $staffInstr }}</div>
+    </div>
+  @endif
+
   {{-- ---------- Event details (collapsed by default) ---------- --}}
   <details class="ev-card">
     <summary class="ev-create-summary">Event details</summary>
@@ -120,6 +131,13 @@
         <div class="ev-field" style="flex:1 1 220px;">
           <label>Box location</label>
           <input type="text" name="details[boxLocation]" value="{{ $details['boxLocation'] ?? '' }}" placeholder="Where the box is stored">
+        </div>
+      </div>
+
+      <div class="ev-row">
+        <div class="ev-field" style="flex:1 1 100%;">
+          <label>Staff instructions (shown at the top of this page)</label>
+          <textarea name="details[staffInstructions]" rows="10" placeholder="What staff do at this event, step by step: preorders, giveaways, what can and can't be sold">{{ $details['staffInstructions'] ?? '' }}</textarea>
         </div>
       </div>
 
