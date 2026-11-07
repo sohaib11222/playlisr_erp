@@ -114,6 +114,21 @@ class ArtistGenreLookup
         return $this->map();
     }
 
+    /**
+     * Sheet spelling of each artist (normalized => "AC/DC"), from
+     * data/artist_genre_names.json. Falls back to the normalized key.
+     */
+    public function displayName(string $normalized): string
+    {
+        static $names = null;
+        if ($names === null) {
+            $path = __DIR__ . '/data/artist_genre_names.json';
+            $decoded = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
+            $names = is_array($decoded) ? $decoded : [];
+        }
+        return $names[$normalized] ?? $normalized;
+    }
+
     /** @return array<string,string> */
     private function map(): array
     {
