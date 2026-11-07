@@ -20,6 +20,11 @@ class NivessaGenreBibleController extends Controller
     /** The DB bin needs at least this many products to override the sheet. */
     const MIN_PRODUCTS = 3;
 
+    /** Parent categories that are music shelves (skip merch, cards, VHS, magazines). */
+    const MUSIC_PARENT_REGEXP = 'vinyl|cd|cassette|record|lp|45|7"|10"|12"|reel';
+
+    const CACHE_KEY = 'genrebible4';
+
     /**
      * Subcategory name -> sheet bin, first match wins. Order matters:
      * "Folk Rock" is Folk, "Pop Punk" is Punk, "Alt Rock" is Alternative.
@@ -63,7 +68,7 @@ class NivessaGenreBibleController extends Controller
      */
     public static function build(ArtistGenreLookup $lookup): array
     {
-        return Cache::remember('genrebible4', 21600, function () use ($lookup) {
+        return Cache::remember(self::CACHE_KEY, 21600, function () use ($lookup) {
             $businessId = (int) (config('services.nivessa_web.business_id') ?: 1);
             $sheet = $lookup->allArtists();
             if (!$sheet) {
@@ -80,8 +85,7 @@ class NivessaGenreBibleController extends Controller
                     ->join('categories as pc', 'pc.id', '=', 'p.category_id')
                     ->where('p.business_id', $businessId)
                     ->whereIn('p.artist', $chunk) // case-insensitive collation
-                    // Only music shelves: skip merch, cards, VHS, magazines.
-                    ->whereRaw("LOWER(pc.name) REGEXP 'vinyl|cd|cassette|record|lp|45|7\"|10\"|12\"|reel'")
+                    ->whereRaw('LOWER(pc.name) REGEXP ?', [self::MUSIC_PARENT_REGEXP])
                     ->groupBy('p.artist', 'c.name')
                     ->get(['p.artist', 'c.name as genre', DB::raw('COUNT(*) as n')]);
                 foreach ($rows as $r) {

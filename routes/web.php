@@ -469,6 +469,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/price-new-buys', 'PriceBuysController@index');
     Route::get('/stock-lookup', 'StockLookupController@index');
     Route::get('/genre-bible', 'GenreBibleController@index');
+    Route::post('/genre-bible/unify', 'GenreBibleController@unify');
+    Route::post('/genre-bible/undo', 'GenreBibleController@undo');
     // Website sell quotes (staff side).
     Route::get('/sell-quotes', 'SellQuoteController@index');
     Route::get('/sell-quotes/{id}', 'SellQuoteController@staffShow')->where('id', '[0-9]+');
