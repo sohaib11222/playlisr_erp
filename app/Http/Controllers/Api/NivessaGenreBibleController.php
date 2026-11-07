@@ -48,11 +48,26 @@ class NivessaGenreBibleController extends Controller
 
     public function publicFeed(ArtistGenreLookup $lookup)
     {
-        $data = Cache::remember('genrebible3', 21600, function () use ($lookup) {
+        $data = self::build($lookup);
+        unset($data['counts']); // staff page only
+
+        return response()->json($data, 200, [], JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_UNICODE)
+            ->header('Access-Control-Allow-Origin', '*')
+            ->header('Cache-Control', 'public, max-age=3600');
+    }
+
+    /**
+     * Cached (6h). Also used by the staff Genre Bible page in the ERP.
+     * 'counts' = normalized artist => bin => product count, for every sheet
+     * artist we have music products for.
+     */
+    public static function build(ArtistGenreLookup $lookup): array
+    {
+        return Cache::remember('genrebible4', 21600, function () use ($lookup) {
             $businessId = (int) (config('services.nivessa_web.business_id') ?: 1);
             $sheet = $lookup->allArtists();
             if (!$sheet) {
-                return ['updated' => now()->toDateTimeString(), 'overrides' => (object) []];
+                return ['updated' => now()->toDateTimeString(), 'overrides' => (object) [], 'counts' => []];
             }
 
             // artist (normalized) => bin => product count
@@ -88,8 +103,11 @@ class NivessaGenreBibleController extends Controller
             }
 
             $overrides = [];
-            foreach ($counts as $artist => $bins) {
+            foreach ($counts as $artist => &$bins) {
                 arsort($bins);
+            }
+            unset($bins);
+            foreach ($counts as $artist => $bins) {
                 $top = array_key_first($bins);
                 $sheetBin = $sheet[$artist];
                 if ($top === $sheetBin || $bins[$top] < self::MIN_PRODUCTS || $bins[$top] <= ($bins[$sheetBin] ?? 0)) {
@@ -106,12 +124,9 @@ class NivessaGenreBibleController extends Controller
                 'overrides' => (object) $overrides,
                 'unmapped_subcategories' => (object) $unmapped,
                 'subcategory_bins' => (object) $mapped,
+                'counts' => $counts,
             ];
         });
-
-        return response()->json($data, 200, [], JSON_INVALID_UTF8_SUBSTITUTE | JSON_UNESCAPED_UNICODE)
-            ->header('Access-Control-Allow-Origin', '*')
-            ->header('Cache-Control', 'public, max-age=3600');
     }
 
     public static function binForSubcategory(string $name): ?string

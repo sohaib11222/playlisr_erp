@@ -392,6 +392,13 @@ class AdminSidebarMenu
                                 ['icon' => 'fa fas fa-search', 'active' => request()->segment(1) == 'stock-lookup']
                             );
                         }
+                        if (auth()->user()->can('product.view') || auth()->user()->can('sell.create')) {
+                            $sub->url(
+                                url('/genre-bible'),
+                                'Genre Bible',
+                                ['icon' => 'fa fas fa-book', 'active' => request()->segment(1) == 'genre-bible']
+                            );
+                        }
                         if (auth()->user()->can('product.view') || auth()->user()->can('product.update')) {
                             $sub->url(
                                 url('/store-or-discogs'),

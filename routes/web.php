@@ -468,6 +468,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/products/review-2024/retire-below-cost', 'LegacyListingController@retireBelowCost2024');
     Route::get('/price-new-buys', 'PriceBuysController@index');
     Route::get('/stock-lookup', 'StockLookupController@index');
+    Route::get('/genre-bible', 'GenreBibleController@index');
     // Website sell quotes (staff side).
     Route::get('/sell-quotes', 'SellQuoteController@index');
     Route::get('/sell-quotes/{id}', 'SellQuoteController@staffShow')->where('id', '[0-9]+');
