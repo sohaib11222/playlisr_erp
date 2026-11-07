@@ -52,15 +52,25 @@
     @if ($canEdit)
         <div class="gb-bulk">
             <button type="button" class="gb-btn gb-btn-lg" id="gbAll">Make every shown artist one genre</button>
+            <span style="margin-left:14px">Send checked (<b id="gbCk">0</b>) to</span>
+            <select class="gb-select" id="gbTo">
+                @foreach ($genres as $g)
+                    <option value="{{ $g }}">{{ $g }}</option>
+                @endforeach
+            </select>
+            <button type="button" class="gb-btn gb-btn-lg" id="gbSend">Send</button>
             <span id="gbAllMsg"></span>
         </div>
     @endif
     <div class="gb-count" id="gbN"></div>
     <table class="gb-table">
-        <thead><tr><th>Artist</th><th>Genre</th><th>How we file it</th>@if ($canEdit)<th>Make all one genre</th>@endif</tr></thead>
+        <thead><tr>@if ($canEdit)<th><input type="checkbox" id="gbCkAll" title="Check all shown"></th>@endif<th>Artist</th><th>Genre</th><th>How we file it</th>@if ($canEdit)<th>Make all one genre</th>@endif</tr></thead>
         <tbody id="gbBody">
         @foreach ($rows as $r)
             <tr class="{{ $r['differs'] ? 'gb-diff' : '' }}" data-n="{{ mb_strtolower($r['name']) }}" data-g="{{ $r['genre'] }}" data-d="{{ $r['differs'] ? 1 : 0 }}" data-m="{{ $r['toMove'] }}" data-a="{{ $r['name'] }}">
+                @if ($canEdit)
+                    <td>@if ($r['counts'])<input type="checkbox" class="gb-ck" aria-label="Select {{ $r['name'] }}">@endif</td>
+                @endif
                 <td><a href="/stock-lookup?q={{ urlencode($r['name']) }}">{{ $r['name'] }}</a></td>
                 <td>
                     <span class="gb-genre">{{ $r['genre'] }}</span>
@@ -128,7 +138,7 @@
         }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || ('Error ' + r.status)); return j; }); });
     }
     function msg(row, html, err) {
-        var cell = row.querySelector('.gb-fix'), m = cell.querySelector('.gb-msg');
+        var cell = row.querySelector('.gb-fix') || row.cells[row.cells.length - 1], m = cell.querySelector('.gb-msg');
         if (!m) { m = document.createElement('span'); m.className = 'gb-msg'; cell.appendChild(m); }
         m.className = 'gb-msg' + (err ? ' err' : '');
         m.innerHTML = html;
@@ -138,14 +148,17 @@
         for (var k in c) parts.push(k + ' ' + c[k]);
         return parts.length ? parts.join(' · ') : 'No products yet';
     }
-    function unify(row) {
-        var sel = row.querySelector('.gb-fix select'), btn = row.querySelector('.gb-one'), genre = sel.value;
+    function unify(row, forced) {
+        var sel = row.querySelector('.gb-fix select'), btn = row.querySelector('.gb-one') || {}, genre = forced || sel.value;
         btn.disabled = true;
         return post('/genre-bible/unify', { artist: row.getAttribute('data-a'), genre: genre }).then(function (j) {
             row.querySelector('.gb-filed').textContent = fmtCounts(j.counts);
             row.querySelector('.gb-genre').textContent = genre;
             row.setAttribute('data-g', genre);
             row.setAttribute('data-m', '0');
+            if (sel) sel.value = genre;
+            var ck = row.querySelector('.gb-ck');
+            if (ck) { ck.checked = false; countChecked(); }
             var text = 'Moved ' + j.moved + ' to ' + esc(genre) + '.';
             if (j.skipped.length) text += ' Skipped: ' + esc(j.skipped.join('; ')) + '.';
             if (j.undo) text += ' <button type="button" class="gb-undo" data-u="' + esc(j.undo) + '">Undo</button>';
@@ -169,7 +182,43 @@
             }).catch(function (err) { msg(row, esc(err.message), true); });
         }
     });
-    var all = document.getElementById('gbAll'), allMsg = document.getElementById('gbAllMsg');
+    var allMsg = document.getElementById('gbAllMsg'), ckN = document.getElementById('gbCk');
+    function countChecked() { if (ckN) ckN.textContent = document.querySelectorAll('.gb-ck:checked').length; }
+    document.getElementById('gbBody').addEventListener('change', function (e) { if (e.target.classList.contains('gb-ck')) countChecked(); });
+    var ckAll = document.getElementById('gbCkAll');
+    if (ckAll) ckAll.addEventListener('change', function () {
+        for (var i = 0; i < rows.length; i++) {
+            var c = rows[i].querySelector('.gb-ck');
+            if (c && rows[i].style.display !== 'none') c.checked = ckAll.checked;
+        }
+        countChecked();
+    });
+    function runQueue(todo, genre, button) {
+        button.disabled = true;
+        var done = 0, moved = 0, failed = 0;
+        (function next() {
+            if (!todo.length) {
+                button.disabled = false;
+                allMsg.textContent = 'Done: ' + moved + ' products moved for ' + done + ' artists' + (failed ? ', ' + failed + ' failed' : '') + '. Each row has its own Undo.';
+                return;
+            }
+            var r = todo.shift();
+            allMsg.textContent = 'Working... ' + done + ' artists done, ' + todo.length + ' left';
+            unify(r, genre).then(function (j) { done++; if (j) moved += j.moved; else failed++; next(); });
+        })();
+    }
+    var send = document.getElementById('gbSend');
+    if (send) send.addEventListener('click', function () {
+        var todo = [], genre = document.getElementById('gbTo').value;
+        for (var i = 0; i < rows.length; i++) {
+            var c = rows[i].querySelector('.gb-ck');
+            if (c && c.checked) todo.push(rows[i]);
+        }
+        if (!todo.length) { allMsg.textContent = 'Check some artists first.'; return; }
+        if (!confirm('Move every product by ' + todo.length + ' checked artist(s) to ' + genre + '?')) return;
+        runQueue(todo, genre, send);
+    });
+    var all = document.getElementById('gbAll');
     if (all) all.addEventListener('click', function () {
         var todo = [], products = 0;
         for (var i = 0; i < rows.length; i++) {
@@ -181,18 +230,7 @@
         }
         if (!todo.length) { allMsg.textContent = 'Nothing to move in the rows shown.'; return; }
         if (!confirm('Make ' + todo.length + ' artists one genre each (about ' + products + ' products), using the genre picked on each row?')) return;
-        all.disabled = true;
-        var done = 0, moved = 0, failed = 0;
-        (function next() {
-            if (!todo.length) {
-                all.disabled = false;
-                allMsg.textContent = 'Done: ' + moved + ' products moved for ' + done + ' artists' + (failed ? ', ' + failed + ' failed' : '') + '. Each row has its own Undo.';
-                return;
-            }
-            var r = todo.shift();
-            allMsg.textContent = 'Working... ' + done + ' artists done, ' + todo.length + ' left';
-            unify(r).then(function (j) { done++; if (j) moved += j.moved; else failed++; next(); });
-        })();
+        runQueue(todo, null, all);
     });
 })();
 </script>
