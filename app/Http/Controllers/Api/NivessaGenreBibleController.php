@@ -116,8 +116,9 @@ class NivessaGenreBibleController extends Controller
             // Not on the sheet: keep artists with enough products to trust
             // their genre (one stray LP or a typo'd name doesn't make the list).
             $extra = [];
+            $added = $lookup->added();
             foreach ($counts as $artist => $bins) {
-                if (isset($sheet[$artist])) {
+                if (isset($sheet[$artist]) || isset($added[$artist])) { // decided / not an artist
                     continue;
                 }
                 if (array_sum($bins) < self::MIN_PRODUCTS) {
@@ -136,7 +137,6 @@ class NivessaGenreBibleController extends Controller
                 arsort($bins);
             }
             unset($bins);
-            $added = $lookup->added();
             foreach ($counts as $artist => $bins) {
                 // Staff-added genres are a decision, not a guess: never override.
                 if (!isset($sheet[$artist]) || isset($added[$artist])) {

@@ -14,6 +14,9 @@ namespace App\Services;
  */
 class ArtistGenreLookup
 {
+    /** Genre Bible decision for names that aren't really an artist ("Music", "CATS"). */
+    const NOT_AN_ARTIST = 'Not an artist';
+
     /** @var array<string,string>|null normalized artist => bin label */
     private static $map = null;
 
@@ -175,7 +178,11 @@ class ArtistGenreLookup
             self::$map = is_array($decoded) ? $decoded : [];
             // Staff additions from the Genre Bible page win over the sheet.
             foreach ($this->added() as $key => $a) {
-                self::$map[$key] = $a['genre'];
+                if ($a['genre'] === self::NOT_AN_ARTIST) {
+                    unset(self::$map[$key]); // junk name: no genre
+                } else {
+                    self::$map[$key] = $a['genre'];
+                }
             }
         }
         return self::$map;
