@@ -20,6 +20,8 @@ use Illuminate\Http\Request;
 class ShelfCountController extends Controller
 {
     const DUE_DAYS = 28;
+    /** A title counted in another bin this recently asks "same copy or another one?" when scanned again (Jon 11/8). */
+    const RECOUNT_WARN_DAYS = 7;
     /** Deploy time of the fix that stopped bin Save from zeroing uncounted titles. */
     const SAVE_ONLY_COUNTED_FROM = '2026-10-16 12:14:00';
 
@@ -165,6 +167,7 @@ class ShelfCountController extends Controller
         $counted = $this->lastCounted($business_id, $loc);
         $web = $this->webDemand();
         if ($kind === 'all') return $this->overview($request, $business_id, $locations, $loc, $counted);
+        $cut = now()->subDays(self::DUE_DAYS)->toDateTimeString();
         $rows = \DB::table('products as p')
             ->join('variation_location_details as v', function ($j) use ($loc) { $j->on('v.product_id', '=', 'p.id')->where('v.location_id', '=', $loc); })
             ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
@@ -180,6 +183,7 @@ class ShelfCountController extends Controller
             $b['titles'] = ($b['titles'] ?? 0) + 1; $b['units'] = ($b['units'] ?? 0) + (float) $r->qty;
             $c = $counted[$r->id] ?? null;
             if ($c) $b['counted'] = ($b['counted'] ?? 0) + 1;
+            if ($c && $c['at'] >= $cut) $b['recent'] = ($b['recent'] ?? 0) + 1;
             if ($c && (!isset($b['last']) || $c['at'] > $b['last'])) $b['last'] = $c['at'];
             self::addWeb($b, $web[$r->id] ?? null, $c);
             unset($b);
@@ -198,6 +202,7 @@ class ShelfCountController extends Controller
     {
         $web = $this->webDemand();
         $kinds = $this->kinds($business_id);
+        $cut = now()->subDays(self::DUE_DAYS)->toDateTimeString();
         $rows = \DB::table('products as p')
             ->join('variation_location_details as v', function ($j) use ($loc) { $j->on('v.product_id', '=', 'p.id')->where('v.location_id', '=', $loc); })
             ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
@@ -219,6 +224,7 @@ class ShelfCountController extends Controller
             $b['titles'] = ($b['titles'] ?? 0) + 1;
             $c = $counted[$r->id] ?? null;
             if ($c) { $b['counted'] = ($b['counted'] ?? 0) + 1; if (!isset($b['last']) || $c['at'] > $b['last']) $b['last'] = $c['at']; }
+            if ($c && $c['at'] >= $cut) $b['recent'] = ($b['recent'] ?? 0) + 1;
             self::addWeb($b, $web[$r->id] ?? null, $c);
             unset($b);
         }
@@ -260,6 +266,19 @@ class ShelfCountController extends Controller
             'comics' => ['series' => count(\App\Services\ReorderService::COMIC_FAMILIES) + count(\App\Services\ReorderService::MAGAZINE_FAMILIES), 'recent' => $famRecent, 'last' => $famLast]]);
     }
 
+    /**
+     * The last saved count of a title at this store, for the bin page: when,
+     * how many, by whom, and which bin (counts saved from 11/8 on). 'recent' =
+     * within RECOUNT_WARN_DAYS, so scanning it in a different bin asks first.
+     */
+    protected static function prevCount(?array $c): ?array
+    {
+        if (!$c || empty($c['at'])) return null;
+        return ['at' => (string) $c['at'], 'qty' => (int) ($c['qty'] ?? 0), 'by' => (string) ($c['by'] ?? ''),
+            'bin' => (string) ($c['bin'] ?? ''), 'bin_key' => (string) ($c['bin_key'] ?? ''),
+            'recent' => $c['at'] >= now()->subDays(self::RECOUNT_WARN_DAYS)->toDateTimeString()];
+    }
+
     /** Scan one bin: what the ERP expects there, then scan or search each record. */
     public function bin(Request $request)
     {
@@ -278,6 +297,7 @@ class ShelfCountController extends Controller
             ->orderByRaw("LOWER(COALESCE(NULLIF(p.artist, ''), p.name))")->get();
         $name = $sub ? (string) \DB::table('categories')->where('id', $sub)->value('name') : 'No sub-category';
         $labels = $this->kinds($business_id);
+        $counted = $this->lastCounted($business_id, $loc);
         // Genres each title can be moved to: the ones under its own format (Sarah 10/21).
         $genres = [];
         if (auth()->user()->can('product.update')) {
@@ -288,7 +308,8 @@ class ShelfCountController extends Controller
         }
         return view('report.shelf_count_bin', ['locations' => $locations, 'loc' => $loc, 'kind' => $kind, 'kindLabel' => $labels[$kind],
             'name' => $name, 'sub' => $sub, 'genres' => (object) $genres,
-            'items' => $items->map(function ($i) { return ['id' => (int) $i->id, 'name' => $i->name, 'artist' => $i->artist, 'sku' => $i->sku, 'bin' => (string) ($i->bin_position ?? ''), 'erp' => (float) $i->qty, 'cat' => (int) $i->category_id]; })->values()]);
+            'items' => $items->map(function ($i) use ($counted) { return ['id' => (int) $i->id, 'name' => $i->name, 'artist' => $i->artist, 'sku' => $i->sku, 'bin' => (string) ($i->bin_position ?? ''), 'erp' => (float) $i->qty, 'cat' => (int) $i->category_id, 'cnt' => self::prevCount($counted[(int) $i->id] ?? null)]; })->values(),
+            'binKey' => $kind . '|' . $sub, 'binLabel' => $labels[$kind] . ' / ' . $name, 'dueDays' => self::DUE_DAYS]);
     }
 
     /**
@@ -467,7 +488,20 @@ class ShelfCountController extends Controller
             foreach ($words as $w) $x->where(function ($y) use ($w) { $y->whereRaw('LOWER(p.name) LIKE ?', ['%' . $w . '%'])->orWhereRaw('LOWER(p.artist) LIKE ?', ['%' . $w . '%']); });
             $rows = $x->select('p.id', 'p.name', 'p.artist', 'p.sku')->limit(10)->get();
         }
-        return response()->json(['items' => $rows]);
+        // ERP stock at this store + last count, so the bin page can ask "are you sure?"
+        // when a scan goes over the ERP or the title was just counted in another bin (Jon 11/8).
+        if ($rows->count() && $request->filled('location_id')) {
+            [, , $loc] = $this->location($request);
+            $qty = \DB::table('variation_location_details')->where('location_id', $loc)->whereIn('product_id', $rows->pluck('id')->all())
+                ->groupBy('product_id')->select('product_id', \DB::raw('SUM(qty_available) as q'))->pluck('q', 'product_id');
+            $counted = $this->lastCounted($business_id, $loc);
+            $rows = $rows->map(function ($r) use ($qty, $counted) {
+                $r->erp = (float) ($qty[$r->id] ?? 0);
+                $r->cnt = self::prevCount($counted[(int) $r->id] ?? null);
+                return $r;
+            });
+        }
+        return response()->json(['items' => $rows->values()]);
     }
 
     public function missing(Request $request)
