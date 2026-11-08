@@ -87,8 +87,11 @@ class NivessaGenreBibleController extends Controller
                 ->where('p.business_id', $businessId)
                 ->whereNotNull('p.artist')->where('p.artist', '!=', '')
                 ->whereRaw('LOWER(pc.name) REGEXP ?', [self::MUSIC_PARENT_REGEXP])
-                ->groupBy('p.artist', 'c.name')
-                ->get(['p.artist', 'c.name as genre', DB::raw('COUNT(*) as n')]);
+                // Group by exact bytes: grouping the collated name makes MySQL's
+                // temp table hit "Duplicate entry" on near-identical spellings.
+                // Case/space variants are merged in PHP below.
+                ->groupBy(DB::raw('BINARY p.artist'), 'p.sub_category_id')
+                ->get([DB::raw('MAX(p.artist) as artist'), DB::raw('MAX(c.name) as genre'), DB::raw('COUNT(*) as n')]);
             foreach ($rows as $r) {
                 $raw = trim((string) $r->artist);
                 $artist = self::sheetKey($lookup->normalizeArtist($raw), $sheet);
