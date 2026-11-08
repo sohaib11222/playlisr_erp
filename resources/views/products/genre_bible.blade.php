@@ -18,6 +18,9 @@
 .gb-diff td { background: #FFF8DC; }
 .gb-was { color: #8E8273; text-decoration: line-through; }
 .gb-filed { color: #6B6155; font-size: 13px; }
+.gb-tabs { display: flex; gap: 6px; margin: 0 0 14px; }
+.gb-tabs a { padding: 8px 14px; border-radius: 999px; border: 1px solid #E1D7C4; color: #3B2E2A; font-weight: 600; text-decoration: none; }
+.gb-tabs a.on { background: #3B2E2A; color: #fff; border-color: #3B2E2A; }
 .gb-new { color: #8E8273; font-size: 12px; }
 .gb-fix { white-space: nowrap; }
 .gb-fix select { height: 30px; font-size: 13px; border: 1px solid #E1D7C4; border-radius: 6px; max-width: 150px; }
@@ -31,6 +34,10 @@
 </style>
 <div class="gb-wrap">
     <h1>Genre Bible</h1>
+    <div class="gb-tabs">
+        <a href="/genre-bible" class="on">All artists</a>
+        <a href="/genre-bible?tab=decide">Needs a decision ({{ $decideCount }})</a>
+    </div>
     <p class="gb-intro">
         Every artist and the genre section they go in. The genre comes from the artist sheet, unless most of
         our products by that artist are filed in a different genre ({{ $minProducts }}+ products). Then that

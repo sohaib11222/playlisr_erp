@@ -30,12 +30,41 @@ class GenreBibleController extends Controller
         'Folk', 'Blues', 'Punk', 'Reggae', 'World', 'New Wave', 'Gospel', 'Soundtrack',
     ];
 
-    public function index(ArtistGenreLookup $lookup)
+    public function index(Request $request, ArtistGenreLookup $lookup)
     {
         if (!auth()->user()->can('product.view') && !auth()->user()->can('sell.create')) {
             abort(403);
         }
+        $rows = $this->rows($lookup, $data);
+        $decide = array_values(array_filter($rows, function ($r) {
+            return $r['differs'] || $r['toMove'] > 0;
+        }));
+        $common = [
+            'genres' => self::GENRES,
+            'decideCount' => count($decide),
+            'canEdit' => auth()->user()->can('product.update'),
+            'minProducts' => NivessaGenreBibleController::MIN_PRODUCTS,
+        ];
 
+        if ($request->query('tab') === 'decide') {
+            // Biggest messes first: most products to re-file, then disagreements.
+            usort($decide, function ($a, $b) {
+                return [$b['toMove'], $b['differs'], array_sum($b['counts'])] <=> [$a['toMove'], $a['differs'], array_sum($a['counts'])];
+            });
+            return view('products.genre_bible_decide', $common + ['rows' => $decide]);
+        }
+
+        return view('products.genre_bible', $common + [
+            'rows' => $rows,
+            'differCount' => count((array) ($data['overrides'] ?? [])),
+            'extraCount' => count((array) ($data['extra'] ?? [])),
+            'updated' => $data['updated'] ?? null,
+        ]);
+    }
+
+    /** Every listed artist with its genre, sheet genre and product counts. */
+    private function rows(ArtistGenreLookup $lookup, &$data): array
+    {
         $data = NivessaGenreBibleController::build($lookup);
         $overrides = (array) ($data['overrides'] ?? []);
         $counts = $data['counts'] ?? [];
@@ -63,6 +92,9 @@ class GenreBibleController extends Controller
             // Products not yet in the shown genre (what "Make all one genre" would move).
             $c = $rows[$last]['counts'];
             $rows[$last]['toMove'] = array_sum($c) - ($c[$rows[$last]['genre']] ?? 0);
+            if (($added[$key]['genre'] ?? null) === ArtistGenreLookup::NOT_AN_ARTIST) {
+                array_pop($rows);
+            }
         }
         usort($rows, function ($a, $b) {
             $k = function ($s) {
@@ -72,15 +104,7 @@ class GenreBibleController extends Controller
             return strcmp($k($a['name']), $k($b['name']));
         });
 
-        return view('products.genre_bible', [
-            'rows' => $rows,
-            'genres' => self::GENRES,
-            'differCount' => count($overrides),
-            'extraCount' => count($extra),
-            'updated' => $data['updated'] ?? null,
-            'minProducts' => NivessaGenreBibleController::MIN_PRODUCTS,
-            'canEdit' => auth()->user()->can('product.update'),
-        ]);
+        return $rows;
     }
 
     /** "the carpenters" => ["the carpenters", "carpenters"] (and the reverse). */
@@ -101,7 +125,8 @@ class GenreBibleController extends Controller
         $name = trim(preg_replace('/\s+/u', ' ', (string) $request->input('name')));
         $genre = (string) $request->input('genre');
         $key = $lookup->normalizeArtist($name);
-        if ($key === '' || mb_strlen($name) > 191 || !in_array($genre, self::GENRES, true)) {
+        $genreOk = in_array($genre, self::GENRES, true) || $genre === ArtistGenreLookup::NOT_AN_ARTIST;
+        if ($key === '' || mb_strlen($name) > 191 || !$genreOk) {
             return response()->json(['error' => 'Type an artist name and pick a genre.'], 422);
         }
         $existing = DB::table('genre_bible_artists')->where('artist_key', $key)->first();
