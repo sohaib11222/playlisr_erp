@@ -22,7 +22,7 @@
 <div class="sc-wrap">
 @include('report._count_tabs', ['ctOn' => 'count'])
     <h1>Shelf count</h1>
-    <p class="sc-sub">Pick the bin you're standing at. Then scan every record in it (or tap it in the list). When the bin is done, the page shows what the ERP thought was there but wasn't. A green check = counted in the last {{ \App\Http\Controllers\ShelfCountController::DUE_DAYS }} days. Use Sort to put High priority or the oldest counts on top. High priority = a cancel or can't find, or 3+ online orders, on titles not counted since. <a href="/reports/shelf-count/missing?location_id={{ $loc }}">Missing list</a></p>
+    <p class="sc-sub">Pick the bin you're standing at. Then scan every record in it (or tap it in the list). When the bin is done, the page shows what the ERP thought was there but wasn't. A green check = at least 80% of the section's titles counted in the last {{ \App\Http\Controllers\ShelfCountController::DUE_DAYS }} days. Use Sort to put High priority or the oldest counts on top. High priority = a cancel or can't find, or 3+ online orders, on titles not counted since. <a href="/reports/shelf-count/missing?location_id={{ $loc }}">Missing list</a></p>
     <form class="sc-row" method="get">
         <select name="location_id" onchange="this.form.submit()">@foreach ($locations as $id => $nm)<option value="{{ $id }}" {{ $id == $loc ? 'selected' : '' }}>{{ ucfirst($nm) }}</option>@endforeach</select>
         <select name="kind" onchange="this.form.submit()">@foreach (($kind === 'all' ? $kinds : ['all' => 'All shelves'] + $kinds) as $k => $l)<option value="{{ $k }}" {{ $kind === $k ? 'selected' : '' }}>{{ $l }}</option>@endforeach</select>
@@ -31,11 +31,12 @@
     <div class="sc-grid">
     @php $scCut = now()->subDays(\App\Http\Controllers\ShelfCountController::DUE_DAYS)->toDateTimeString(); @endphp
     @foreach ($bins as $b)
-        @php $scDone = !empty($b['last']) && $b['last'] >= $scCut; @endphp
+        @php $scRecent = !empty($b['last']) && $b['last'] >= $scCut; $scDone = $scRecent && ($b['recent'] ?? 0) >= 0.8 * $b['titles']; @endphp
         <a class="sc-bin{{ !empty($b['priority']) ? ' sc-hot' : '' }}{{ $scDone && empty($b['priority']) ? ' sc-done' : '' }}" href="/reports/shelf-count/bin?location_id={{ $loc }}&kind={{ $b['kind'] ?? $kind }}&sub={{ $b['sub'] }}">
             <b>@if ($scDone)<span class="sc-check" aria-label="Done">&#10003;</span>@endif{{ $b['name'] }}</b>
             <span class="sc-small">{{ number_format($b['titles']) }} titles{{ !empty($b['counted']) ? ', ' . $b['counted'] . ' counted' : '' }}</span><br>
             @if ($scDone)<span class="sc-ok">Done {{ \Carbon\Carbon::parse($b['last'])->format('m/d/y') }}: {{ (int) ($b['recent'] ?? 0) }} of {{ number_format($b['titles']) }} titles counted</span>
+            @elseif ($scRecent)<span class="sc-due" style="color:#8A4B00;">Started {{ \Carbon\Carbon::parse($b['last'])->format('m/d/y') }}: {{ (int) ($b['recent'] ?? 0) }} of {{ number_format($b['titles']) }} titles counted</span>
             @elseif (!empty($b['last']))<span class="sc-small">Counted {{ \Carbon\Carbon::parse($b['last'])->format('m/d/y') }}, due again</span>@else<span class="sc-due">Never counted</span>@endif
             @if (!empty($b['priority']))<br><span class="sc-due">High priority: {{ $b['web'] }} online {{ $b['web'] == 1 ? 'order' : 'orders' }}{{ !empty($b['web_bad']) ? ', ' . $b['web_bad'] . " cancelled or can't find" : '' }}</span>@endif
         </a>
