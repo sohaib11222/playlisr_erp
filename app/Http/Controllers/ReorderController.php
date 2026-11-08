@@ -351,7 +351,11 @@ class ReorderController extends Controller
         $raw = trim((string) $request->input('qty'));
         if (!$pid) return response()->json(['ok' => false], 422);
         $members = array_map('intval', array_filter(explode(',', (string) $request->input('product_ids', ''))));
-        $this->svc->saveCount($business_id, $locationId, $pid, $raw === '' ? null : (int) $raw, auth()->user()->first_name ?? '', $members);
+        // Shelf count sends which bin it was counted in (Jon 11/8: warn when the same record is scanned again in another bin).
+        $where = [];
+        $bk = (string) $request->input('bin_key', '');
+        if (preg_match('/^[a-z0-9-]+\|\d+$/', $bk)) $where = ['bin_key' => $bk, 'bin' => mb_substr(trim((string) $request->input('bin', '')), 0, 80)];
+        $this->svc->saveCount($business_id, $locationId, $pid, $raw === '' ? null : (int) $raw, auth()->user()->first_name ?? '', $members, $where);
 
         // Also make the ERP stock match the count (single-entry rows only).
         $erp = ['updated' => false, 'note' => ''];

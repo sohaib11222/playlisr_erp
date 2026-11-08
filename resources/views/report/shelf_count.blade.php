@@ -15,22 +15,28 @@
 .sc-row select { max-width: 320px; }
 .sc-small { color: #2B2620; font-size: 13px; }
 .sc-due { color: #8E1B1B; font-weight: 700; font-size: 13px; }
+.sc-bin.sc-done { border-color: #2E6B2E; background: #F2FAF2; }
+.sc-check { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: #2E6B2E; color: #fff; font-size: 14px; font-weight: 800; margin-right: 6px; vertical-align: -3px; }
+.sc-ok { color: #2E6B2E; font-weight: 700; font-size: 13px; }
 </style>
 <div class="sc-wrap">
 @include('report._count_tabs', ['ctOn' => 'count'])
     <h1>Shelf count</h1>
-    <p class="sc-sub">Pick the bin you're standing at. Then scan every record in it (or tap it in the list). When the bin is done, the page shows what the ERP thought was there but wasn't. Use Sort to put High priority or the oldest counts on top. High priority = a cancel or can't find, or 3+ online orders, on titles not counted since. <a href="/reports/shelf-count/missing?location_id={{ $loc }}">Missing list</a></p>
+    <p class="sc-sub">Pick the bin you're standing at. Then scan every record in it (or tap it in the list). When the bin is done, the page shows what the ERP thought was there but wasn't. A green check = counted in the last {{ \App\Http\Controllers\ShelfCountController::DUE_DAYS }} days. Use Sort to put High priority or the oldest counts on top. High priority = a cancel or can't find, or 3+ online orders, on titles not counted since. <a href="/reports/shelf-count/missing?location_id={{ $loc }}">Missing list</a></p>
     <form class="sc-row" method="get">
         <select name="location_id" onchange="this.form.submit()">@foreach ($locations as $id => $nm)<option value="{{ $id }}" {{ $id == $loc ? 'selected' : '' }}>{{ ucfirst($nm) }}</option>@endforeach</select>
         <select name="kind" onchange="this.form.submit()">@foreach (($kind === 'all' ? $kinds : ['all' => 'All shelves'] + $kinds) as $k => $l)<option value="{{ $k }}" {{ $kind === $k ? 'selected' : '' }}>{{ $l }}</option>@endforeach</select>
         <select name="sort" onchange="this.form.submit()">@foreach (($sorts ?? []) as $k => $l)<option value="{{ $k }}" {{ ($sort ?? 'priority') === $k ? 'selected' : '' }}>Sort: {{ $l }}</option>@endforeach</select>
     </form>
     <div class="sc-grid">
+    @php $scCut = now()->subDays(\App\Http\Controllers\ShelfCountController::DUE_DAYS)->toDateTimeString(); @endphp
     @foreach ($bins as $b)
-        <a class="sc-bin{{ !empty($b['priority']) ? ' sc-hot' : '' }}" href="/reports/shelf-count/bin?location_id={{ $loc }}&kind={{ $b['kind'] ?? $kind }}&sub={{ $b['sub'] }}">
-            <b>{{ $b['name'] }}</b>
+        @php $scDone = !empty($b['last']) && $b['last'] >= $scCut; @endphp
+        <a class="sc-bin{{ !empty($b['priority']) ? ' sc-hot' : '' }}{{ $scDone && empty($b['priority']) ? ' sc-done' : '' }}" href="/reports/shelf-count/bin?location_id={{ $loc }}&kind={{ $b['kind'] ?? $kind }}&sub={{ $b['sub'] }}">
+            <b>@if ($scDone)<span class="sc-check" aria-label="Done">&#10003;</span>@endif{{ $b['name'] }}</b>
             <span class="sc-small">{{ number_format($b['titles']) }} titles{{ !empty($b['counted']) ? ', ' . $b['counted'] . ' counted' : '' }}</span><br>
-            @if (!empty($b['last']))<span class="sc-small">Counted {{ \Carbon\Carbon::parse($b['last'])->format('m/d/y') }}</span>@else<span class="sc-due">Never counted</span>@endif
+            @if ($scDone)<span class="sc-ok">Done {{ \Carbon\Carbon::parse($b['last'])->format('m/d/y') }}: {{ (int) ($b['recent'] ?? 0) }} of {{ number_format($b['titles']) }} titles counted</span>
+            @elseif (!empty($b['last']))<span class="sc-small">Counted {{ \Carbon\Carbon::parse($b['last'])->format('m/d/y') }}, due again</span>@else<span class="sc-due">Never counted</span>@endif
             @if (!empty($b['priority']))<br><span class="sc-due">High priority: {{ $b['web'] }} online {{ $b['web'] == 1 ? 'order' : 'orders' }}{{ !empty($b['web_bad']) ? ', ' . $b['web_bad'] . " cancelled or can't find" : '' }}</span>@endif
         </a>
     @endforeach

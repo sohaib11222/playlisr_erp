@@ -81,7 +81,7 @@ class ReorderService
     }
 
     /** Record a bin count (null clears it). Keyed by location + product. */
-    public function saveCount(int $business_id, int $locationId, int $productId, ?int $qty, string $by, array $alsoClear = []): void
+    public function saveCount(int $business_id, int $locationId, int $productId, ?int $qty, string $by, array $alsoClear = [], array $extra = []): void
     {
         $state = $this->loadState($business_id);
         // A merged album row is counted once: drop counts on its other copies.
@@ -92,7 +92,8 @@ class ReorderService
         if ($qty === null) {
             unset($state['counts'][$key]);
         } else {
-            $state['counts'][$key] = ['qty' => max(0, $qty), 'at' => now()->toDateTimeString(), 'by' => $by];
+            // $extra: where it was counted (shelf-count bin label + key), so a later scan in another bin can warn.
+            $state['counts'][$key] = array_merge($extra, ['qty' => max(0, $qty), 'at' => now()->toDateTimeString(), 'by' => $by]);
         }
         $this->saveState($business_id, $state);
     }

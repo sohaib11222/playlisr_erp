@@ -59,6 +59,7 @@
 .sc-genre { height: 44px; border-radius: 10px; border: 1px solid #E1D7C4; background: #fff; color: #1F1B16; font-size: 14px; padding: 0 10px; cursor: pointer; margin-right: 6px; }
 .sc-gsel { display: block; margin-top: 6px; height: 40px; font-size: 15px; border: 2px solid #1F1B16; border-radius: 8px; padding: 0 8px; max-width: 100%; }
 .sc-moved { color: #2E6B2E; font-weight: 700; }
+.sc-prev { color: #8A4B00; font-weight: 700; }
 .sc-all { height: 44px; border-radius: 10px; border: 1px solid #2E6B2E; background: #fff; color: #2E6B2E; font-size: 14px; font-weight: 700; padding: 0 10px; cursor: pointer; margin-right: 6px; }
 </style>
 <div class="sc-wrap">
@@ -70,6 +71,7 @@
             <li>Go down the list as you flip through the bin.</li>
             <li>Tap <b>All here</b>, tap <b>None</b>, or type how many you see.</li>
             <li>Record not on the list? Scan it.</li>
+            <li>If a record was already counted in another bin this week, or you have more than the ERP says, it asks you first so nothing gets counted twice.</li>
             @if(count((array) $genres))<li>Wrong genre? Tap <b>Genre</b> on that record and pick the right one. It saves right away.</li>@endif
             <li>Tap the green <b>Done</b> button at the bottom, then <b>Save</b>.</li>
         </ol>
@@ -108,7 +110,10 @@
     var LOC = {{ (int) $loc }}, KIND = @json($kind), CAN_ADD = {{ auth()->user()->can('product.create') ? 'true' : 'false' }};
     var items = @json($items);
     var GENRES = @json($genres), SUB = {{ (int) $sub }};
+    var BIN_KEY = @json($binKey), BIN_LABEL = @json($binLabel);
     var byId = {}, count = {}, touched = {}, extra = [], moved = {}, editing = null;
+    // another: said "another copy" for a title counted in a different bin; overOk: highest count okayed above the ERP.
+    var another = {}, overOk = {}, lastDialog = 0;
     items.forEach(function (i) { byId[i.id] = i; count[i.id] = 0; });
     function d8(t) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t || ''); return m ? m[2] + '/' + m[3] + '/' + m[1].slice(2) : (t || ''); }
     function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
@@ -116,12 +121,20 @@
     function row(i) {
         var n = count[i.id] || 0, none = touched[i.id] && !n;
         return '<div class="sc-item' + (n ? ' seen' : '') + (none ? ' none' : '') + '" data-id="' + i.id + '"><div class="t">' + esc(label(i)) + '<div class="sc-small">' + (i.sku ? 'SKU ' + esc(i.sku) + ', ' : '') + (i.bin ? esc(i.bin) + ', ' : '') + 'ERP ' + (i.erp != null ? i.erp : '-') + (none ? ', marked none here' : (touched[i.id] ? '' : ', not counted yet')) + '</div>'
+            + prevLine(i)
             + (moved[i.id] ? '<div class="sc-small sc-moved">Genre changed to ' + esc(moved[i.id]) + '</div>' : '')
             + (editing === i.id ? genreSelect(i) : '') + '</div>'
             + (GENRES[i.cat] ? '<button class="sc-genre" type="button">Genre</button>' : '')
             + (i.erp > 0 && i.erp <= 2 && !(touched[i.id] && n === Math.round(i.erp)) ? '<button class="sc-all" type="button">All here</button>' : '')
             + (!none ? '<button class="sc-all sc-zero" type="button">None</button>' : '')
             + '<input class="sc-n" type="number" inputmode="numeric" enterkeyhint="next" min="0" step="1" aria-label="Copies here" placeholder="#" value="' + (touched[i.id] ? n : '') + '"></div>';
+    }
+    // Last saved count of this title at this store, and where (Jon 11/8).
+    function elsewhere(i) { var c = i.cnt; return !!(c && c.recent && c.bin_key && c.bin_key !== BIN_KEY); }
+    function prevLine(i) {
+        var c = i.cnt; if (!c || !c.at) return '';
+        if (elsewhere(i)) return '<div class="sc-small sc-prev">Already counted ' + d8(c.at) + ' in ' + esc(c.bin) + ' (' + c.qty + ')' + (another[i.id] ? ', counting another copy here' : '') + '</div>';
+        return '';
     }
     // Wrong genre (Sarah 10/21): pick another genre of the same format. Saves at once.
     function genreSelect(i) {
@@ -199,12 +212,13 @@
     var DRAFT = 'shelfcount:' + LOC + ':{{ $kind }}:{{ (int) request('sub') }}', saved = true;
     function keepDraft() {
         saved = false;
-        try { localStorage.setItem(DRAFT, JSON.stringify({ count: count, touched: touched, extra: extra, at: Date.now() })); } catch (e) {}
+        try { localStorage.setItem(DRAFT, JSON.stringify({ count: count, touched: touched, extra: extra, another: another, overOk: overOk, at: Date.now() })); } catch (e) {}
     }
     try {
         var dr = JSON.parse(localStorage.getItem(DRAFT) || 'null');
         if (dr && dr.count) {
             Object.keys(dr.count).forEach(function (k) { count[k] = dr.count[k]; if (dr.touched ? dr.touched[k] : dr.count[k] > 0) touched[k] = true; });
+            another = dr.another || {}; overOk = dr.overOk || {};
             (dr.extra || []).forEach(function (i) { if (!byId[i.id]) { byId[i.id] = i; extra.push(i); } });
             saved = false;
             setTimeout(function () { var f = document.getElementById('scFlash'); f.className = 'sc-flash ok'; f.textContent = 'Picked up where you left off (' + new Date(dr.at).toLocaleString() + ').'; }, 0);
@@ -230,7 +244,46 @@
     }
     function beepOk() { tone(1760, 120); }
     function beepBad() { tone(220, 160, 'sawtooth'); setTimeout(function () { tone(180, 220, 'sawtooth'); }, 180); }
+    // After a pop-up the camera may still see the same barcode; don't count it again for 1.5s.
+    function quiet() { lastDialog = Date.now(); }
+    function skipped(i, why) {
+        var f = document.getElementById('scFlash'); f.className = 'sc-flash bad'; f.textContent = why + label(i);
+        render();
+    }
+    /**
+     * Ask before a count that might be a double (Jon 11/8):
+     *  - counted in another bin in the last 7 days (record moved from Rock to Pop
+     *    and scanned again): same copy = don't count it; another copy = add it on
+     *    top of the ERP stock, which that count already set.
+     *  - more copies than the ERP has at this store: "are you sure?".
+     * Returns the new count, or null to not count it.
+     */
+    function gate(i, next, cur) {
+        if (next <= cur) return next;
+        if (!touched[i.id] && !another[i.id] && elsewhere(i)) {
+            var c = i.cnt;
+            var ok = window.confirm(label(i) + '\n\nAlready counted ' + d8(c.at) + ' in ' + c.bin + ' (' + c.qty + ' there' + (c.by ? ', by ' + c.by : '') + ').\n\n'
+                + 'OK = this is ANOTHER copy, count it too\nCancel = same copy that got moved here, don\'t count it twice');
+            quiet();
+            if (!ok) { skipped(i, 'Not counted twice (already counted in ' + c.bin + '): '); return null; }
+            another[i.id] = true;
+            // That count already set the ERP, so copies here go on top of it.
+            return Math.round(i.erp || 0) + (next - cur);
+        }
+        if (typeof i.erp === 'number' && !another[i.id] && next > Math.max(i.erp, overOk[i.id] || 0)) {
+            var yes = window.confirm('Are you sure? ' + label(i) + '\n\nThe ERP says ' + i.erp + ' at this store. This makes ' + next + '.\n\n'
+                + 'OK = yes, ' + next + ' here\nCancel = don\'t add it (scanned twice?)');
+            quiet();
+            if (!yes) { skipped(i, 'Not added (ERP has ' + i.erp + ', you had ' + cur + '): '); return null; }
+            overOk[i.id] = next;
+        }
+        return next;
+    }
     function bump(i, d) {
+        var known = byId[i.id] || i, cur = count[i.id] || 0;
+        var want = gate(known, Math.max(0, cur + d), cur);
+        if (want === null) return;
+        d = want - cur;
         if (!byId[i.id]) { byId[i.id] = i; extra.unshift(i); count[i.id] = 0; }
         count[i.id] = Math.max(0, (count[i.id] || 0) + d);
         touched[i.id] = true;
@@ -238,7 +291,7 @@
         render();
         var f = document.getElementById('scFlash'); f.className = 'sc-flash ok';
         // The count is a button (Jon 11/6): tap it to type the right number, e.g. after scanning the same record twice.
-        f.innerHTML = esc((d > 0 ? 'Added: ' : (count[i.id] ? 'Changed: ' : 'None here: ')) + label(i))
+        f.innerHTML = esc((d > 0 ? (count[i.id] > 1 && d === 1 ? 'Another copy: ' : 'Added: ') : (count[i.id] ? 'Changed: ' : 'None here: ')) + label(i))
             + (count[i.id] || d > 0 ? ' <button class="sc-qty" type="button" data-id="' + i.id + '" aria-label="Copies counted, tap to change">' + count[i.id] + '</button> <span class="sc-small">tap the number to change it</span>' : '');
     }
     function setQty(inp) {
@@ -387,7 +440,7 @@
             var hit = items.concat(extra).filter(function (i) { return String(i.sku || '').replace(/[\s-]/g, '').replace(/^0+/, '') === key; });
             if (hit.length === 1) { bump(hit[0], 1); return; }
         }
-        fetch('/reports/shelf-count/lookup?q=' + encodeURIComponent(q), { headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); }).then(function (j) {
+        fetch('/reports/shelf-count/lookup?location_id=' + LOC + '&q=' + encodeURIComponent(q), { headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); }).then(function (j) {
             var f = document.getElementById('scFlash');
             if (!j.items.length) {
                 beepBad(); f.className = 'sc-flash bad'; f.textContent = 'Not found in the ERP: ' + q;
@@ -403,7 +456,7 @@
                     var fi = srow.querySelector('.sc-afind');
                     var find = function () {
                         var t = fi.value.trim(); if (t.length < 2) { fi.focus(); return; }
-                        fetch('/reports/shelf-count/lookup?q=' + encodeURIComponent(t), { headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); }).then(function (k) {
+                        fetch('/reports/shelf-count/lookup?location_id=' + LOC + '&q=' + encodeURIComponent(t), { headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); }).then(function (k) {
                             if (!k.items.length) { document.getElementById('scChoices').innerHTML = '<div class="sc-small">Nothing in the ERP matches "' + esc(t) + '". Add it below with a price.</div>'; return; }
                             showChoices(k.items);
                         });
@@ -477,7 +530,7 @@
                     var now = Date.now();
                     // Same barcode only counts again after it has left the camera for 1.5s, so holding
                     // a record in view no longer adds a copy every few seconds.
-                    if (code && code === last && now - lastAt < 1500) { lastAt = now; }
+                    if (code && code === last && now - Math.max(lastAt, lastDialog) < 1500) { lastAt = now; }
                     else if (code) {
                         last = code; lastAt = now;
                         try { if (navigator.vibrate) navigator.vibrate(80); } catch (e) {}
@@ -517,7 +570,7 @@
             var x = all[i++];
             msg.textContent = 'Saving ' + i + ' of ' + all.length + '...';
             fetch('/reports/reorder/count', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
-                body: JSON.stringify({ product_id: x.id, qty: String(count[x.id] || 0), location_id: LOC }) })
+                body: JSON.stringify({ product_id: x.id, qty: String(count[x.id] || 0), location_id: LOC, bin_key: BIN_KEY, bin: BIN_LABEL }) })
                 .then(function (r) { return r.json(); }).then(function (j) { if (!j.ok) failed.push(x); next(); }, function () { failed.push(x); next(); });
         })();
     }
