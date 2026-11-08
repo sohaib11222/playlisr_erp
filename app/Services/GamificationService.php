@@ -5,6 +5,7 @@ namespace App\Services;
 use App\BusinessLocation;
 use App\User;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -19,6 +20,7 @@ class GamificationService
 {
     public const SHIFT_MAX_HOURS = 10.0;
     public const PEER_LOOKBACK_DAYS = 30;
+    public const DOW_AVG_LOOKBACK_WEEKS = 12;
     public const SALES_GOAL_MULTIPLIER = 1.05;
     public const PRODUCTS_ADDED_BUSY_DAMPER = 0.85;
     public const BUSY_HOUR_THRESHOLD_PER_HOUR = 200.0;
@@ -266,6 +268,16 @@ class GamificationService
                 // Comparison metric, not a goal.
                 $task['complete'] = false;
                 $task['pace_status'] = null;
+            }
+
+            if ($def['key'] === 'store_sales_today') {
+                // Informational line only — never let it break the strip.
+                try {
+                    $task['dow_avg'] = $this->storeDayOfWeekAverage($businessId, $shift['location_id'] ?? null, (float) $current);
+                } catch (\Throwable $e) {
+                    \Log::warning('dow_avg failed: ' . $e->getMessage());
+                    $task['dow_avg'] = null;
+                }
             }
 
             if ($def['key'] === 'value_created') {
@@ -889,6 +901,65 @@ class GamificationService
         // share of a typical day (≈ dailyAvg / shiftsPerDay).
         $openHoursPerDay = max(1.0, $this->expectedShiftHours($shift) * $this->getShiftsPerDay($shift['location_id'] ?? null));
         return $daily['avg'] / $openHoursPerDay;
+    }
+
+    /**
+     * Same-weekday average for the "Store today" row (Sarah 2026-11-08):
+     * "on Sundays we average $X" plus how today compares to a typical
+     * same weekday by this time of day (a partial day vs a full-day average
+     * would always read "behind" until close). Counts the same sales as the
+     * Store today figure (all channels). Lookback = last N same weekdays,
+     * excluding today; weekdays the store had no sales don't count.
+     *
+     * @return array{day: string, avg: float, by_now: float, delta_pct: ?float, weeks: int}|null
+     */
+    protected function storeDayOfWeekAverage(int $businessId, ?int $locationId, float $todaySoFar): ?array
+    {
+        $now = Carbon::now();
+        $nowTime = $now->format('H:i:s');
+        // Bucket the cache to 5 minutes so the 15s shift-strip poll doesn't
+        // re-scan 12 weeks of sales every time.
+        $bucket = $now->format('Y-m-d') . '-' . intdiv((int) $now->format('G') * 60 + (int) $now->format('i'), 5);
+        $key = 'dow_avg:' . $businessId . ':' . ($locationId ?: 'all') . ':' . $bucket;
+
+        $stats = Cache::remember($key, 300, function () use ($businessId, $locationId, $now, $nowTime) {
+            $rangeStart = $now->copy()->subWeeks(self::DOW_AVG_LOOKBACK_WEEKS)->startOfDay()->toDateTimeString();
+            $rangeEnd = $now->copy()->subDay()->endOfDay()->toDateTimeString();
+            $q = DB::table('transactions')
+                ->where('business_id', $businessId)
+                ->where('type', 'sell')
+                ->where('status', 'final')
+                ->whereNull('import_source')
+                ->whereNotNull('created_by')
+                ->whereBetween('transaction_date', [$rangeStart, $rangeEnd])
+                ->whereRaw('DAYOFWEEK(transaction_date) = ?', [((int) $now->dayOfWeek) + 1]);
+            if (!empty($locationId)) {
+                $q->where('location_id', $locationId);
+            }
+            $rows = $q->selectRaw('DATE(transaction_date) as d, SUM(final_total) as rev, SUM(CASE WHEN TIME(transaction_date) <= ? THEN final_total ELSE 0 END) as rev_by_now', [$nowTime])
+                ->groupBy('d')
+                ->get();
+            if ($rows->isEmpty()) {
+                return null;
+            }
+            return [
+                'avg' => (float) $rows->avg('rev'),
+                'by_now' => (float) $rows->avg('rev_by_now'),
+                'weeks' => $rows->count(),
+            ];
+        });
+
+        if (!$stats || $stats['avg'] <= 0) {
+            return null;
+        }
+        $deltaPct = $stats['by_now'] > 0 ? (($todaySoFar - $stats['by_now']) / $stats['by_now']) * 100 : null;
+        return [
+            'day' => $now->format('l'),
+            'avg' => round($stats['avg'], 0),
+            'by_now' => round($stats['by_now'], 0),
+            'delta_pct' => $deltaPct !== null ? round($deltaPct, 0) : null,
+            'weeks' => $stats['weeks'],
+        ];
     }
 
     /**
