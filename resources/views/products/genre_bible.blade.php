@@ -18,6 +18,7 @@
 .gb-diff td { background: #FFF8DC; }
 .gb-was { color: #8E8273; text-decoration: line-through; }
 .gb-filed { color: #6B6155; font-size: 13px; }
+.gb-new { color: #8E8273; font-size: 12px; }
 .gb-fix { white-space: nowrap; }
 .gb-fix select { height: 30px; font-size: 13px; border: 1px solid #E1D7C4; border-radius: 6px; max-width: 150px; }
 .gb-btn { height: 30px; font-size: 13px; font-weight: 700; border: 0; border-radius: 6px; background: #3B2E2A; color: #fff; padding: 0 10px; margin-left: 4px; }
@@ -33,7 +34,8 @@
     <p class="gb-intro">
         Every artist and the genre section they go in. The genre comes from the artist sheet, unless most of
         our products by that artist are filed in a different genre ({{ $minProducts }}+ products). Then that
-        genre wins, and the row is highlighted. Same list as
+        genre wins, and the row is highlighted. Artists we carry ({{ $minProducts }}+ products) who aren't on the
+        sheet ({{ $extraCount }}) are added under the genre most of their products are in. Same list as
         <a href="https://nivessa.com/genre-bible" target="_blank" rel="noopener">nivessa.com/genre-bible</a>.
     </p>
     <div class="gb-controls">
@@ -50,6 +52,17 @@
         @endif
     </div>
     @if ($canEdit)
+        <form class="gb-controls" id="gbAdd" autocomplete="off">
+            <input class="gb-search" id="gbAddName" placeholder="Add an artist (or change one's genre)" maxlength="191">
+            <select class="gb-select" id="gbAddGenre">
+                <option value="">Genre…</option>
+                @foreach ($genres as $g)
+                    <option value="{{ $g }}">{{ $g }}</option>
+                @endforeach
+            </select>
+            <button type="submit" class="gb-btn gb-btn-lg">Add artist</button>
+            <span id="gbAddMsg"></span>
+        </form>
         <div class="gb-bulk">
             <button type="button" class="gb-btn gb-btn-lg" id="gbAll">Make every shown artist one genre</button>
             <span style="margin-left:14px">Send checked (<b id="gbCk">0</b>) to</span>
@@ -76,6 +89,10 @@
                     <span class="gb-genre">{{ $r['genre'] }}</span>
                     @if ($r['differs'])
                         <br><span class="gb-was">Sheet: {{ $r['sheet'] }}</span>
+                    @elseif ($r['added'])
+                        <br><span class="gb-new">Added on this page</span>
+                    @elseif ($r['sheet'] === null)
+                        <br><span class="gb-new">Not on the sheet, from how we file it</span>
                     @endif
                 </td>
                 <td class="gb-filed">
@@ -125,6 +142,8 @@
     g.addEventListener('change', run);
     d.addEventListener('change', run);
     if (s) s.addEventListener('change', run);
+    var startQ = new URLSearchParams(location.search).get('q');
+    if (startQ) q.value = startQ;
     run();
 
     // ── Make all one genre ────────────────────────────────────────────
@@ -181,6 +200,18 @@
                 msg(row, 'Undone: ' + j.restored + ' product(s) put back. Reload to see counts.', false);
             }).catch(function (err) { msg(row, esc(err.message), true); });
         }
+    });
+    var addForm = document.getElementById('gbAdd');
+    if (addForm) addForm.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var name = document.getElementById('gbAddName').value.trim(), genre = document.getElementById('gbAddGenre').value,
+            m = document.getElementById('gbAddMsg');
+        if (!name || !genre) { m.textContent = 'Type an artist and pick a genre.'; return; }
+        m.textContent = 'Saving...';
+        post('/genre-bible/artist', { name: name, genre: genre }).then(function (j) {
+            m.textContent = (j.updated ? 'Updated ' : 'Added ') + name + ' to ' + genre + '. Reloading...';
+            location.href = location.pathname + '?q=' + encodeURIComponent(name);
+        }).catch(function (err) { m.textContent = err.message; });
     });
     var allMsg = document.getElementById('gbAllMsg'), ckN = document.getElementById('gbCk');
     function countChecked() { if (ckN) ckN.textContent = document.querySelectorAll('.gb-ck:checked').length; }

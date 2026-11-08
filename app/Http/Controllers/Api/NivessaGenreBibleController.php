@@ -23,7 +23,7 @@ class NivessaGenreBibleController extends Controller
     /** Parent categories that are music shelves (skip merch, cards, VHS, magazines). */
     const MUSIC_PARENT_REGEXP = 'vinyl|cd|cassette|record|lp|45|7"|10"|12"|reel';
 
-    const CACHE_KEY = 'genrebible4';
+    const CACHE_KEY = 'genrebible5';
 
     /**
      * Subcategory name -> sheet bin, first match wins. Order matters:
@@ -63,8 +63,8 @@ class NivessaGenreBibleController extends Controller
 
     /**
      * Cached (6h). Also used by the staff Genre Bible page in the ERP.
-     * 'counts' = normalized artist => bin => product count, for every sheet
-     * artist we have music products for.
+     * 'counts' = normalized artist => bin => product count (most first), for
+     * every sheet artist we have music products for, plus the 'extra' artists.
      */
     public static function build(ArtistGenreLookup $lookup): array
     {
@@ -75,43 +75,70 @@ class NivessaGenreBibleController extends Controller
                 return ['updated' => now()->toDateTimeString(), 'overrides' => (object) [], 'counts' => []];
             }
 
-            // artist (normalized) => bin => product count
+            // artist (normalized) => bin => product count, for sheet artists
+            // and for artists we file that aren't on the sheet yet.
             $counts = [];
             $unmapped = [];
             $mapped = [];
-            foreach (array_chunk(array_keys($sheet), 1000) as $chunk) {
-                $rows = DB::table('products as p')
-                    ->join('categories as c', 'c.id', '=', 'p.sub_category_id')
-                    ->join('categories as pc', 'pc.id', '=', 'p.category_id')
-                    ->where('p.business_id', $businessId)
-                    ->whereIn('p.artist', $chunk) // case-insensitive collation
-                    ->whereRaw('LOWER(pc.name) REGEXP ?', [self::MUSIC_PARENT_REGEXP])
-                    ->groupBy('p.artist', 'c.name')
-                    ->get(['p.artist', 'c.name as genre', DB::raw('COUNT(*) as n')]);
-                foreach ($rows as $r) {
-                    $artist = $lookup->normalizeArtist((string) $r->artist);
-                    if (!isset($sheet[$artist])) {
-                        continue;
-                    }
-                    $bin = self::binForSubcategory((string) $r->genre);
-                    if ($bin !== null) {
-                        $mapped[mb_strtolower(trim((string) $r->genre))] = $bin;
-                    }
-                    if ($bin === null) {
+            $spellings = []; // extra artist => raw spelling => product count
+            $rows = DB::table('products as p')
+                ->join('categories as c', 'c.id', '=', 'p.sub_category_id')
+                ->join('categories as pc', 'pc.id', '=', 'p.category_id')
+                ->where('p.business_id', $businessId)
+                ->whereNotNull('p.artist')->where('p.artist', '!=', '')
+                ->whereRaw('LOWER(pc.name) REGEXP ?', [self::MUSIC_PARENT_REGEXP])
+                ->groupBy('p.artist', 'c.name')
+                ->get(['p.artist', 'c.name as genre', DB::raw('COUNT(*) as n')]);
+            foreach ($rows as $r) {
+                $raw = trim((string) $r->artist);
+                $artist = self::sheetKey($lookup->normalizeArtist($raw), $sheet);
+                if ($artist === null) {
+                    continue;
+                }
+                $bin = self::binForSubcategory((string) $r->genre);
+                if ($bin === null) {
+                    if (isset($sheet[$artist])) {
                         $g = mb_strtolower(trim((string) $r->genre));
                         $unmapped[$g] = ($unmapped[$g] ?? 0) + (int) $r->n;
-                        continue;
                     }
-                    $counts[$artist][$bin] = ($counts[$artist][$bin] ?? 0) + (int) $r->n;
+                    continue;
+                }
+                $mapped[mb_strtolower(trim((string) $r->genre))] = $bin;
+                $counts[$artist][$bin] = ($counts[$artist][$bin] ?? 0) + (int) $r->n;
+                if (!isset($sheet[$artist])) {
+                    $spellings[$artist][$raw] = ($spellings[$artist][$raw] ?? 0) + (int) $r->n;
                 }
             }
+
+            // Not on the sheet: keep artists with enough products to trust
+            // their genre (one stray LP or a typo'd name doesn't make the list).
+            $extra = [];
+            foreach ($counts as $artist => $bins) {
+                if (isset($sheet[$artist])) {
+                    continue;
+                }
+                if (array_sum($bins) < self::MIN_PRODUCTS) {
+                    unset($counts[$artist]);
+                    continue;
+                }
+                arsort($bins);
+                $names = $spellings[$artist];
+                arsort($names);
+                $extra[$artist] = ['name' => (string) array_key_first($names), 'genre' => array_key_first($bins)];
+            }
+            ksort($extra);
 
             $overrides = [];
             foreach ($counts as $artist => &$bins) {
                 arsort($bins);
             }
             unset($bins);
+            $added = $lookup->added();
             foreach ($counts as $artist => $bins) {
+                // Staff-added genres are a decision, not a guess: never override.
+                if (!isset($sheet[$artist]) || isset($added[$artist])) {
+                    continue;
+                }
                 $top = array_key_first($bins);
                 $sheetBin = $sheet[$artist];
                 if ($top === $sheetBin || $bins[$top] < self::MIN_PRODUCTS || $bins[$top] <= ($bins[$sheetBin] ?? 0)) {
@@ -126,11 +153,44 @@ class NivessaGenreBibleController extends Controller
                 'updated' => now()->toDateTimeString(),
                 'min_products' => self::MIN_PRODUCTS,
                 'overrides' => (object) $overrides,
+                // Artists we file that aren't on the sheet: normalized => {name, genre}.
+                'extra' => (object) $extra,
+                // Added or re-genred by staff on the ERP page; wins over everything.
+                'added' => (object) $added,
                 'unmapped_subcategories' => (object) $unmapped,
                 'subcategory_bins' => (object) $mapped,
                 'counts' => $counts,
             ];
         });
+    }
+
+    /** Placeholder "artists" that span every genre. */
+    const PLACEHOLDER_ARTIST = '/^(various|various artists|v\/a|va|unknown|unknown artist|no artist|n\/a|none|soundtrack|original soundtrack|original cast|cast|-+|\d+)$/u';
+
+    /**
+     * Key to count a product artist under: the sheet artist (allowing a
+     * missing/extra leading "The"), else the artist itself when it's a real
+     * single artist name, else null (placeholders, "A, B" splits).
+     */
+    private static function sheetKey(string $artist, array $sheet): ?string
+    {
+        if ($artist === '') {
+            return null;
+        }
+        if (isset($sheet[$artist])) {
+            return $artist;
+        }
+        if (isset($sheet['the ' . $artist])) {
+            return 'the ' . $artist;
+        }
+        if (strpos($artist, 'the ') === 0 && isset($sheet[substr($artist, 4)])) {
+            return substr($artist, 4);
+        }
+        if (preg_match(self::PLACEHOLDER_ARTIST, $artist) || strpos($artist, ',') !== false
+            || preg_match('/\b(feat\.?|featuring|with)\b/u', $artist)) {
+            return null;
+        }
+        return $artist;
     }
 
     public static function binForSubcategory(string $name): ?string
