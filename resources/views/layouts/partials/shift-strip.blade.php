@@ -18,6 +18,10 @@
     .st-row.scope-day_store { background:#f0f9ff; padding:6px 10px; border-radius:8px; }
     .st-row.scope-day_store .st-bar > .st-fill { background:#0ea5e9; }
     .st-row.scope-day_store .st-row-label { color:#075985; }
+    .st-dow { margin-top:5px; font-size:12px; color:#075985; }
+    .st-dow .st-dow-delta.ahead { color:#15803d; font-weight:600; }
+    .st-dow .st-dow-delta.behind { color:#b91c1c; font-weight:600; }
+    .st-dow .st-dow-delta.on { color:#6b7280; font-weight:600; }
     .st-row-top { display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:4px; }
     .st-row-label { flex:1 1 auto; min-width:0; font-size:14px; font-weight:600; color:#111827; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .st-row-numbers { flex:0 0 auto; font-size:14px; font-weight:600; color:#111827; white-space:nowrap; }
@@ -99,7 +103,26 @@
             $personal_tasks = collect($shift_panel['tasks'])->filter(function ($t) { return ($t['scope'] ?? 'shift') !== 'day_store'; })->values();
             $store_tasks    = collect($shift_panel['tasks'])->filter(function ($t) { return ($t['scope'] ?? 'shift') === 'day_store'; })->values();
 
-            $renderTask = function ($task) {
+            // "On Sundays we average $X" line under Store today (2026-11-08).
+            $dowHtml = function ($d) {
+                $html = e($d['day']) . 's we average <b>$' . number_format($d['avg'], 0) . '</b>';
+                if ($d['delta_pct'] !== null) {
+                    $p = (int) $d['delta_pct'];
+                    if ($p >= 5) {
+                        $html .= ' · <span class="st-dow-delta ahead">▲ ' . $p . '% above</span> a typical ' . e($d['day']) . ' so far';
+                    } elseif ($p <= -5) {
+                        $html .= ' · <span class="st-dow-delta behind">▼ ' . abs($p) . '% below</span> a typical ' . e($d['day']) . ' so far';
+                    } else {
+                        $html .= ' · <span class="st-dow-delta on">about average</span> for a ' . e($d['day']) . ' so far';
+                    }
+                }
+                return $html;
+            };
+            $dowTip = function ($d) {
+                return 'Average of the last ' . $d['weeks'] . ' ' . $d['day'] . 's: $' . number_format($d['avg'], 0) . ' for the full day, $'
+                    . number_format($d['by_now'], 0) . ' by this time of day';
+            };
+            $renderTask = function ($task) use ($dowHtml, $dowTip) {
                 $pp = $task['peer_per_hour'];
                 $tp = $task['peer_top_per_hour'] ?? null;
                 $is_money = $task['unit'] === '$';
@@ -182,6 +205,9 @@
                             <span class="st-tick" style="left: <?= $tick['position'] ?>%;" title="<?= e($tick['label'] . ' ' . $fmtTierVal($tick['count'])) ?>"></span>
                         <?php endforeach; ?>
                     </div>
+                    <?php endif; ?>
+                    <?php if (!empty($task['dow_avg'])): ?>
+                    <div class="st-dow" title="<?= e($dowTip($task['dow_avg'])) ?>"><?= $dowHtml($task['dow_avg']) ?></div>
                     <?php endif; ?>
                 </div>
                 <?php
@@ -327,6 +353,31 @@
             return lines.join('\n');
         }
 
+        function escHtml(v) {
+            return String(v).replace(/[&<>"']/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+        }
+        function buildDowHtml(d) {
+            var day = escHtml(d.day);
+            var html = day + 's we average <b>$' + Math.round(d.avg).toLocaleString() + '</b>';
+            if (d.delta_pct !== null && d.delta_pct !== undefined) {
+                var p = Math.round(d.delta_pct);
+                if (p >= 5) {
+                    html += ' · <span class="st-dow-delta ahead">▲ ' + p + '% above</span> a typical ' + day + ' so far';
+                } else if (p <= -5) {
+                    html += ' · <span class="st-dow-delta behind">▼ ' + Math.abs(p) + '% below</span> a typical ' + day + ' so far';
+                } else {
+                    html += ' · <span class="st-dow-delta on">about average</span> for a ' + day + ' so far';
+                }
+            }
+            return html;
+        }
+        function buildDowTip(d) {
+            return 'Average of the last ' + d.weeks + ' ' + d.day + 's: $' + Math.round(d.avg).toLocaleString()
+                + ' for the full day, $' + Math.round(d.by_now).toLocaleString() + ' by this time of day';
+        }
+
         function pulseLive() {
             var $dot = $('#st-live-dot');
             if (!$dot.length) return;
@@ -364,6 +415,13 @@
                     $task.find('.st-row-status').html(buildStatusHtml(t));
                     var tip = buildTooltip(t);
                     $task.find('.st-bar, .st-row-status').attr('title', tip);
+                    if (t.dow_avg) {
+                        var $dow = $task.find('.st-dow');
+                        if (!$dow.length) {
+                            $dow = $('<div class="st-dow"></div>').appendTo($task);
+                        }
+                        $dow.html(buildDowHtml(t.dow_avg)).attr('title', buildDowTip(t.dow_avg));
+                    }
 
                     if (t.complete && !celebratedKeys[t.key]) {
                         celebratedKeys[t.key] = true;
