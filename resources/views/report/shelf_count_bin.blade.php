@@ -48,6 +48,8 @@
 #scCam video { width: 100%; display: block; border-radius: 10px; background: #000; }
 #scCam .sc-aim { position: absolute; left: 6%; right: 6%; top: 50%; height: 2px; background: #E0342B; box-shadow: 0 0 6px #E0342B; }
 #scCam .sc-camhint { position: absolute; left: 0; right: 0; bottom: 6px; text-align: center; color: #fff; font-size: 13px; text-shadow: 0 1px 2px #000; }
+/* Ask the ERP button sat on top of Done (Jon 11/8): lift it above the bottom bar on this page. */
+#erp-help-launcher { bottom: 130px !important; }
 .sc-bottom { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 2px solid #2E6B2E; padding: 10px 16px; display: flex; gap: 14px; justify-content: center; align-items: center; z-index: 10; }
 #scProg { font-size: 15px; color: #1F1B16; }
 .sc-sum td { padding: 6px 8px; border-top: 1px solid #F3ECE1; font-size: 14px; }
@@ -73,7 +75,7 @@
             <li>Record not on the list? Scan it.</li>
             <li>If a record was already counted in another bin this week, or you have more than the ERP says, it asks you first so nothing gets counted twice.</li>
             @if(count((array) $genres))<li>Wrong genre? Tap <b>Genre</b> on that record and pick the right one. It saves right away.</li>@endif
-            <li>Tap the green <b>Done</b> button at the bottom, then <b>Save</b>.</li>
+            <li>Tap the green <b>Done</b> button at the bottom. It saves and takes you back to the bins for the next one. Anything short goes on the Missing list.</li>
         </ol>
     </div>
     <div class="sc-sticky">
@@ -99,7 +101,7 @@
     <div id="scExtra"></div>
     <div id="scSummary"></div>
 </div>
-<div class="sc-bottom"><span class="sc-small" id="scProg" style="align-self:center;"></span><button class="sc-btn" id="scFinish" type="button">Done: review and save</button></div>
+<div class="sc-bottom"><span class="sc-small" id="scProg" style="align-self:center;"></span><button class="sc-btn" id="scFinish" type="button">Done: save, next bin</button></div>
 @endsection
 
 @section('javascript')
@@ -182,7 +184,7 @@
         document.getElementById('scExtraH').style.display = shownX.length ? '' : 'none';
         document.getElementById('scExtra').innerHTML = shownX.map(row).join('');
         var seen = items.filter(function (i) { return count[i.id] > 0; }).length, done = items.filter(function (i) { return touched[i.id]; }).length;
-        document.getElementById('scProg').textContent = done + ' of ' + items.length + ' titles counted (' + seen + ' found). Counts save when you tap Done, then Save. Genre changes save right away.'
+        document.getElementById('scProg').textContent = done + ' of ' + items.length + ' titles counted (' + seen + ' found). Counts save when you tap Done. Genre changes save right away.'
             + (findQ ? ' Showing ' + shown.length + ' matching "' + findQ + '".' : '');
     }
     // Search this list as you type (Sarah 11/3). Every word has to match
@@ -546,26 +548,24 @@
             alert(/NotAllowed|Permission|Security/i.test(m) ? 'Camera is blocked. Allow camera access for this site in your browser settings, then try again.' : 'Camera not available. ' + m);
         });
     });
-    document.getElementById('scFinish').addEventListener('click', function () {
-        var missing = items.filter(function (i) { return touched[i.id] && (count[i.id] || 0) < i.erp; });
-        var skipped = items.filter(function (i) { return !touched[i.id]; });
-        var rowsHtml = missing.map(function (i) { return '<tr><td>' + esc(label(i)) + '</td><td>ERP ' + i.erp + '</td><td class="miss">found ' + (count[i.id] || 0) + '</td></tr>'; }).join('');
-        document.getElementById('scSummary').innerHTML = '<div class="sc-h">Before saving</div><div>' + missing.length + ' titles you counted have fewer copies than the ERP says. If you looked everywhere (wall, shelves above), press Save. Otherwise keep scanning.</div>'
-            + '<table class="sc-sum">' + rowsHtml + '</table>'
-            + (skipped.length ? '<p>' + skipped.length + ' titles were not counted (not scanned, no + or -). They stay as they are in the ERP and are not marked missing.</p>' : '')
-            + '<p><button class="sc-btn" id="scSave" type="button">Save counts for this bin</button> <span class="sc-small" id="scSaveMsg"></span></p>';
-        document.getElementById('scSave').scrollIntoView({ behavior: 'smooth' });
-        document.getElementById('scSave').addEventListener('click', save);
-    });
+    // Done = save + back to the bin list for the next bin (Jon 11/8: one tap, no review step).
+    var BACK = '/reports/shelf-count?location_id=' + LOC + '&kind=' + encodeURIComponent(KIND);
+    document.getElementById('scFinish').addEventListener('click', save);
     function save() {
         // Only titles someone counted (Sarah 10/16: "what if she didnt count it yet?").
-        var all = (save.retry || items.concat(extra).filter(function (x) { return touched[x.id]; })), i = 0, failed = [], msg = document.getElementById('scSaveMsg'), btn = document.getElementById('scSave');
+        var all = (save.retry || items.concat(extra).filter(function (x) { return touched[x.id]; })), i = 0, failed = [], msg = document.getElementById('scProg'), btn = document.getElementById('scFinish');
+        if (!all.length) {
+            if (window.confirm('Nothing counted in this bin yet. Go back to the bins anyway?')) { saved = true; location.href = BACK; }
+            return;
+        }
         btn.disabled = true;
         (function next() {
             if (i >= all.length) {
-                if (failed.length) { msg.textContent = failed.length + ' did not save. Press Save again to retry them (nothing is lost).'; save.retry = failed; btn.disabled = false; return; }
+                if (failed.length) { msg.textContent = failed.length + ' did not save. Tap Done again to retry them (nothing is lost).'; save.retry = failed; btn.disabled = false; return; }
                 saved = true; save.retry = null; try { localStorage.removeItem(DRAFT); } catch (e) {}
-                msg.textContent = 'Saved ' + all.length + ' titles. Anything short is on the Missing list.'; return;
+                msg.textContent = 'Saved ' + all.length + ' titles. Going back to the bins...';
+                location.href = BACK;
+                return;
             }
             var x = all[i++];
             msg.textContent = 'Saving ' + i + ' of ' + all.length + '...';
