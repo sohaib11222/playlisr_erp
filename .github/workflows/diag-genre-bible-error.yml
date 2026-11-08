@@ -49,4 +49,7 @@ jobs:
             echo "log: $L"
             grep -n "GenreBible\|genre-bible\|ArtistGenreLookup\|genre_bible" "$L" | grep -i "error\|exception" | tail -4 | cut -c1-2500
             echo "--- last errors"
-            tail -c 400000 "$L" | grep "production.ERROR" | tail -3 | cut -c1-2500
+            tail -c 2000000 "$L" | grep -E "\.(ERROR|CRITICAL|EMERGENCY)" | tail -3 | cut -c1-2500
+            echo "--- php/web server errors"
+            ls -t storage/logs | head -5
+            curl -s -o /dev/null -w "local feed %{http_code}\n" https://playlist.nivessa.com/genre-bible.json
