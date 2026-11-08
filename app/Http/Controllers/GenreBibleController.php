@@ -40,16 +40,26 @@ class GenreBibleController extends Controller
         $overrides = (array) ($data['overrides'] ?? []);
         $counts = $data['counts'] ?? [];
 
+        $extra = (array) ($data['extra'] ?? []);
+        $added = $lookup->added();
+
         $rows = [];
-        foreach ($lookup->allArtists() as $key => $sheetBin) {
+        $all = $lookup->allArtists();
+        foreach ($extra as $key => $e) {
+            $all[$key] = null; // not on the sheet
+        }
+        foreach ($all as $key => $sheetBin) {
+            $key = (string) $key;
+            $genre = $sheetBin === null ? $extra[$key]['genre'] : ($overrides[$key]['genre'] ?? $sheetBin);
             $rows[] = [
-                'name' => $lookup->displayName($key),
+                'name' => $sheetBin === null ? $extra[$key]['name'] : $lookup->displayName($key),
                 'sheet' => $sheetBin,
-                'genre' => $overrides[$key]['genre'] ?? $sheetBin,
+                'genre' => $genre,
                 'counts' => $counts[$key] ?? [],
             ];
             $last = count($rows) - 1;
-            $rows[$last]['differs'] = $rows[$last]['genre'] !== $sheetBin;
+            $rows[$last]['differs'] = $sheetBin !== null && $genre !== $sheetBin;
+            $rows[$last]['added'] = isset($added[$key]);
             // Products not yet in the shown genre (what "Make all one genre" would move).
             $c = $rows[$last]['counts'];
             $rows[$last]['toMove'] = array_sum($c) - ($c[$rows[$last]['genre']] ?? 0);
@@ -66,10 +76,48 @@ class GenreBibleController extends Controller
             'rows' => $rows,
             'genres' => self::GENRES,
             'differCount' => count($overrides),
+            'extraCount' => count($extra),
             'updated' => $data['updated'] ?? null,
             'minProducts' => NivessaGenreBibleController::MIN_PRODUCTS,
             'canEdit' => auth()->user()->can('product.update'),
         ]);
+    }
+
+    /** "the carpenters" => ["the carpenters", "carpenters"] (and the reverse). */
+    private static function spellings(string $key): array
+    {
+        return strpos($key, 'the ') === 0 ? [$key, substr($key, 4)] : [$key, 'the ' . $key];
+    }
+
+    /**
+     * POST /genre-bible/artist {name, genre}: add an artist, or set the genre
+     * for one already listed. Also steers Mass Add (ArtistGenreLookup).
+     */
+    public function addArtist(Request $request, ArtistGenreLookup $lookup)
+    {
+        if (!auth()->user()->can('product.update')) {
+            abort(403);
+        }
+        $name = trim(preg_replace('/\s+/u', ' ', (string) $request->input('name')));
+        $genre = (string) $request->input('genre');
+        $key = $lookup->normalizeArtist($name);
+        if ($key === '' || mb_strlen($name) > 191 || !in_array($genre, self::GENRES, true)) {
+            return response()->json(['error' => 'Type an artist name and pick a genre.'], 422);
+        }
+        $existing = DB::table('genre_bible_artists')->where('artist_key', $key)->first();
+        if ($existing) {
+            DB::table('genre_bible_artists')->where('id', $existing->id)->update([
+                'name' => $name, 'genre' => $genre, 'created_by' => auth()->id(), 'updated_at' => now(),
+            ]);
+        } else {
+            DB::table('genre_bible_artists')->insert([
+                'artist_key' => $key, 'name' => $name, 'genre' => $genre,
+                'created_by' => auth()->id(), 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+        ArtistGenreLookup::flush();
+        Cache::forget(NivessaGenreBibleController::CACHE_KEY);
+        return response()->json(['ok' => true, 'updated' => (bool) $existing]);
     }
 
     /** POST /genre-bible/unify  {artist, genre} */
@@ -89,7 +137,8 @@ class GenreBibleController extends Controller
             ->join('categories as c', 'c.id', '=', 'p.sub_category_id')
             ->join('categories as pc', 'pc.id', '=', 'p.category_id')
             ->where('p.business_id', $businessId)
-            ->where('p.artist', $lookup->normalizeArtist($artist)) // case-insensitive collation
+            // Case-insensitive collation; "Carpenters" and "The Carpenters" are one artist.
+            ->whereIn('p.artist', self::spellings($lookup->normalizeArtist($artist)))
             ->whereRaw('LOWER(pc.name) REGEXP ?', [NivessaGenreBibleController::MUSIC_PARENT_REGEXP])
             ->get(['p.id', 'p.category_id', 'p.sub_category_id', 'c.name as sub_name', 'pc.name as parent_name']);
 

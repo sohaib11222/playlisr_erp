@@ -17,6 +17,9 @@ class ArtistGenreLookup
     /** @var array<string,string>|null normalized artist => bin label */
     private static $map = null;
 
+    /** @var array<string,array{name:string,genre:string}>|null staff-added artists */
+    private static $added = null;
+
     /**
      * Each spreadsheet bin -> ordered ERP category search terms. The store's
      * subcategory naming varies (e.g. "Hip-Hop" vs "Hip Hop", "R&B" vs
@@ -105,6 +108,35 @@ class ArtistGenreLookup
     }
 
     /**
+     * Artists added (or re-genred) by staff on the Genre Bible page:
+     * normalized => ['name' => ..., 'genre' => ...]. Empty if the table
+     * isn't there yet.
+     *
+     * @return array<string,array{name:string,genre:string}>
+     */
+    public function added(): array
+    {
+        if (self::$added === null) {
+            self::$added = [];
+            try {
+                foreach (\DB::table('genre_bible_artists')->get(['artist_key', 'name', 'genre']) as $r) {
+                    self::$added[(string) $r->artist_key] = ['name' => (string) $r->name, 'genre' => (string) $r->genre];
+                }
+            } catch (\Throwable $e) {
+                // Table not migrated yet: sheet only.
+            }
+        }
+        return self::$added;
+    }
+
+    /** Forget cached sheet + additions (after staff add an artist). */
+    public static function flush(): void
+    {
+        self::$map = null;
+        self::$added = null;
+    }
+
+    /**
      * Whole sheet: normalized artist => bin label.
      *
      * @return array<string,string>
@@ -120,6 +152,10 @@ class ArtistGenreLookup
      */
     public function displayName(string $normalized): string
     {
+        $added = $this->added();
+        if (isset($added[$normalized])) {
+            return $added[$normalized]['name'];
+        }
         static $names = null;
         if ($names === null) {
             $path = __DIR__ . '/data/artist_genre_names.json';
@@ -137,6 +173,10 @@ class ArtistGenreLookup
             $json = is_file($path) ? file_get_contents($path) : false;
             $decoded = $json !== false ? json_decode($json, true) : null;
             self::$map = is_array($decoded) ? $decoded : [];
+            // Staff additions from the Genre Bible page win over the sheet.
+            foreach ($this->added() as $key => $a) {
+                self::$map[$key] = $a['genre'];
+            }
         }
         return self::$map;
     }
