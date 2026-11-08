@@ -1,0 +1,45 @@
+# Read-only: estimates the share of customers with Hispanic/Latino surnames using the
+# US Census 2010 surname list (pcthispanic). Prints only aggregate counts to the log;
+# the per-customer CSV is a 1-day-retention artifact. Estimates, not self-reported data.
+name: Diag customer surname ethnicity
+
+on:
+  workflow_dispatch:
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Export customer names on prod
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          printf '%s\n' "$DEPLOY_SSH_KEY" > /tmp/k && chmod 600 /tmp/k
+          SSH="ssh -i /tmp/k -p ${{ steps.flags.outputs.ssh_port }} -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_HOST"
+          $SSH "echo 'PD9waHAKLy8gUmVhZC1vbmx5OiBjdXN0b21lciBuYW1lcyArIGhvbWUgc3RvcmUgKyBzYWxlcyBjb3VudC9uZXQgc3BlbmQgLT4gL3RtcC9jdXN0b21lcl9uYW1lcy5jc3YKJGJpZCA9IFxBcHBcQnVzaW5lc3M6OmZpcnN0KCktPmlkOwokbG9jcyA9IFxBcHBcQnVzaW5lc3NMb2NhdGlvbjo6d2hlcmUoJ2J1c2luZXNzX2lkJywgJGJpZCktPnBsdWNrKCduYW1lJywgJ2lkJyk7CiRyb3dzID0gXERCOjp0YWJsZSgndHJhbnNhY3Rpb25zJyktPnNlbGVjdCgnY29udGFjdF9pZCcsICdsb2NhdGlvbl9pZCcsIFxEQjo6cmF3KCdDT1VOVCgqKSBjJyksIFxEQjo6cmF3KCdTVU0oZmluYWxfdG90YWwpIGFtdCcpKQogICAgLT53aGVyZSgnYnVzaW5lc3NfaWQnLCAkYmlkKS0+d2hlcmUoJ3R5cGUnLCAnc2VsbCcpLT53aGVyZSgnc3RhdHVzJywgJ2ZpbmFsJyktPndoZXJlTm90TnVsbCgnY29udGFjdF9pZCcpCiAgICAtPmdyb3VwQnkoJ2NvbnRhY3RfaWQnLCAnbG9jYXRpb25faWQnKS0+Z2V0KCk7CiRob21lID0gW107ICRjbnQgPSBbXTsgJHNwZW5kID0gW107CmZvcmVhY2ggKCRyb3dzIGFzICRyKSB7CiAgICAkY250WyRyLT5jb250YWN0X2lkXSA9ICgkY250WyRyLT5jb250YWN0X2lkXSA/PyAwKSArICRyLT5jOwogICAgJHNwZW5kWyRyLT5jb250YWN0X2lkXSA9ICgkc3BlbmRbJHItPmNvbnRhY3RfaWRdID8/IDApICsgJHItPmFtdDsKICAgIGlmICghaXNzZXQoJGhvbWVbJHItPmNvbnRhY3RfaWRdKSB8fCAkci0+YyA+ICRob21lWyRyLT5jb250YWN0X2lkXVsxXSkgJGhvbWVbJHItPmNvbnRhY3RfaWRdID0gWyRyLT5sb2NhdGlvbl9pZCwgJHItPmNdOwp9CiRyZXQgPSBcREI6OnRhYmxlKCd0cmFuc2FjdGlvbnMnKS0+c2VsZWN0KCdjb250YWN0X2lkJywgXERCOjpyYXcoJ1NVTShmaW5hbF90b3RhbCkgYW10JykpLT53aGVyZSgnYnVzaW5lc3NfaWQnLCAkYmlkKQogICAgLT53aGVyZSgndHlwZScsICdzZWxsX3JldHVybicpLT53aGVyZU5vdE51bGwoJ2NvbnRhY3RfaWQnKS0+Z3JvdXBCeSgnY29udGFjdF9pZCcpLT5wbHVjaygnYW10JywgJ2NvbnRhY3RfaWQnKTsKJGZoID0gZm9wZW4oJy90bXAvY3VzdG9tZXJfbmFtZXMuY3N2JywgJ3cnKTsKZnB1dGNzdigkZmgsIFsnaWQnLCAnZmlyc3RfbmFtZScsICdsYXN0X25hbWUnLCAnbmFtZScsICdob21lX3N0b3JlJywgJ3NhbGVzJywgJ25ldF9zcGVuZCddKTsKJG4gPSAwOwpmb3JlYWNoIChcREI6OnRhYmxlKCdjb250YWN0cycpLT53aGVyZSgnYnVzaW5lc3NfaWQnLCAkYmlkKS0+d2hlcmUoJ2lzX2RlZmF1bHQnLCAwKS0+d2hlcmVJbigndHlwZScsIFsnY3VzdG9tZXInLCAnYm90aCddKQogICAgLT53aGVyZU51bGwoJ2RlbGV0ZWRfYXQnKS0+c2VsZWN0KCdpZCcsICdmaXJzdF9uYW1lJywgJ2xhc3RfbmFtZScsICduYW1lJyktPmN1cnNvcigpIGFzICRjKSB7CiAgICAkaCA9ICRob21lWyRjLT5pZF1bMF0gPz8gbnVsbDsKICAgIGZwdXRjc3YoJGZoLCBbJGMtPmlkLCAkYy0+Zmlyc3RfbmFtZSwgJGMtPmxhc3RfbmFtZSwgJGMtPm5hbWUsICRoID8gKCRsb2NzWyRoXSA/PyAkaCkgOiAnJywKICAgICAgICAkY250WyRjLT5pZF0gPz8gMCwgcm91bmQoKCRzcGVuZFskYy0+aWRdID8/IDApIC0gKCRyZXRbJGMtPmlkXSA/PyAwKSwgMildKTsKICAgICRuKys7Cn0KZmNsb3NlKCRmaCk7CmVjaG8gIkRPTkUgJG4gY29udGFjdHNcbiI7Cg==' | base64 -d > /tmp/cust_names.php && cd /www/playlist.nivessa.com/app && php artisan tinker /tmp/cust_names.php; rm -f /tmp/cust_names.php"
+          mkdir -p out
+          scp -i /tmp/k -P ${{ steps.flags.outputs.ssh_port }} -o StrictHostKeyChecking=no "$DEPLOY_USER@$DEPLOY_HOST:/tmp/customer_names.csv" out/raw.csv
+          $SSH "rm -f /tmp/customer_names.csv"
+          rm -f /tmp/k
+
+      - name: Score against Census surname list
+        run: |
+          curl -sSL -o names.zip https://www2.census.gov/topics/genealogy/2010surnames/names.zip
+          unzip -o -q names.zip
+          echo 'aW1wb3J0IGNzdiwgc3lzLCB1bmljb2RlZGF0YSwgcmUsIGNvbGxlY3Rpb25zCmNlbnN1cyA9IHt9CmZvciByIGluIGNzdi5EaWN0UmVhZGVyKG9wZW4oc3lzLmFyZ3ZbMV0sIGVuY29kaW5nPSdsYXRpbi0xJykpOgogICAgdiA9IHJbJ3BjdGhpc3BhbmljJ10KICAgIGlmIHYgbm90IGluICgnKFMpJywgJycpOiBjZW5zdXNbclsnbmFtZSddLnVwcGVyKCldID0gZmxvYXQodikKZGVmIG5vcm0ocyk6CiAgICBzID0gdW5pY29kZWRhdGEubm9ybWFsaXplKCdORktEJywgcyBvciAnJykuZW5jb2RlKCdhc2NpaScsICdpZ25vcmUnKS5kZWNvZGUoKS51cHBlcigpCiAgICByZXR1cm4gcmUuc3ViKHInW15BLVogXC1dJywgJycsIHMpCmRlZiBzdXJuYW1lX3Rva2Vucyhyb3cpOgogICAgbGFzdCA9IG5vcm0ocm93WydsYXN0X25hbWUnXSkuc3RyaXAoKQogICAgaWYgbm90IGxhc3Q6CiAgICAgICAgcGFydHMgPSBub3JtKHJvd1snbmFtZSddKS5zcGxpdCgpCiAgICAgICAgbGFzdCA9IHBhcnRzWy0xXSBpZiBsZW4ocGFydHMpID49IDIgZWxzZSAnJwogICAgcmV0dXJuIFt0IGZvciB0IGluIHJlLnNwbGl0KHInWyBcLV0rJywgbGFzdCkgaWYgbGVuKHQpID4gMSBhbmQgdCBub3QgaW4gKCdERScsJ0xBJywnREVMJywnTE9TJywnSlInLCdTUicsJ0lJJywnSUlJJyldCm91dCA9IGNzdi53cml0ZXIob3BlbihzeXMuYXJndlszXSwgJ3cnKSkKb3V0LndyaXRlcm93KFsnaWQnLCduYW1lJywnaG9tZV9zdG9yZScsJ3NhbGVzJywnbmV0X3NwZW5kJywnc3VybmFtZScsJ3BjdF9oaXNwYW5pY19zdXJuYW1lJywndGllciddKQpTID0gY29sbGVjdGlvbnMuZGVmYXVsdGRpY3QobGFtYmRhOiBjb2xsZWN0aW9ucy5Db3VudGVyKCkpClAgPSBjb2xsZWN0aW9ucy5kZWZhdWx0ZGljdChmbG9hdCkKZm9yIHIgaW4gY3N2LkRpY3RSZWFkZXIob3BlbihzeXMuYXJndlsyXSwgZW5jb2Rpbmc9J3V0Zi04JywgZXJyb3JzPSdyZXBsYWNlJykpOgogICAgdG9rcyA9IHN1cm5hbWVfdG9rZW5zKHIpCiAgICBzY29yZWQgPSBbKGNlbnN1c1t0XSwgdCkgZm9yIHQgaW4gdG9rcyBpZiB0IGluIGNlbnN1c10KICAgIHN0b3JlID0gclsnaG9tZV9zdG9yZSddIG9yICcobm8gcHVyY2hhc2VzKScKICAgIGdyb3VwcyA9IFsnQUxMJywgJ1NUT1JFOiAnICsgc3RvcmVdICsgKFsnQlVZRVJTICgxKyBzYWxlKSddIGlmIGludChyWydzYWxlcyddKSA+IDAgZWxzZSBbXSkKICAgIGlmIG5vdCB0b2tzOiBrZXkgPSAnbm9fc3VybmFtZScKICAgIGVsaWYgbm90IHNjb3JlZDoga2V5ID0gJ3VubWF0Y2hlZCcKICAgIGVsc2U6IGtleSA9ICdtYXRjaGVkJwogICAgcCwgdCA9IG1heChzY29yZWQpIGlmIHNjb3JlZCBlbHNlIChOb25lLCB0b2tzWzBdIGlmIHRva3MgZWxzZSAnJykKICAgIHRpZXIgPSAnJyBpZiBwIGlzIE5vbmUgZWxzZSAoJ2xpa2VseScgaWYgcCA+PSA3NSBlbHNlICdwb3NzaWJsZScgaWYgcCA+PSA0MCBlbHNlICd1bmxpa2VseScpCiAgICBmb3IgZyBpbiBncm91cHM6CiAgICAgICAgU1tnXVtrZXldICs9IDE7IFNbZ11bJ3RvdGFsJ10gKz0gMQogICAgICAgIGlmIHAgaXMgbm90IE5vbmU6IFBbZ10gKz0gcCAvIDEwMDsgU1tnXVt0aWVyXSArPSAxCiAgICBmdWxsID0gKCcgJy5qb2luKHggZm9yIHggaW4gW3JbJ2ZpcnN0X25hbWUnXSwgclsnbGFzdF9uYW1lJ11dIGlmIHgpLnN0cmlwKCkpIG9yIHJbJ25hbWUnXQogICAgb3V0LndyaXRlcm93KFtyWydpZCddLCBmdWxsLCBzdG9yZSwgclsnc2FsZXMnXSwgclsnbmV0X3NwZW5kJ10sIHQsICcnIGlmIHAgaXMgTm9uZSBlbHNlIHAsIHRpZXJdKQpwcmludChmInsnZ3JvdXAnOjQwfSB7J3RvdGFsJzo+N30geydtYXRjaGVkJzo+OH0geydlc3RfJWxhdGlubyc6PjExfSB7J2xpa2VseT49NzUnOj4xMH0geydwb3NzNDAtNzUnOj45fSB7J3VubWF0Y2hlZCc6Pjl9IHsnbm9fc3VybmFtZSc6PjEwfSIpCmZvciBnIGluIHNvcnRlZChTLCBrZXk9bGFtYmRhIGc6IChnIT0nQUxMJywgZyE9J0JVWUVSUyAoMSsgc2FsZSknLCBnKSk6CiAgICBjID0gU1tnXTsgbSA9IGNbJ21hdGNoZWQnXQogICAgZXN0ID0gMTAwICogUFtnXSAvIG0gaWYgbSBlbHNlIDAKICAgIHByaW50KGYie2c6NDB9IHtjWyd0b3RhbCddOjd9IHttOjh9IHtlc3Q6MTAuMWZ9JSB7Y1snbGlrZWx5J106MTB9IHtjWydwb3NzaWJsZSddOjl9IHtjWyd1bm1hdGNoZWQnXTo5fSB7Y1snbm9fc3VybmFtZSddOjEwfSIpCg==' | base64 -d > score.py
+          python3 score.py Names_2010Census.csv out/raw.csv out/customer_surname_scores.csv
+          rm -f out/raw.csv
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: customer-surname-scores
+          path: out/customer_surname_scores.csv
+          retention-days: 1
