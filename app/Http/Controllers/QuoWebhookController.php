@@ -249,6 +249,44 @@ class QuoWebhookController extends Controller
     }
 
     /** Map a Quo E.164-ish number string to our channel code, or null if unknown. */
+    /**
+     * Was this call picked up? Quo marks an answered call 'completed' (not
+     * 'answered'), so until 2026-11-08 every answered call landed in the Hub
+     * as "Missed call (completed)". A missed one is 'no-answer' (or
+     * unanswered / abandoned / busy / failed...).
+     */
+    public static function callWasAnswered(array $call): bool
+    {
+        if (!empty($call['answeredAt'])) {
+            return true;
+        }
+        return in_array((string) ($call['status'] ?? ''), ['answered', 'completed', 'ai-handled'], true);
+    }
+
+    /** Pico / Hollywood for a Quo phoneNumberId (PN...), via the API's number list, cached a day. */
+    private function channelForPhoneNumberId(?string $phoneNumberId): ?string
+    {
+        if (empty($phoneNumberId)) {
+            return null;
+        }
+        try {
+            $map = \Cache::remember('quo:phone-number-ids', 86400, function () {
+                $out = [];
+                $r = app(\App\Services\OpenPhoneService::class)->listPhoneNumbers();
+                foreach ((array) ($r['data'] ?? []) as $p) {
+                    $ch = Communication::QUO_NUMBERS[$p['number'] ?? ''] ?? null;
+                    if ($ch && !empty($p['id'])) {
+                        $out[$p['id']] = $ch;
+                    }
+                }
+                return $out;
+            });
+            return $map[$phoneNumberId] ?? null;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
     private function channelForNumber(?string $number): ?string
     {
         if (empty($number)) {
@@ -621,7 +659,7 @@ class QuoWebhookController extends Controller
                             continue;
                         }
                         $status = (string) ($call['status'] ?? '');
-                        if (in_array($status, ['answered', 'ai-handled'], true)) {
+                        if (self::callWasAnswered($call)) {
                             continue;
                         }
                         $externalId = !empty($call['id']) ? 'quo-call-' . $call['id'] : null;
@@ -744,11 +782,19 @@ class QuoWebhookController extends Controller
                 // events wouldn't fire on this account) — resource.from/to
                 // is a best-effort fallback alongside the documented
                 // context.participants shape.
+                // 2026-11-08: answered calls come through as 'completed', and
+                // outgoing calls (staff calling a customer) fire this event too;
+                // only an incoming call nobody picked up is a missed call.
                 $status = (string) ($resource['status'] ?? '');
-                if (!in_array($status, ['answered', 'ai-handled'], true)) {
+                $direction = (string) ($resource['direction'] ?? '');
+                if ($direction !== 'outgoing' && !self::callWasAnswered($resource)) {
                     $workspaceNumber = $context['participants']['workspace'][0] ?? $resource['to'] ?? null;
+                    $workspaceNumber = is_array($workspaceNumber) ? ($workspaceNumber[0] ?? null) : $workspaceNumber;
                     $callerNumber = $context['participants']['external'][0] ?? $resource['from'] ?? null;
-                    $channel = $this->channelForNumber($workspaceNumber) ?? 'other';
+                    $callerNumber = is_array($callerNumber) ? ($callerNumber[0] ?? null) : $callerNumber;
+                    $channel = $this->channelForNumber($workspaceNumber)
+                        ?? $this->channelForPhoneNumberId($resource['phoneNumberId'] ?? null)
+                        ?? 'other';
 
                     $message = 'Missed call' . ($status !== '' ? ' (' . $status . ')' : '') . '.';
                     if (!empty($resource['hasVoicemail'])) {
