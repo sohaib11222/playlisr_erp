@@ -1,0 +1,60 @@
+# READ-ONLY diagnostic: dump a sale by invoice/receipt number — transaction
+# totals, sell lines (incl. returns, line discounts, tax), payments, and any
+# return transactions — to explain receipt math that doesn't add up. No writes.
+name: Diag receipt invoice
+
+on:
+  workflow_dispatch:
+    inputs:
+      invoice_no:
+        description: "Receipt / invoice number, e.g. 35045"
+        required: true
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+
+      - name: Dump sale by invoice number (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DIAG_INVOICE: ${{ github.event.inputs.invoice_no }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          envs: DIAG_INVOICE
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            export DIAG_INVOICE
+            php artisan tinker --no-ansi <<'PHP'
+            $inv = trim((string) getenv('DIAG_INVOICE')); $txs = \Illuminate\Support\Facades\DB::table('transactions')->where('invoice_no', $inv)->get(); echo "TX_JSON: " . $txs->toJson() . "\n"; foreach ($txs as $t) { $l = \Illuminate\Support\Facades\DB::table('transaction_sell_lines as tsl')->leftJoin('products as p', 'p.id', '=', 'tsl.product_id')->where('tsl.transaction_id', $t->id)->select('tsl.*', 'p.name as pname', 'p.sku')->get(); echo "LINES_{$t->id}_JSON: " . $l->toJson() . "\n"; $pay = \Illuminate\Support\Facades\DB::table('transaction_payments')->where('transaction_id', $t->id)->get(); echo "PAY_{$t->id}_JSON: " . $pay->toJson() . "\n"; $ret = \Illuminate\Support\Facades\DB::table('transactions')->where('return_parent_id', $t->id)->get(); echo "RETURNS_{$t->id}_JSON: " . $ret->toJson() . "\n"; }
+            PHP
+            echo "=== done ==="
