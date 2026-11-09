@@ -56,7 +56,24 @@ jobs:
             export DIAG_INVOICE
             php artisan tinker --no-ansi <<'PHP'
             $inv = trim((string) getenv('DIAG_INVOICE')); $txs = \Illuminate\Support\Facades\DB::table('transactions')->where('invoice_no', $inv)->get(); echo "TX_JSON: " . $txs->toJson() . "\n"; foreach ($txs as $t) { $l = \Illuminate\Support\Facades\DB::table('transaction_sell_lines as tsl')->leftJoin('products as p', 'p.id', '=', 'tsl.product_id')->where('tsl.transaction_id', $t->id)->select('tsl.*', 'p.name as pname', 'p.sku')->get(); echo "LINES_{$t->id}_JSON: " . $l->toJson() . "\n"; $pay = \Illuminate\Support\Facades\DB::table('transaction_payments')->where('transaction_id', $t->id)->get(); echo "PAY_{$t->id}_JSON: " . $pay->toJson() . "\n"; $ret = \Illuminate\Support\Facades\DB::table('transactions')->where('return_parent_id', $t->id)->get(); echo "RETURNS_{$t->id}_JSON: " . $ret->toJson() . "\n"; }
-            try { $t = $txs->first(); $from = \Carbon\Carbon::parse($t->transaction_date)->subMinutes(60); $to = \Carbon\Carbon::parse($t->transaction_date)->addMinutes(60); $cp = \Illuminate\Support\Facades\DB::table('clover_payments')->whereBetween('paid_at', [$from->copy()->subHours(9), $to->copy()->addHours(9)])->orderBy('paid_at')->get(); echo "CLOVER_JSON: " . $cp->toJson() . "\n"; } catch (\Throwable $e) { echo "CLOVER_ERR: " . $e->getMessage() . "\n"; }
-            try { $near = \Illuminate\Support\Facades\DB::table('transactions')->where('type','sell')->where('location_id',$t->location_id)->whereBetween('transaction_date',[$from,$to])->select('id','invoice_no','transaction_date','final_total','total_before_tax','tax_amount','status','contact_id')->orderBy('transaction_date')->get(); echo "NEARBY_JSON: " . $near->toJson() . "\n"; } catch (\Throwable $e) { echo "NEARBY_ERR: " . $e->getMessage() . "\n"; }
             PHP
+            cat > /tmp/diag_clover.php <<'PHPX'
+            <?php
+            require '/www/playlist.nivessa.com/app/vendor/autoload.php';
+            $app = require '/www/playlist.nivessa.com/app/bootstrap/app.php';
+            $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+            use Illuminate\Support\Facades\DB;
+            $inv = getenv('DIAG_INVOICE');
+            $t = DB::table('transactions')->where('invoice_no', $inv)->first();
+            $from = date('Y-m-d H:i:s', strtotime($t->transaction_date) - 3600);
+            $to = date('Y-m-d H:i:s', strtotime($t->transaction_date) + 3600);
+            echo "CLOVER_COLS: " . json_encode(DB::getSchemaBuilder()->getColumnListing('clover_payments')) . "\n";
+            $cp = DB::table('clover_payments')->whereBetween('paid_at', [date('Y-m-d H:i:s', strtotime($from) - 9*3600), date('Y-m-d H:i:s', strtotime($to) + 9*3600)])->orderBy('paid_at')->get();
+            echo "CLOVER_JSON: " . $cp->toJson() . "\n";
+            $near = DB::table('transactions')->where('type','sell')->where('location_id',$t->location_id)->whereBetween('transaction_date',[$from,$to])->select('id','invoice_no','transaction_date','final_total','total_before_tax','tax_amount','status','contact_id')->orderBy('transaction_date')->get();
+            echo "NEARBY_JSON: " . $near->toJson() . "\n";
+            PHPX
+            sed -i 's/^            //' /tmp/diag_clover.php
+            DIAG_INVOICE="$DIAG_INVOICE" php /tmp/diag_clover.php 2>&1 | tail -c 60000
+            rm -f /tmp/diag_clover.php
             echo "=== done ==="
