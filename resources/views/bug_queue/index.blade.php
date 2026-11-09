@@ -160,7 +160,7 @@
 	@empty
 		<div class="bq-empty">
 			@if($tab === 'review') Nothing waiting for approval right now.
-			@elseif($tab === 'open') No open bugs. Nice.
+			@elseif($tab === 'open') No open bugs right now.
 			@elseif($tab === 'mine') You have not reported anything yet.
 			@elseif($tab === 'tagged') Nobody has tagged you yet.
 			@else Nothing here yet.
