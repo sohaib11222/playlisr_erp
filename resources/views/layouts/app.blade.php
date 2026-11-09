@@ -124,6 +124,10 @@
 
         @include('layouts.partials.help-assistant')
 
+        @if(!$pos_layout)
+            @include('layouts.partials.bug-report-button')
+        @endif
+
         @include('layouts.partials.listing_check_modal')
 
         <div class="modal fade view_modal" tabindex="-1" role="dialog"

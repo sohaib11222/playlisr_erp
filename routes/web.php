@@ -84,6 +84,14 @@ Route::middleware(['setData'])->group(function () {
     Route::match(['get', 'post'], '/webhooks/ebay/marketplace-account-deletion', 'EbayMarketplaceDeletionController@handle')
         ->name('ebay.marketplace_deletion');
 
+    // Bug queue API for the ERP bugs routine (Sarah 2026-11-09). Bearer =
+    // a GitHub token with push access to the ERP repo, checked in
+    // BugQueueController. Outside auth + CSRF.
+    Route::get('/bug-queue/api/pending', 'BugQueueController@apiPending')->middleware('throttle:60,1');
+    Route::get('/bug-queue/api/{id}/screenshot', 'BugQueueController@apiScreenshot')->where('id', '[0-9]+')->middleware('throttle:120,1');
+    Route::post('/bug-queue/api/report', 'BugQueueController@apiReport')->middleware('throttle:60,1');
+    Route::post('/bug-queue/api/{id}/update', 'BugQueueController@apiUpdate')->where('id', '[0-9]+')->middleware('throttle:60,1');
+
     // Quo (phone) webhook — signature-verified in the controller. Must be
     // outside the auth group (Quo calls us) and outside CSRF (see
     // VerifyCsrfToken::$except). Logs message.received/call.missed straight
@@ -1645,6 +1653,17 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/shift-notes/preview', 'CashRegisterController@shiftNotesPreview');
     // Admin-only: daily register reconciliation flags -> Slack. Preview any
     // day, set the #register-reconciliation webhook, post on demand.
+    // Bug Fixes queue (Sarah 2026-11-09): staff report bugs/fix requests
+    // from any page, admins approve the routine's fix PRs here.
+    Route::get('/bug-fixes', 'BugQueueController@index');
+    Route::post('/bug-fixes/report', 'BugQueueController@report');
+    Route::get('/bug-fixes/{id}/screenshot', 'BugQueueController@screenshot')->where('id', '[0-9]+');
+    Route::post('/bug-fixes/{id}/answer', 'BugQueueController@answer')->where('id', '[0-9]+');
+    Route::post('/bug-fixes/{id}/approve', 'BugQueueController@approve')->where('id', '[0-9]+');
+    Route::post('/bug-fixes/{id}/send-back', 'BugQueueController@sendBack')->where('id', '[0-9]+');
+    Route::post('/bug-fixes/{id}/wont-fix', 'BugQueueController@wontFix')->where('id', '[0-9]+');
+    Route::post('/bug-fixes/{id}/reopen', 'BugQueueController@reopen')->where('id', '[0-9]+');
+
     Route::get('/register-recon', 'RegisterReconController@index');
     Route::post('/register-recon/settings', 'RegisterReconController@saveSettings');
     Route::post('/register-recon/post', 'RegisterReconController@postNow');

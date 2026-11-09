@@ -30,5 +30,6 @@ class VerifyCsrfToken extends BaseVerifier
         '/webhooks/instagram',
         '/supplier-harvest/*',
         '/sell-quote/*',
+        '/bug-queue/api/*',
     ];
 }

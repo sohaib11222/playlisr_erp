@@ -35,6 +35,10 @@ class AdminSidebarMenu
             //Zella/Nick end their shift here; posts to #shift-notes).
             $menu->url(url('/shift-notes/end'), 'End Shift', ['icon' => 'fa fas fa-clock', 'active' => request()->segment(1) == 'shift-notes'])->order(6);
 
+            //Bug Fixes: everyone reports bugs / fix requests and follows them;
+            //admins approve fixes here (Sarah 2026-11-09).
+            $menu->url(url('/bug-fixes'), 'Bug Fixes', ['icon' => 'fa fas fa-bug', 'active' => request()->segment(1) == 'bug-fixes'])->order(6);
+
             //EOS: leadership team only (admins + store managers).
             if ($is_admin || \App\Http\Controllers\ManagerChecklistController::currentManagerKey()) {
                 $menu->url(url('/eos'), 'EOS', ['icon' => 'fa fas fa-compass', 'active' => request()->segment(1) == 'eos'])->order(7);
