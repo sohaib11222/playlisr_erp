@@ -90,6 +90,7 @@ Route::middleware(['setData'])->group(function () {
     Route::get('/bug-queue/api/pending', 'BugQueueController@apiPending')->middleware('throttle:60,1');
     Route::get('/bug-queue/api/{id}/screenshot', 'BugQueueController@apiScreenshot')->where('id', '[0-9]+')->middleware('throttle:120,1');
     Route::post('/bug-queue/api/report', 'BugQueueController@apiReport')->middleware('throttle:60,1');
+    Route::post('/bug-queue/api/digest', 'BugQueueController@apiDigest')->middleware('throttle:10,1');
     Route::post('/bug-queue/api/{id}/update', 'BugQueueController@apiUpdate')->where('id', '[0-9]+')->middleware('throttle:60,1');
 
     // Quo (phone) webhook — signature-verified in the controller. Must be

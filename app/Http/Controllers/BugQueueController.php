@@ -551,6 +551,34 @@ class BugQueueController extends Controller
         return response(Storage::get($path))->header('Content-Type', Storage::mimeType($path));
     }
 
+
+    /**
+     * POST /bug-queue/api/digest — end of the daily fixer run: one Slack DM
+     * to Sarah and Jon with how many fixes wait for approval (none if zero).
+     */
+    public function apiDigest(Request $request)
+    {
+        if (!$this->routineAuthorized($request)) {
+            return response()->json(['error' => 'unauthorized'], 401);
+        }
+        $n = DB::table('erp_bug_reports')->where('status', 'fix_ready')->count();
+        $open = DB::table('erp_bug_reports')->whereIn('status', ['new', 'rework', 'needs_info'])->count();
+        if ($n === 0) {
+            return response()->json(['ok' => true, 'sent' => false, 'ready' => 0]);
+        }
+        $business_id = (int) DB::table('business')->orderBy('id')->value('id');
+        $approvers = [];
+        foreach (self::taggableUsers($business_id) as $u) {
+            $first = strtolower(strtok($u[1], ' '));
+            if (in_array($first, ['sarah', 'jon', 'jonathan'], true)) {
+                $approvers[] = $u[0];
+            }
+        }
+        self::notify($business_id, $approvers, $n . ' bug ' . ($n === 1 ? 'fix is' : 'fixes are') . ' ready to approve'
+            . ($open ? ' (' . $open . ' still open)' : '') . ': ' . url('/bug-fixes?tab=review'));
+        return response()->json(['ok' => true, 'sent' => true, 'ready' => $n, 'approvers' => count($approvers)]);
+    }
+
     /** POST /bug-queue/api/report — routine imports a #erp-bugs Slack post. */
     public function apiReport(Request $request)
     {
