@@ -128,7 +128,7 @@
         if (window.html2canvas) return cb();
         var s = document.createElement('script');
         s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-        s.onload = cb; s.onerror = function () { cb(new Error('load')); };
+        s.onload = function () { cb(); }; s.onerror = function () { cb(new Error('load')); };
         document.head.appendChild(s);
     }
 
@@ -159,7 +159,7 @@
                     x: window.scrollX, y: window.scrollY, width: window.innerWidth, height: window.innerHeight,
                     ignoreElements: function (el) { return el.id === 'erp-bug-overlay' || el.id === 'erp-bug-launcher' || el.id === 'erp-help-root'; }
                 }).then(function (canvas) {
-                    canvas.toBlob(function (b) { autoShot = b; renderPic(); }, 'image/jpeg', 0.75);
+                    try { canvas.toBlob(function (b) { autoShot = b; renderPic(); }, 'image/jpeg', 0.75); } catch (e) { renderPic(); }
                 }).catch(function () { renderPic(); });
             } catch (e) { renderPic(); }
         });
