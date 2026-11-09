@@ -3,7 +3,7 @@
 # format/genre categories matched and the sold / on-hand numbers behind it.
 # Writes nothing.
 
-name: Diag buy demand (one-off: close answered calls logged as missed)
+name: "Diag buy demand (one-off - close answered calls logged as missed)"
 
 on:
   workflow_dispatch:
