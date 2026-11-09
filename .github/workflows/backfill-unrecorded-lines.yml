@@ -1,0 +1,80 @@
+# Adds an "Unrecorded item (register glitch)" line to sales that lost a cart
+# row to the POS index bug (PR #343), so items + tax = what was charged.
+# Runs `php artisan nivessa:backfill-unrecorded-lines`. DRY RUN by default.
+# Tick "commit" to write (undo log saved; pass its path in "undo" to revert).
+
+name: Backfill unrecorded sell lines
+
+on:
+  workflow_dispatch:
+    inputs:
+      since:
+        description: 'Only sales on/after (YYYY-MM-DD)'
+        default: "2026-01-01"
+      until:
+        description: 'Only sales before (YYYY-MM-DD HH:MM:SS, blank = now)'
+        default: ""
+      undo:
+        description: 'Undo log path to restore (ignores the rest)'
+        default: ""
+      commit:
+        description: 'Actually write? (leave unchecked for a dry run)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1 && exit 0
+            sleep 3
+          done
+          exit 0
+
+      - name: Run nivessa:backfill-unrecorded-lines
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          SINCE: ${{ github.event.inputs.since }}
+          UNTIL: ${{ github.event.inputs.until }}
+          UNDO: ${{ github.event.inputs.undo }}
+          COMMIT: ${{ github.event.inputs.commit }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          envs: SINCE,UNTIL,UNDO,COMMIT
+          script_stop: false
+          command_timeout: 15m
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app || { echo "cd failed"; exit 0; }
+            set --
+            if [ -n "$UNDO" ]; then
+              set -- --undo="$UNDO"
+            else
+              set -- --since="$SINCE"
+              [ -n "$UNTIL" ] && set -- "$@" --until="$UNTIL"
+            fi
+            [ "$COMMIT" = "true" ] && set -- "$@" --commit
+            echo "=== php artisan nivessa:backfill-unrecorded-lines $* ==="
+            php artisan nivessa:backfill-unrecorded-lines "$@" 2>&1
+            echo "=== artisan exit code: $? ==="
+            exit 0
