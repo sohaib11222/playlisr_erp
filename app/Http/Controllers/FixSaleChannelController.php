@@ -137,16 +137,17 @@ class FixSaleChannelController extends Controller
 
         $tx = Transaction::where('business_id', $business_id)
             ->where('invoice_no', $invoice)
-            ->select('id', 'invoice_no', 'channel', 'final_total', 'location_id', 'created_by')
+            ->select('id', 'invoice_no', 'channel', 'is_whatnot', 'final_total', 'location_id', 'created_by')
             ->first();
         if (!$tx) {
             return redirect('/admin/fix-channel')
                 ->with('status', 'No ERP sale found with invoice ' . $invoice);
         }
 
-        if (strtolower((string) $tx->channel) === $newChannel) {
+        $flagMatches = ((int) $tx->is_whatnot === 1) === ($newChannel === 'whatnot');
+        if (strtolower((string) $tx->channel) === $newChannel && $flagMatches) {
             return redirect('/admin/fix-channel?invoice=' . urlencode($invoice))
-                ->with('status', '✓ Channel already ' . $newChannel . ' — nothing to change.');
+                ->with('status', 'Channel already ' . $newChannel . ', nothing to change.');
         }
 
         $now = \Carbon\Carbon::now();
@@ -162,6 +163,7 @@ class FixSaleChannelController extends Controller
                     'invoice_no' => $tx->invoice_no,
                     'old_channel' => $tx->channel,
                     'new_channel' => $newChannel,
+                    'old_is_whatnot' => (int) $tx->is_whatnot,
                     'final_total' => (float) $tx->final_total,
                     'location_id' => (int) $tx->location_id,
                     'created_by' => (int) $tx->created_by,
@@ -169,8 +171,12 @@ class FixSaleChannelController extends Controller
             ], JSON_PRETTY_PRINT)
         );
 
+        // Keep the legacy is_whatnot flag in step with channel. Sales lists,
+        // the Whatnot filter and several reports still read is_whatnot, so
+        // flipping only `channel` left fixed sales showing as Whatnot.
         Transaction::where('id', $tx->id)->update([
             'channel' => $newChannel,
+            'is_whatnot' => $newChannel === 'whatnot' ? 1 : 0,
             'updated_at' => $now,
         ]);
 
