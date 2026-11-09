@@ -162,6 +162,11 @@
             </a>
           </li>
           <li>
+            <a href="#" onclick="if(window.erpOpenBugReport){window.erpOpenBugReport();} return false;">
+              <i class="fa fa-bug text-danger" aria-hidden="true"></i>&nbsp; Report a bug or a fix
+            </a>
+          </li>
+          <li>
             <a href="{{$go_back_url}}" title="{{ __('lang_v1.go_back') }}">
               <i class="fa fa-backward text-info" aria-hidden="true"></i>&nbsp; Back to Home
             </a>

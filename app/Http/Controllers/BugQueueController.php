@@ -142,6 +142,109 @@ class BugQueueController extends Controller
         return $u ? trim($u->first_name . ' ' . $u->last_name) : 'Someone';
     }
 
+
+    /** Current staff for the tag picker: [[id, name], ...], Sarah and Jon first. */
+    public static function taggableUsers(int $business_id): array
+    {
+        if ($business_id <= 0) {
+            return [];
+        }
+        return \Cache::remember('bug_queue_taggable_' . $business_id, 600, function () use ($business_id) {
+            $rows = DB::table('users')->where('business_id', $business_id)->whereNull('deleted_at')
+                ->where('status', 'active')->where('allow_login', 1)->where('user_type', 'user')
+                ->orderBy('first_name')->get(['id', 'first_name', 'last_name']);
+            $out = [];
+            foreach ($rows as $u) {
+                $name = trim($u->first_name . ' ' . $u->last_name);
+                if ($name === '') {
+                    continue;
+                }
+                $first = strtolower(trim($u->first_name));
+                $rank = in_array($first, ['sarah'], true) ? 0 : (in_array($first, ['jon', 'jonathan'], true) ? 1 : 2);
+                $out[] = ['id' => (int) $u->id, 'name' => $name, 'rank' => $rank];
+            }
+            usort($out, function ($a, $b) {
+                return [$a['rank'], $a['name']] <=> [$b['rank'], $b['name']];
+            });
+            return array_map(function ($u) {
+                return [$u['id'], $u['name']];
+            }, $out);
+        });
+    }
+
+    private static function idList(?string $csv): array
+    {
+        return array_values(array_filter(array_map('intval', explode(',', (string) $csv))));
+    }
+
+    private static function userNames(array $ids): array
+    {
+        if (!$ids) {
+            return [];
+        }
+        return DB::table('users')->whereIn('id', $ids)->get(['id', 'first_name', 'last_name'])
+            ->mapWithKeys(function ($u) {
+                return [(int) $u->id => trim($u->first_name . ' ' . $u->last_name)];
+            })->all();
+    }
+
+    /** Slack DM each user (best effort, never throws). */
+    private static function notify(int $business_id, array $user_ids, string $text): void
+    {
+        try {
+            $ids = \App\Services\TimeClockService::slackIds($business_id);
+            foreach (array_unique($user_ids) as $uid) {
+                if (!empty($ids[$uid])) {
+                    $r = \App\Services\TimeClockService::slackDm($ids[$uid], $text);
+                    if (!$r['ok']) {
+                        \Log::info('bug queue DM to user ' . $uid . ' failed: ' . $r['error']);
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            \Log::info('bug queue notify failed: ' . $e->getMessage());
+        }
+    }
+
+    private static function short(string $text, int $n = 160): string
+    {
+        $t = preg_replace('/\s+/', ' ', trim($text));
+        return mb_strlen($t) > $n ? mb_substr($t, 0, $n - 3) . '...' : $t;
+    }
+
+    /** Server errors logged in the 15 minutes before a report (for the fixer). */
+    private static function nearbyErrors(string $created_at): array
+    {
+        try {
+            $t = \Carbon\Carbon::parse($created_at);
+            $from = $t->copy()->subMinutes(15)->format('Y-m-d H:i:s');
+            $to = $t->copy()->addMinutes(2)->format('Y-m-d H:i:s');
+            $files = [storage_path('logs/laravel-' . $t->format('Y-m-d') . '.log'), storage_path('logs/laravel.log')];
+            $out = [];
+            foreach ($files as $f) {
+                if (!is_file($f)) {
+                    continue;
+                }
+                $size = filesize($f);
+                $fh = fopen($f, 'r');
+                fseek($fh, max(0, $size - 4 * 1024 * 1024));
+                while (($line = fgets($fh)) !== false) {
+                    if (preg_match('/^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] \w+\.(ERROR|CRITICAL|EMERGENCY|ALERT)/', $line, $m)
+                        && $m[1] >= $from && $m[1] <= $to) {
+                        $out[] = mb_substr(trim($line), 0, 600);
+                    }
+                }
+                fclose($fh);
+                if ($out) {
+                    break;
+                }
+            }
+            return array_slice(array_values(array_unique($out)), -8);
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
     // ------------------------------------------------------------ staff pages
 
     public function index(Request $request)
@@ -161,6 +264,7 @@ class BugQueueController extends Controller
             'done' => ['Fixed', ['merged']],
             'wont_fix' => ["Won't fix", ['wont_fix']],
             'mine' => ['My reports', null],
+            'tagged' => ['Tagged me', null],
         ];
         if (!isset($tabs[$tab])) {
             $tab = 'open';
@@ -168,10 +272,18 @@ class BugQueueController extends Controller
         $list = clone $q;
         if ($tab === 'mine') {
             $list->where('reported_by', auth()->id());
+        } elseif ($tab === 'tagged') {
+            $list->where('tagged_user_ids', 'like', '%,' . (int) auth()->id() . ',%');
         } else {
             $list->whereIn('status', $tabs[$tab][1]);
         }
         $reports = $list->orderByRaw($tab === 'done' ? 'merged_at desc' : 'created_at desc')->limit(200)->get();
+
+        $all_tagged = [];
+        foreach ($reports as $r) {
+            $all_tagged = array_merge($all_tagged, self::idList($r->tagged_user_ids));
+        }
+        $tag_names = self::userNames(array_unique($all_tagged));
 
         $tab_counts = [];
         foreach ($tabs as $k => $t) {
@@ -190,6 +302,7 @@ class BugQueueController extends Controller
             'labels' => self::STATUS_LABELS,
             'routine_seen' => $routine_seen,
             'have_token' => self::storedToken() !== null,
+            'tag_names' => $tag_names,
         ]);
     }
 
@@ -200,6 +313,10 @@ class BugQueueController extends Controller
             'description' => 'required|string|max:5000',
             'screenshot' => 'nullable|image|max:8192',
         ]);
+        $business_id_for_tags = (int) $request->session()->get('user.business_id');
+        $allowed = array_column(self::taggableUsers($business_id_for_tags), 0);
+        $tagged = array_values(array_intersect(array_map('intval', (array) $request->input('tagged', [])), $allowed));
+        $context = mb_substr((string) $request->input('context'), 0, 6000);
         $business_id = (int) $request->session()->get('user.business_id');
         $location = null;
         try {
@@ -214,6 +331,8 @@ class BugQueueController extends Controller
             'business_id' => $business_id ?: null,
             'reported_by' => auth()->id(),
             'reporter_name' => $this->userName(),
+            'tagged_user_ids' => $tagged ? ',' . implode(',', $tagged) . ',' : null,
+            'client_context' => $context !== '' ? $context : null,
             'source' => 'erp',
             'kind' => $request->input('kind') === 'request' ? 'request' : 'bug',
             'page_url' => substr((string) $request->input('page_url'), 0, 1000),
@@ -227,6 +346,12 @@ class BugQueueController extends Controller
         if ($request->hasFile('screenshot')) {
             $path = $request->file('screenshot')->storeAs('bug-queue/screenshots', $id . '.' . $request->file('screenshot')->extension());
             DB::table('erp_bug_reports')->where('id', $id)->update(['screenshot_path' => $path]);
+        }
+
+        if ($tagged) {
+            $kind = $request->input('kind') === 'request' ? 'a fix request' : 'a bug';
+            self::notify($business_id, $tagged, $this->userName() . ' tagged you on ' . $kind . ' (#' . $id . '): "'
+                . self::short((string) $request->input('description')) . '" ' . url('/bug-fixes?tab=tagged#bug-' . $id));
         }
 
         if ($request->ajax() || $request->wantsJson()) {
@@ -291,6 +416,12 @@ class BugQueueController extends Controller
             ]);
             if ($row->branch) {
                 self::github('DELETE', '/repos/' . self::REPO . '/git/refs/heads/' . $row->branch, $token);
+            }
+            $who = array_merge($row->reported_by ? [(int) $row->reported_by] : [], self::idList($row->tagged_user_ids));
+            $who = array_diff($who, [(int) auth()->id()]);
+            if ($who) {
+                self::notify((int) $row->business_id, $who, 'Fixed: #' . $row->id . ' "' . self::short((string) $row->description, 100)
+                    . '" goes live in a few minutes. ' . self::short((string) $row->fix_summary, 300) . ' ' . url('/bug-fixes?tab=done#bug-' . $row->id));
             }
             return back()->with('status', ['success' => true, 'msg' => 'Bug #' . $row->id . ' approved. It goes live in a few minutes.']);
         }
@@ -391,6 +522,9 @@ class BugQueueController extends Controller
                 'kind' => $r->kind,
                 'slack_ts' => $r->slack_ts,
                 'reporter' => $r->reporter_name,
+                'tagged' => array_values(self::userNames(self::idList($r->tagged_user_ids))),
+                'browser_context' => $r->client_context ? json_decode($r->client_context, true) : null,
+                'server_errors_near_report_time' => self::nearbyErrors((string) $r->created_at),
                 'store' => $r->location_name,
                 'page_url' => $r->page_url,
                 'description' => $r->description,
@@ -489,6 +623,10 @@ class BugQueueController extends Controller
             $upd['merged_at'] = now();
         }
         DB::table('erp_bug_reports')->where('id', $row->id)->update($upd);
+        if ($status === 'needs_info' && $row->reported_by && !empty($upd['question'])) {
+            self::notify((int) $row->business_id, [(int) $row->reported_by], 'Quick question about your report #' . $row->id . ': '
+                . self::short($upd['question'], 300) . ' Answer here: ' . url('/bug-fixes?tab=mine#bug-' . $row->id));
+        }
         return response()->json(['ok' => true, 'id' => $row->id, 'status' => $status, 'review_url' => url('/bug-fixes?tab=review')]);
     }
 }

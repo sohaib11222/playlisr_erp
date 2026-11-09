@@ -52,9 +52,9 @@
 		<div class="bq-head">
 			<div>
 				<h2>Bug Fixes</h2>
-				<div class="bq-sub">Report a bug or a fix with the button at the bottom right of any page, then follow it here. Every fix is checked by Sarah or Jon before it goes live.</div>
+				<div class="bq-sub">Use the Report a bug or a fix button at the bottom right of any page (on the POS it is in the menu), then follow it here. Tag anyone and they get a Slack message. Every fix is checked by Sarah or Jon before it goes live.</div>
 			</div>
-			<button type="button" class="bq-btn" onclick="document.getElementById('erp-bug-launcher') ? document.getElementById('erp-bug-launcher').click() : null">Report a bug or a fix</button>
+			<button type="button" class="bq-btn bq-btn-go" onclick="window.erpOpenBugReport && window.erpOpenBugReport()">Report a bug or a fix</button>
 		</div>
 		@if($is_admin)
 			<div class="bq-sub" style="margin-top:10px;">
@@ -83,6 +83,8 @@
 				@if($r->source === 'slack') (from #erp-bugs) @endif
 				on {{ \Carbon\Carbon::parse($r->created_at)->format('m/d/y g:ia') }}
 				@if($r->page_url) &middot; <a href="{{ $r->page_url }}" target="_blank" rel="noopener">page</a>@endif
+				@php $__tags = array_filter(array_map(function ($i) use ($tag_names) { return $tag_names[(int) $i] ?? null; }, explode(',', (string) $r->tagged_user_ids))); @endphp
+				@if($__tags) &middot; Tagged: <strong>{{ implode(', ', $__tags) }}</strong>@endif
 			</div>
 			<div class="bq-desc">{{ $r->description }}</div>
 			@if($r->screenshot_path)
@@ -160,6 +162,7 @@
 			@if($tab === 'review') Nothing waiting for approval right now.
 			@elseif($tab === 'open') No open bugs. Nice.
 			@elseif($tab === 'mine') You have not reported anything yet.
+			@elseif($tab === 'tagged') Nobody has tagged you yet.
 			@else Nothing here yet.
 			@endif
 		</div>
