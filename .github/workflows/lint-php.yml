@@ -1,0 +1,30 @@
+# Syntax-check (php -l) every PHP file a branch changes vs main. Read-only, runs on GitHub, never touches prod.
+name: Lint PHP on a branch
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch to check"
+        required: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref }}
+          fetch-depth: 0
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '7.4'
+          tools: none
+      - name: php -l changed files
+        run: |
+          git fetch -q origin main
+          files=$(git diff --name-only --diff-filter=AM origin/main...HEAD -- '*.php')
+          echo "$files"
+          fail=0
+          for f in $files; do php -l "$f" || fail=1; done
+          exit $fail
