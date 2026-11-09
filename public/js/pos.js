@@ -1,7 +1,77 @@
 // Build stamp so Sarah can confirm in DevTools Console which pos.js is
 // actually loaded. If the log below doesn't appear on /pos/create, the
 // browser is serving a cached copy; hard-refresh or bump asset_version.
-console.log('[pos.js v483] customer bar: native-DOM templateSelection (no Sizzle loop); whatnot moved to waitForJq gate in pos_form.blade.php');
+console.log('[pos.js v484] unique cart row indexes (bag fee / manual items no longer overwrite scanned items)');
+// Every cart row must post under its own products[N] index. The Bag Fee,
+// manual-item modal and quick-add tiles used to pick N on their own (row
+// count / 0+1) without touching #product_row_count, so they could reuse a
+// scanned row's N. PHP then kept only one of the two rows: the screen total
+// (and Clover) counted both, but one item was never saved. Seen on receipt
+// #35045 (2026-11-07): $12 item missing from the sale. This re-numbers any
+// row whose index is already taken and keeps the counter past every index.
+function posRowIndexOf($tr) {
+    var idx = $tr.attr('data-row_index');
+    if (idx === undefined || idx === '') {
+        var nm = $tr.find('[name^="products["]').first().attr('name') || '';
+        var m = nm.match(/^products\[(\d+)\]/);
+        idx = m ? m[1] : null;
+    }
+    return idx === null ? null : parseInt(idx, 10);
+}
+function posRenumberRow($tr, oldIdx, newIdx) {
+    var oldKey = 'products[' + oldIdx + ']';
+    var newKey = 'products[' + newIdx + ']';
+    $tr.attr('data-row_index', newIdx);
+    $tr.find('[name]').each(function() {
+        var nm = $(this).attr('name');
+        if (nm && nm.indexOf(oldKey) === 0) {
+            $(this).attr('name', newKey + nm.substring(oldKey.length));
+        }
+    });
+    var oldModal = 'row_edit_product_price_modal_' + oldIdx;
+    var newModal = 'row_edit_product_price_modal_' + newIdx;
+    $tr.find('#' + oldModal).attr('id', newModal);
+    $tr.find('[data-target="#' + oldModal + '"]').attr('data-target', '#' + newModal);
+}
+function posEnsureUniqueRowIndexes() {
+    var $rows = $('table#pos_table tbody tr.product_row');
+    var seen = {};
+    var maxIdx = -1;
+    $rows.each(function() {
+        var idx = posRowIndexOf($(this));
+        if (idx !== null && !isNaN(idx) && idx > maxIdx) { maxIdx = idx; }
+    });
+    var counter = parseInt($('input#product_row_count').val(), 10);
+    if (isNaN(counter)) { counter = 0; }
+    var next = Math.max(counter, maxIdx + 1);
+    var changed = 0;
+    $rows.each(function() {
+        var $tr = $(this);
+        var idx = posRowIndexOf($tr);
+        if (idx === null || isNaN(idx)) { return; }
+        if (seen[idx]) {
+            posRenumberRow($tr, idx, next);
+            seen[next] = true;
+            next++;
+            changed++;
+        } else {
+            seen[idx] = true;
+        }
+    });
+    $('input#product_row_count').val(next);
+    return changed;
+}
+(function() {
+    var attach = function() {
+        var tbody = document.querySelector('table#pos_table tbody');
+        if (!tbody || tbody.__posRowIdxObs || typeof MutationObserver === 'undefined') { return; }
+        tbody.__posRowIdxObs = new MutationObserver(function() { posEnsureUniqueRowIndexes(); });
+        tbody.__posRowIdxObs.observe(tbody, { childList: true });
+    };
+    $(document).ready(attach);
+    $(document).ajaxComplete(attach);
+})();
+
 $(document).ready(function() {
     customer_set = false;
     window.pos_submit_in_progress = false;
@@ -1138,6 +1208,7 @@ $(document).ready(function() {
             return;
         }
 
+        posEnsureUniqueRowIndexes();
         var data = pos_form_obj.serialize();
         data = data + '&status=draft';
         var url = pos_form_obj.attr('action');
@@ -1173,6 +1244,7 @@ $(document).ready(function() {
             return;
         }
 
+        posEnsureUniqueRowIndexes();
         var data = pos_form_obj.serialize();
         data = data + '&status=quotation';
         var url = pos_form_obj.attr('action');
@@ -1785,6 +1857,7 @@ $(document).ready(function() {
                 });
                 var store_credit_used_amount = parseFloat($('#store_credit_used_amount').val() || 0) || 0;
 
+                if (typeof posEnsureUniqueRowIndexes === 'function') { posEnsureUniqueRowIndexes(); }
                 var data = $(form).serialize();
                 data = data + '&status=final';
                 var url = $(form).attr('action');

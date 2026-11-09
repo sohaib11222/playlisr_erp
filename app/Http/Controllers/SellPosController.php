@@ -2502,7 +2502,7 @@ class SellPosController extends Controller
                 $image = null;
             }
             $items[] = [
-                'name' => !empty($line->product) ? $line->product->name : 'Item',
+                'name' => !empty($line->product) ? $line->product->name : (trim((string) ($line->product_name ?? '')) !== '' ? $line->product_name : 'Item'),
                 'quantity' => $qty,
                 'price' => $unitPrice,
                 'image' => $image,
@@ -5232,6 +5232,30 @@ class SellPosController extends Controller
                 ];
 
                 $invoice_total = $this->productUtil->calculateInvoiceTotal($input['products'], $input['tax_rate_id'], $discount);
+
+                // Cart-vs-saved check (2026-11-08, receipt #35045): if the
+                // screen total is more than the items that actually reached
+                // the server, a cart row was lost on the way (two rows sharing
+                // a products[N] index). Logged, never blocks the sale.
+                try {
+                    $postedTotal = (float) $this->transactionUtil->num_uf($input['final_total'] ?? 0);
+                    $extras = (float) $this->transactionUtil->num_uf($input['shipping_charges'] ?? 0)
+                        + (float) $this->transactionUtil->num_uf($input['packing_charge'] ?? 0)
+                        + (float) $this->transactionUtil->num_uf($input['round_off_amount'] ?? 0);
+                    $gap = round($postedTotal - ((float) $invoice_total['final_total'] + $extras), 2);
+                    if ($gap > 0.50) {
+                        \Log::warning('POS cart/saved total mismatch', [
+                            'gap' => $gap,
+                            'posted_final_total' => $postedTotal,
+                            'computed_total' => (float) $invoice_total['final_total'],
+                            'row_count' => count($input['products']),
+                            'location_id' => $input['location_id'] ?? null,
+                            'user_id' => $request->session()->get('user.id'),
+                        ]);
+                    }
+                } catch (\Throwable $e) {
+                    // never block a sale on this check
+                }
 
                 // Duplicate-ring guard (Sarah 2026-07-03): if this cashier
                 // already rang an identical-total FINAL sale at this location
