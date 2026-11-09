@@ -72,6 +72,15 @@ class SellQuoteController extends StoreOrDiscogsController
         ['Toys & collectibles', '/^(toy_|funko|furry|mask|board_game|pin$)/'],
         ['Cards', '/^(pokemon|sports_card)/'],
         ['Posters & art', '/^(poster_2x3|framed_art)/'],
+        ['Autographs & signed items', '/(?!)/'],
+    ];
+
+    // Sarah 11/8: priced off each item's real sold value, which a seller can't
+    // look up, so the website lists them as "priced in store" ($0 on the
+    // quote); the seller says what each is and staff price it on the buy form.
+    const IN_STORE_TYPES = [
+        'signed_item' => ['Autographs & signed items', 'Autographs / signed items'],
+        'card_pack' => ['Cards', 'Sealed card packs'],
     ];
 
     /** @var BuyOfferCalculatorService */
@@ -145,6 +154,11 @@ class SellQuoteController extends StoreOrDiscogsController
                 'label' => trim($clean),
                 'graded' => empty($cfg['no_grading']) && !$sealed,
             ];
+        }
+        foreach (self::IN_STORE_TYPES as $key => [$group, $label]) {
+            if (isset($rules['item_types'][$key])) {
+                $out[] = ['key' => $key, 'group' => $group, 'label' => $label, 'graded' => false, 'in_store' => true];
+            }
         }
         $order = array_flip(array_column(self::TYPE_GROUPS, 0));
         usort($out, function ($a, $b) use ($order) {
@@ -407,7 +421,11 @@ class SellQuoteController extends StoreOrDiscogsController
                 }
                 $grade = $this->capBulkGrade($grade);
             }
-            $cleanGroups[] = ['type' => $key, 'quantity' => $qty, 'grade' => $grade];
+            $clean = ['type' => $key, 'quantity' => $qty, 'grade' => $grade];
+            if (!empty($types[$key]['in_store'])) {
+                $clean['description'] = trim(mb_substr(strip_tags((string) ($g['description'] ?? '')), 0, 150));
+            }
+            $cleanGroups[] = $clean;
         }
         $count = count($cleanRecords) + array_sum(array_column($cleanGroups, 'quantity'));
         if ($count === 0) {
@@ -454,7 +472,27 @@ class SellQuoteController extends StoreOrDiscogsController
                 ];
             }
         }
+        $inStoreCount = 0;
         foreach ($cleanGroups as $g) {
+            if (!empty($types[$g['type']]['in_store'])) {
+                // No value on the quote: staff enter it on the buy form.
+                $inStoreCount += $g['quantity'];
+                $desc = $g['description'] ?? '';
+                $lines[] = [
+                    'item_type' => $g['type'],
+                    'quantity' => $g['quantity'],
+                    'title' => $desc !== '' ? $desc : $types[$g['type']]['label'],
+                    'discogs_median_price' => 0,
+                    'genre' => '',
+                ];
+                $display[] = [
+                    'label' => $types[$g['type']]['label'] . ($desc !== '' ? ': ' . $desc : ''),
+                    'quantity' => $g['quantity'],
+                    'grade' => null,
+                    'how' => 'in_store',
+                ];
+                continue;
+            }
             $lines[] = [
                 'item_type' => $g['type'],
                 'quantity' => $g['quantity'],
@@ -483,7 +521,7 @@ class SellQuoteController extends StoreOrDiscogsController
             $i = (int) $row['line_order'];
             $d = $display[$i] ?? ['label' => '', 'quantity' => $row['quantity'], 'grade' => null, 'how' => 'per_piece'];
             $mult = (float) ($row['demand_multiplier'] ?? 1);
-            $d['cash'] = round((float) $row['line_cash_total'] * $share, 2);
+            $d['cash'] = ($d['how'] ?? '') === 'in_store' ? null : round((float) $row['line_cash_total'] * $share, 2);
             $d['demand'] = $mult > 1.001 ? 'wanted' : ($mult < 0.999 ? 'overstocked' : null);
             $outLines[] = $d;
         }
@@ -498,7 +536,7 @@ class SellQuoteController extends StoreOrDiscogsController
             'status' => 'quoted',
             'item_count' => $count,
             'input_json' => json_encode(['records' => $cleanRecords, 'groups' => $cleanGroups]),
-            'calculation_json' => json_encode(['lines' => $calculation['lines'], 'display' => $outLines]),
+            'calculation_json' => json_encode(['lines' => $calculation['lines'], 'display' => $outLines, 'in_store_count' => $inStoreCount]),
             'cash_total' => $final,
             'credit_total' => $credit,
             'estimate_low_cash' => $estimateLow,
@@ -542,12 +580,18 @@ class SellQuoteController extends StoreOrDiscogsController
             };
             $items = (int) $q->item_count . ' item' . ((int) $q->item_count === 1 ? '' : 's');
             $who = $esc($q->name) . ', ' . $esc($q->phone) . ($q->email ? ', ' . $esc($q->email) : '');
-            if ($q->size_tier === 'large') {
+            $inStore = (int) ((json_decode((string) $q->calculation_json, true) ?: [])['in_store_count'] ?? 0);
+            if ($inStore > 0 && (float) $q->cash_total <= 0) {
+                $money = 'autographs / sealed card packs to price in store.';
+            } elseif ($q->size_tier === 'large') {
                 $money = 'estimate ' . $m($q->estimate_low_cash) . '–' . $m($q->cash_total) . ' cash, valid through '
                     . \Carbon\Carbon::parse($q->expires_at)->format('D n/j') . '. Needs an appraisal: they were told to reply to the text or call.';
             } else {
                 $money = $m($q->cash_total) . ' cash / ' . $m($q->credit_total) . ' credit, good through '
                     . \Carbon\Carbon::parse($q->expires_at)->format('D n/j') . '.';
+            }
+            if ($inStore > 0 && (float) $q->cash_total > 0) {
+                $money .= ' Plus ' . $inStore . ' autograph / card pack item' . ($inStore === 1 ? '' : 's') . ' to price in store.';
             }
             $text = ':moneybag: New website sell quote *' . self::number($q->id) . '*: ' . $who . ' · ' . $items . ' · ' . $money
                 . "\n<" . url('/sell-quotes/' . $q->id) . '|Open the quote>';
@@ -596,18 +640,24 @@ class SellQuoteController extends StoreOrDiscogsController
             return '$' . (fmod($n, 1) ? number_format($n, 2) : number_format($n, 0));
         };
         $large = $q->size_tier === 'large';
+        $inStore = (int) ((json_decode((string) $q->calculation_json, true) ?: [])['in_store_count'] ?? 0);
+        $onlyInStore = $inStore > 0 && (float) $q->cash_total <= 0;
+        $inStoreText = $inStore > 0 ? ' (' . $inStore . ' of them priced in store)' : '';
         $goodThrough = $q->expires_at ? \Carbon\Carbon::parse($q->expires_at)->format('l, F j') : '';
         $goodThroughShort = $q->expires_at ? \Carbon\Carbon::parse($q->expires_at)->format('D n/j') : '';
         $street = trim(explode(',', $store['address'])[0]);
 
-        if ($large) {
+        if ($onlyInStore) {
+            $sms = 'Hi' . ($first !== '' ? ' ' . $first : '') . ', Nivessa here. Quote ' . $number . ': we price autographs and sealed card packs when we see them. Bring your '
+                . $items . ' to ' . $store['name'] . ', ' . $street . ' and show this text at the counter. ' . $link;
+        } elseif ($large) {
             $sms = 'Hi' . ($first !== '' ? ' ' . $first : '') . ', Nivessa here. Estimate ' . $number . ': '
                 . $m($q->estimate_low_cash) . '-' . $m($q->cash_total) . ' cash or ' . $m($q->estimate_low_cash * 1.5) . '-' . $m($q->credit_total)
-                . ' store credit for ' . $items . '. Valid through ' . $goodThroughShort . ', final price confirmed on appraisal. Reply to set up a quick look in person. '
+                . ' store credit for ' . $items . $inStoreText . '. Valid through ' . $goodThroughShort . ', final price confirmed on appraisal. Reply to set up a quick look in person. '
                 . $link;
         } else {
             $sms = 'Hi' . ($first !== '' ? ' ' . $first : '') . ', Nivessa here. Quote ' . $number . ': '
-                . $m($q->cash_total) . ' cash or ' . $m($q->credit_total) . ' store credit for ' . $items
+                . $m($q->cash_total) . ' cash or ' . $m($q->credit_total) . ' store credit for ' . $items . $inStoreText
                 . '. Valid through ' . $goodThroughShort . ' at ' . $store['name'] . ', ' . $street . '. Final price confirmed on appraisal. Show this text at the counter. '
                 . $link;
         }
@@ -621,7 +671,8 @@ class SellQuoteController extends StoreOrDiscogsController
             \Log::warning('Sell quote ' . $number . ' text failed: ' . $e->getMessage());
         }
 
-        if (!empty($q->email)) {
+        // The email template always shows a dollar amount, so skip it when there is none.
+        if (!empty($q->email) && !$onlyInStore) {
             try {
                 $resp = \App\Services\WebsiteBridge::erp('POST', '/sell-quote/email', [
                     'to' => $q->email,
@@ -667,6 +718,7 @@ class SellQuoteController extends StoreOrDiscogsController
             'estimate_low_cash' => $q->estimate_low_cash !== null ? (float) $q->estimate_low_cash : null,
             'estimate_low_credit' => $q->estimate_low_cash !== null ? round((float) $q->estimate_low_cash * 1.5, 2) : null,
             'lines' => $calc['display'] ?? [],
+            'in_store_count' => (int) ($calc['in_store_count'] ?? 0),
             'quoted_at' => $q->quoted_at,
             'expires_at' => $q->expires_at,
             'expired' => $q->expires_at && now()->greaterThan($q->expires_at),

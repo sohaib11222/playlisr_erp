@@ -233,13 +233,13 @@ class BuyOfferCalculatorService
                 'rare_nba' => ['min_value' => self::RARE_MIN_VALUE, 'label' => 'NBA - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
                 'rare_nfl' => ['min_value' => self::RARE_MIN_VALUE, 'label' => 'NFL - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
                 'rare_pokemon' => ['min_value' => self::RARE_MIN_VALUE, 'label' => 'Pokemon - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
-                'card_pack' => ['label' => 'Card Packs', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
+                'card_pack' => ['label' => 'Sealed Card Packs (enter the eBay sold value)', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
                 // Jon 2026-10-25: framed art, flat $3.50; rare pieces by their value.
                 'framed_art' => ['label' => 'Framed Art', 'mode' => 'bulk_fixed', 'unit_rate' => 3.50, 'no_grading' => true],
                 'rare_framed_art' => ['min_value' => self::RARE_MIN_VALUE, 'label' => 'Framed Art - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
                 // Jon 2026-10-25: signed items get their own line (was a checkbox
                 // on single records): SIGNED_PAY of the signed copy's sold value.
-                'signed_item' => ['label' => 'Signed item (enter the signed copy\'s sold value)', 'mode' => 'signed_value', 'no_grading' => true],
+                'signed_item' => ['label' => 'Autograph / Signed item (enter the signed copy\'s sold value)', 'mode' => 'signed_value', 'no_grading' => true],
 
                 'poster_2x3' => ['label' => "Poster 2'x3'", 'mode' => 'bulk_fixed', 'unit_rate' => 2.00, 'no_grading' => true],
 

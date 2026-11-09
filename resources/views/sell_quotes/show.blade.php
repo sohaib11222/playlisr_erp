@@ -75,7 +75,8 @@
                     <td>{{ !empty($l['discogs_median_price']) ? '$' . number_format($l['discogs_median_price'], 2) : '—' }}</td>
                     <td>${{ number_format($d['cash'] ?? 0, 2) }}</td>
                     <td class="sq-muted">
-                        @if(($d['how'] ?? '') === 'bulk_rate') Under ${{ \App\Http\Controllers\SellQuoteController::CHERRY_MIN }}: bulk rate
+                        @if(($d['how'] ?? '') === 'in_store') Priced in store: enter its sold value on the buy form
+                        @elseif(($d['how'] ?? '') === 'bulk_rate') Under ${{ \App\Http\Controllers\SellQuoteController::CHERRY_MIN }}: bulk rate
                         @elseif(($d['how'] ?? '') === 'no_sales_data') No Discogs sales: bulk rate
                         @endif
                         {{ !empty($l['demand_reason']) ? $l['demand_reason'] : '' }}
