@@ -1,0 +1,27 @@
+# Read-only: last-12-month sales + est. gross profit per store location (for sales per sq ft).
+# Counts and dollars only, no names or numbers. Excludes Whatnot and walk-in (default) sales.
+name: Diag location sales
+
+on:
+  workflow_dispatch:
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Run on prod
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          printf '%s\n' "$DEPLOY_SSH_KEY" > /tmp/k && chmod 600 /tmp/k
+          O="-o StrictHostKeyChecking=no"
+          ssh -i /tmp/k -p ${{ steps.flags.outputs.ssh_port }} $O "$DEPLOY_USER@$DEPLOY_HOST" "echo 'PD9waHAKLy8gUmVhZC1vbmx5OiBsYXN0LTEyLW1vbnRoIHNhbGVzICsgZXN0LiBncm9zcyBwcm9maXQgcGVyIGJ1c2luZXNzIGxvY2F0aW9uIChzdG9yZSBwcm9kdWN0aXZpdHkpLgokYmlkID0gXEFwcFxCdXNpbmVzczo6Zmlyc3QoKS0+aWQ7CiRmcm9tID0gbm93KCktPnN1YkRheXMoMzY1KS0+dG9EYXRlU3RyaW5nKCk7CiRzcWwgPSAiU0VMRUNUIGJsLm5hbWUgbG9jLCAodC5pc193aGF0bm90ID0gMSkgd24sIENPVU5UKERJU1RJTkNUIHQuaWQpIHR4bnMsCiAgU1VNKChsLnF1YW50aXR5IC0gQ09BTEVTQ0UobC5xdWFudGl0eV9yZXR1cm5lZCwwKSkgKiBsLnVuaXRfcHJpY2VfaW5jX3RheCkgcmV2LAogIFNVTShDQVNFIFdIRU4gdWM+MCBUSEVOIChsLnF1YW50aXR5IC0gQ09BTEVTQ0UobC5xdWFudGl0eV9yZXR1cm5lZCwwKSkgKiBsLnVuaXRfcHJpY2UgRU5EKSByZXZfd2MsCiAgU1VNKENBU0UgV0hFTiB1Yz4wIFRIRU4gKGwucXVhbnRpdHkgLSBDT0FMRVNDRShsLnF1YW50aXR5X3JldHVybmVkLDApKSAqIChsLnVuaXRfcHJpY2UgLSB1YykgRU5EKSBwcm9mX2ssCiAgU1VNKChsLnF1YW50aXR5IC0gQ09BTEVTQ0UobC5xdWFudGl0eV9yZXR1cm5lZCwwKSkgKiBsLnVuaXRfcHJpY2UpIHJldl9leApGUk9NIChTRUxFQ1QgbC4qLCBDT0FMRVNDRSgoU0VMRUNUIFNVTSh4LnF1YW50aXR5KnBsLnB1cmNoYXNlX3ByaWNlKS9OVUxMSUYoU1VNKHgucXVhbnRpdHkpLDApCiAgICAgICAgRlJPTSB0cmFuc2FjdGlvbl9zZWxsX2xpbmVzX3B1cmNoYXNlX2xpbmVzIHggSk9JTiBwdXJjaGFzZV9saW5lcyBwbCBPTiBwbC5pZD14LnB1cmNoYXNlX2xpbmVfaWQgV0hFUkUgeC5zZWxsX2xpbmVfaWQ9bC5pZCksCiAgICAgIE5VTExJRih2LmRlZmF1bHRfcHVyY2hhc2VfcHJpY2UsMCkpIHVjCiAgICAgIEZST00gdHJhbnNhY3Rpb25fc2VsbF9saW5lcyBsIEpPSU4gdmFyaWF0aW9ucyB2IE9OIHYuaWQ9bC52YXJpYXRpb25faWQgV0hFUkUgbC5wYXJlbnRfc2VsbF9saW5lX2lkIElTIE5VTEwpIGwKSk9JTiB0cmFuc2FjdGlvbnMgdCBPTiB0LmlkPWwudHJhbnNhY3Rpb25faWQKSk9JTiBidXNpbmVzc19sb2NhdGlvbnMgYmwgT04gYmwuaWQ9dC5sb2NhdGlvbl9pZApXSEVSRSB0LmJ1c2luZXNzX2lkPT8gQU5EIHQudHlwZT0nc2VsbCcgQU5EIHQuc3RhdHVzPSdmaW5hbCcgQU5EIHQudHJhbnNhY3Rpb25fZGF0ZSA+PSA/CkdST1VQIEJZIGJsLm5hbWUsIHduIE9SREVSIEJZIHJldiBERVNDIjsKZWNobyAiPT09IExBU1QgMzY1IERBWVMgZnJvbSAkZnJvbTogbG9jYXRpb24gfCB3aGF0bm90IHwgdHhucyB8IHJldmVudWVfaW5jX3RheCB8IHJldmVudWVfZXhfdGF4IHwgZXN0X21hcmdpbiB8IGVzdF9ncm9zc19wcm9maXQgPT09XG4iOwpmb3JlYWNoIChcREI6OnNlbGVjdCgkc3FsLCBbJGJpZCwgJGZyb21dKSBhcyAkcikgewogICAgJG0gPSAkci0+cmV2X3djID4gMCA/ICRyLT5wcm9mX2sgLyAkci0+cmV2X3djIDogMDsKICAgIHByaW50ZigiJXMgfCAlcyB8ICVkIHwgJS4wZiB8ICUuMGYgfCAlLjBmJSUgfCAlLjBmXG4iLCAkci0+bG9jLCAkci0+d24gPyAnd2hhdG5vdCcgOiAnc3RvcmUnLCAkci0+dHhucywgJHItPnJldiwgJHItPnJldl9leCwgMTAwKiRtLCAkci0+cmV2X2V4KiRtKTsKfQovLyBzaGFyZSBvZiBzdG9yZSBzYWxlcyB3aXRoIGEgcmVhbCAobm9uIHdhbGstaW4pIGN1c3RvbWVyIGF0dGFjaGVkCiRzcWwyID0gIlNFTEVDVCBibC5uYW1lIGxvYywgU1VNKGMuaXNfZGVmYXVsdD0wIEFORCBjLm1vYmlsZSBJUyBOT1QgTlVMTCBBTkQgYy5tb2JpbGU8PicnKSBuYW1lZCwgQ09VTlQoKikgbgpGUk9NIHRyYW5zYWN0aW9ucyB0IEpPSU4gYnVzaW5lc3NfbG9jYXRpb25zIGJsIE9OIGJsLmlkPXQubG9jYXRpb25faWQgSk9JTiBjb250YWN0cyBjIE9OIGMuaWQ9dC5jb250YWN0X2lkCldIRVJFIHQuYnVzaW5lc3NfaWQ9PyBBTkQgdC50eXBlPSdzZWxsJyBBTkQgdC5zdGF0dXM9J2ZpbmFsJyBBTkQgdC50cmFuc2FjdGlvbl9kYXRlID49ID8gQU5EICh0LmlzX3doYXRub3Q9MCBPUiB0LmlzX3doYXRub3QgSVMgTlVMTCkKR1JPVVAgQlkgYmwubmFtZSI7CmVjaG8gIlxuPT09IHNoYXJlIG9mIHN0b3JlIHRyYW5zYWN0aW9ucyB3aXRoIGEgY3VzdG9tZXIgcGhvbmUgYXR0YWNoZWQgPT09XG4iOwpmb3JlYWNoIChcREI6OnNlbGVjdCgkc3FsMiwgWyRiaWQsICRmcm9tXSkgYXMgJHIpIHByaW50ZigiJXMgfCAlZCBvZiAlZCB8ICUuMGYlJVxuIiwgJHItPmxvYywgJHItPm5hbWVkLCAkci0+biwgJHItPm4gPyAxMDAqJHItPm5hbWVkLyRyLT5uIDogMCk7CmVjaG8gIkRPTkVcbiI7Cg==' | base64 -d > /tmp/locsales.php && cd /www/playlist.nivessa.com/app && php artisan tinker /tmp/locsales.php 2>&1; rm -f /tmp/locsales.php"
+          rm -f /tmp/k
