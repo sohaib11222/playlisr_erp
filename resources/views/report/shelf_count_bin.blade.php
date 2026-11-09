@@ -257,9 +257,8 @@
      *  - counted in another bin in the last 7 days (record moved from Rock to Pop
      *    and scanned again): same copy = don't count it; another copy = add it on
      *    top of the ERP stock, which that count already set.
-     *  - more copies than the ERP has at this store: "are you sure?". Not when
-     *    the ERP has 0 here (Jon 11/9): if it's being scanned, we have it, so it
-     *    just goes in.
+     * (The over-ERP "are you sure?" popup was removed 11/9: staff disliked it, and
+     *  if it's being scanned, we have it. Tap the count to fix a double scan.)
      * Returns the new count, or null to not count it.
      */
     function gate(i, next, cur) {
@@ -273,13 +272,6 @@
             another[i.id] = true;
             // That count already set the ERP, so copies here go on top of it.
             return Math.round(i.erp || 0) + (next - cur);
-        }
-        if (typeof i.erp === 'number' && i.erp > 0 && !another[i.id] && next > Math.max(i.erp, overOk[i.id] || 0)) {
-            var yes = window.confirm('Are you sure? ' + label(i) + '\n\nThe ERP says ' + i.erp + ' at this store. This makes ' + next + '.\n\n'
-                + 'OK = yes, ' + next + ' here\nCancel = don\'t add it (scanned twice?)');
-            quiet();
-            if (!yes) { skipped(i, 'Not added (ERP has ' + i.erp + ', you had ' + cur + '): '); return null; }
-            overOk[i.id] = next;
         }
         return next;
     }
