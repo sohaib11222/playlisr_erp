@@ -759,6 +759,158 @@ class BuyFromCustomerController extends Controller
     }
 
     /**
+     * POST /buy-from-customer/{id}/send-receipt
+     *
+     * Sarah 2026-11-09: send the seller a receipt for a finished buy, by
+     * email (nivessa.com mailbox, same look as POS receipts) or text (the
+     * store's own Quo line). mode=itemized lists every item; mode=total is
+     * just the item count and what we paid. No per-item prices: the payout
+     * is one negotiated total, so line values wouldn't add up to it.
+     */
+    public function sendSellerReceipt(Request $request, $id)
+    {
+        if (!auth()->user()->can('purchase.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = $request->session()->get('user.business_id');
+        $offer = BuyCustomerOffer::with(['lines', 'contact', 'location'])
+            ->where('business_id', $business_id)
+            ->find($id);
+        if (!$offer) {
+            return response()->json(['success' => false, 'msg' => 'Buy not found.']);
+        }
+        if ($offer->status !== 'accepted') {
+            return response()->json(['success' => false, 'msg' => 'This buy is not finished yet. Accept it first.']);
+        }
+
+        $channel = $request->input('channel') === 'text' ? 'text' : 'email';
+        $itemized = $request->input('mode') !== 'total';
+        $r = $this->sellerReceiptData($offer, $itemized);
+
+        try {
+            if ($channel === 'email') {
+                $email = trim((string) $request->input('to'));
+                if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                    return response()->json(['success' => false, 'msg' => 'Enter a valid email address.']);
+                }
+                $resp = \App\Services\WebsiteBridge::erp('POST', '/receipts/buy-email', array_merge(['to' => $email], $r), 20);
+                if (empty($resp['success'])) {
+                    $why = trim((string) ($resp['message'] ?? ''));
+                    return response()->json(['success' => false, 'msg' => 'Could not send' . ($why !== '' ? ': ' . $why : '. Try again.')]);
+                }
+                $sentTo = $email;
+            } else {
+                $phone = preg_replace('/[^\d+]/', '', (string) $request->input('to'));
+                if (strlen(preg_replace('/\D/', '', $phone)) < 10) {
+                    return response()->json(['success' => false, 'msg' => 'Enter a valid phone number.']);
+                }
+                $result = (new \App\Services\OpenPhoneService())->sendFromStore(
+                    optional($offer->location)->name,
+                    $phone,
+                    $this->sellerReceiptText($r)
+                );
+                if (empty($result['success'])) {
+                    $uncertain = array_key_exists('uncertain', $result) ? (bool) $result['uncertain'] : true;
+                    return response()->json(['success' => false, 'msg' => $uncertain
+                        ? 'The text may still go through. Check with the seller before sending again.'
+                        : 'Could not send: ' . ($result['msg'] ?? 'unknown error')]);
+                }
+                $sentTo = $phone;
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('sendSellerReceipt failed for offer ' . $offer->id . ': ' . $e->getMessage());
+            return response()->json(['success' => false, 'msg' => 'Could not send. Try again.']);
+        }
+
+        \Log::info(sprintf('BFC seller receipt (%s, %s) sent for %s to %s by user %s',
+            $channel, $itemized ? 'itemized' : 'total', $offer->buy_record_number, $sentTo, auth()->id()));
+
+        return response()->json([
+            'success' => true,
+            'msg' => ($itemized ? 'Itemized receipt ' : 'Receipt ') . ($channel === 'email' ? 'emailed' : 'texted') . ' to ' . $sentTo . '.',
+        ]);
+    }
+
+    protected function sellerReceiptData(BuyCustomerOffer $offer, $itemized)
+    {
+        $isCredit = $offer->payout_type === 'store_credit';
+        $payoutLabel = [
+            'cash_in_store' => 'Cash',
+            'store_credit' => 'Store credit',
+            'zelle_venmo' => 'Zelle / Venmo',
+        ][$offer->payment_method] ?? ($isCredit ? 'Store credit' : 'Cash');
+
+        $sellerName = trim($offer->seller_first_name . ' ' . $offer->seller_last_name)
+            ?: ($offer->seller_name ?: optional($offer->contact)->name);
+
+        $items = [];
+        if ($itemized) {
+            $types = $this->calculator->getItemTypesForDropdown(true, true);
+            foreach ($offer->lines as $line) {
+                $qty = (float) $line->quantity;
+                if ($qty <= 0) {
+                    continue;
+                }
+                $typeLabel = $types[$line->item_type] ?? ucwords(str_replace('_', ' ', (string) $line->item_type));
+                $title = trim((string) $line->title);
+                $items[] = [
+                    'title' => $title !== '' ? $title : $typeLabel,
+                    'type' => $title !== '' ? $typeLabel : '',
+                    'grade' => trim((string) $line->condition_grade),
+                    'quantity' => $qty,
+                ];
+            }
+        }
+
+        $when = $offer->accepted_at ?: $offer->updated_at;
+
+        return [
+            'sellerName' => (string) $sellerName,
+            'recordNo' => $offer->buy_record_number,
+            'buyDate' => $when ? \Carbon\Carbon::parse($when)->timezone('America/Los_Angeles')->format('F j, Y \a\t g:i A') : '',
+            'storeLocation' => strtolower((string) optional($offer->location)->name),
+            'payoutLabel' => $payoutLabel,
+            'total' => round((float) ($isCredit ? $offer->final_offer_credit : $offer->final_offer_cash), 2),
+            'itemCount' => $offer->total_item_quantity,
+            'items' => $items,
+            'donated' => (bool) $offer->is_donated,
+        ];
+    }
+
+    protected function sellerReceiptText(array $r)
+    {
+        $first = trim(strtok((string) $r['sellerName'], ' ') ?: '');
+        $store = stripos($r['storeLocation'], 'pico') !== false ? 'Nivessa on Pico' : 'Nivessa Hollywood';
+        $out = [($first !== '' ? "Hi {$first}! " : 'Hi! ') . "Thanks for selling to {$store}."];
+        $out[] = 'Buy #' . $r['recordNo'] . ($r['buyDate'] !== '' ? ', ' . $r['buyDate'] : '');
+
+        if (!empty($r['items'])) {
+            $out[] = '';
+            $max = 25;
+            foreach (array_slice($r['items'], 0, $max) as $it) {
+                $q = (float) $it['quantity'];
+                $qty = fmod($q, 1.0) == 0.0 ? (int) $q : number_format($q, 2);
+                $out[] = '- ' . $qty . 'x ' . $it['title'] . ($it['grade'] !== '' ? ' (' . $it['grade'] . ')' : '');
+            }
+            if (count($r['items']) > $max) {
+                $out[] = '+ ' . (count($r['items']) - $max) . ' more lines';
+            }
+            $out[] = '';
+        }
+
+        $out[] = 'Items: ' . $r['itemCount'];
+        $out[] = $r['donated']
+            ? 'Donated (no payout). Thank you!'
+            : 'Paid: $' . number_format($r['total'], 2) . ' ' . strtolower($r['payoutLabel']);
+        if (!$r['donated'] && stripos($r['payoutLabel'], 'credit') !== false) {
+            $out[] = 'Your store credit is on your account, ready to use at either store.';
+        }
+
+        return implode("\n", $out);
+    }
+
+    /**
      * Shared, store-wide list of where every purchased collection physically
      * ended up. Visible/editable to any logged-in employee (not gated on
      * purchase.create) so whoever finds a box — not just whoever bought it —

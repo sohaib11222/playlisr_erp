@@ -29,6 +29,37 @@
                     </div>
                 @endif
             </div>
+            {{-- Sarah 2026-11-09: send the seller a receipt, itemized or total only. --}}
+            <div id="bfc_seller_receipt" style="border:1px solid #d0d7de; background:#fff; border-radius:6px; padding:12px 16px; margin-bottom:15px;">
+                <div style="font-size:16px; font-weight:700; margin-bottom:8px;"><i class="fa fa-paper-plane"></i> Send receipt to seller</div>
+                <div style="margin-bottom:10px;">
+                    <label style="font-weight:normal; margin-right:18px; cursor:pointer;">
+                        <input type="radio" name="bfc_receipt_mode" value="itemized" checked> Itemized (every item)
+                    </label>
+                    <label style="font-weight:normal; cursor:pointer;">
+                        <input type="radio" name="bfc_receipt_mode" value="total"> Total only
+                    </label>
+                </div>
+                <div class="row">
+                    <div class="col-sm-6" style="margin-bottom:8px;">
+                        <div class="input-group">
+                            <input type="email" id="bfc_receipt_email" class="form-control" placeholder="Seller email" value="{{ $offer->seller_email ?: optional($offer->contact)->email }}">
+                            <span class="input-group-btn">
+                                <button type="button" class="btn btn-primary bfc-send-receipt" data-channel="email" data-input="#bfc_receipt_email"><i class="fa fa-envelope"></i> Email</button>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="col-sm-6" style="margin-bottom:8px;">
+                        <div class="input-group">
+                            <input type="tel" id="bfc_receipt_phone" class="form-control" placeholder="Seller phone" value="{{ $offer->seller_phone ?: (in_array((string) optional($offer->contact)->mobile, ['', '0'], true) ? '' : optional($offer->contact)->mobile) }}">
+                            <span class="input-group-btn">
+                                <button type="button" class="btn btn-primary bfc-send-receipt" data-channel="text" data-input="#bfc_receipt_phone"><i class="fa fa-comment"></i> Text</button>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div id="bfc_receipt_status" style="font-weight:600;"></div>
+            </div>
         @elseif($offer->status === 'draft')
             <div style="border:3px solid #c62828; background:#ffebee; border-radius:6px; padding:14px 18px; margin-bottom:15px; color:#7f1d1d; font-size:17px;">
                 <strong>This buy is NOT finished.</strong> Nothing is paid and no store credit is added until you open it and click Accept and finish buy.
@@ -299,6 +330,33 @@
                 try { document.execCommand('copy'); done(); } catch (e) { fail(); }
                 $tmp.remove();
             }
+        });
+
+        $('.bfc-send-receipt').on('click', function () {
+            var $btn = $(this);
+            var $status = $('#bfc_receipt_status');
+            var to = $.trim($($btn.data('input')).val());
+            if (!to) {
+                $status.css('color', '#c62828').text($btn.data('channel') === 'email' ? 'Type the seller\'s email first.' : 'Type the seller\'s phone first.');
+                return;
+            }
+            $('.bfc-send-receipt').prop('disabled', true);
+            $status.css('color', '#555').text('Sending...');
+            $.post('{{ route('buy-from-customer.send-receipt', $offer->id) }}', {
+                _token: $('meta[name="csrf-token"]').attr('content'),
+                channel: $btn.data('channel'),
+                mode: $('input[name="bfc_receipt_mode"]:checked').val(),
+                to: to,
+            })
+                .done(function (resp) {
+                    $status.css('color', resp.success ? '#1e8e3e' : '#c62828').text(resp.msg || (resp.success ? 'Sent.' : 'Could not send.'));
+                })
+                .fail(function () {
+                    $status.css('color', '#c62828').text('Could not send. Try again.');
+                })
+                .always(function () {
+                    $('.bfc-send-receipt').prop('disabled', false);
+                });
         });
 
         $('#bfc_storage_location_save').on('click', function () {

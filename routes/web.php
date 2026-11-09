@@ -963,7 +963,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/buy-from-customer/{id}/intake-sheet', 'BuyFromCustomerController@intakeSheet')->name('buy-from-customer.intake-sheet');
     Route::post('/buy-from-customer/{id}/storage-location', 'BuyFromCustomerController@updateStorageLocation')->name('buy-from-customer.storage-location.update');
     Route::post('/buy-from-customer/{id}/processing-status', 'BuyFromCustomerController@updateProcessingStatus')->name('buy-from-customer.processing-status.update');
-    Route::post('/buy-from-customer/{id}/delete', 'BuyFromCustomerController@destroy')->name('buy-from-customer.destroy');
+    Route::post('/buy-from-customer/{id}/send-receipt', 'BuyFromCustomerController@sendSellerReceipt')->name('buy-from-customer.send-receipt');
+    Route::post('/buy-from-customer/{id}/delete','BuyFromCustomerController@destroy')->name('buy-from-customer.destroy');
     Route::resource('purchases', 'PurchaseController')->except(['show']);
 
     Route::get('/toggle-subscription/{id}', 'SellPosController@toggleRecurringInvoices');
