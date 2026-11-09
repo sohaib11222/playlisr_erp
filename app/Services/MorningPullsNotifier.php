@@ -331,6 +331,9 @@ class MorningPullsNotifier
 
     private static function send(string $channel, string $text): bool
     {
+        // TURNED OFF 2026-11-09 (Sarah: "pls stop sending these they are too
+        // complex"). Preview page still works. Don't turn back on without asking.
+        return true;
         $j = self::api('POST', '/erp/slack-store-post', ['store' => $channel, 'text' => $text], 15);
         if (!is_array($j) || empty($j['success'])) {
             \Log::warning('Morning pulls post failed', ['channel' => $channel, 'error' => is_array($j) ? ($j['error'] ?? '') : 'no response']);
