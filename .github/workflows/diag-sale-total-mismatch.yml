@@ -1,0 +1,61 @@
+# READ-ONLY diagnostic: list POS sales whose final_total != items + tax (last N days) — transaction
+# totals, sell lines (incl. returns, line discounts, tax), payments, and any
+# return transactions — to explain receipt math that doesn't add up. No writes.
+name: Diag sale total mismatch
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "How many days back"
+        default: "60"
+        required: true
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+
+      - name: List total mismatches (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DIAG_INVOICE: ${{ github.event.inputs.days }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          envs: DIAG_INVOICE
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            export DIAG_INVOICE
+            php artisan tinker --no-ansi <<'PHP'
+            $d = (int) getenv('DIAG_INVOICE'); $rows = \Illuminate\Support\Facades\DB::table('transactions as t')->leftJoin('locations as l','l.id','=','t.location_id')->leftJoin('users as u','u.id','=','t.created_by')->where('t.type','sell')->where('t.status','final')->where('t.transaction_date','>=',now()->subDays($d))->whereRaw('ABS(t.final_total - (t.total_before_tax - (CASE WHEN t.discount_type="percentage" THEN t.total_before_tax*t.discount_amount/100 ELSE t.discount_amount END) + t.tax_amount + t.shipping_charges + t.round_off_amount + t.packing_charge)) > 0.05')->select('t.id','t.invoice_no','t.transaction_date','l.name as store','u.first_name as cashier','t.total_before_tax','t.tax_amount','t.discount_type','t.discount_amount','t.final_total')->orderBy('t.transaction_date')->get(); echo "COUNT: ".$rows->count()."\n"; foreach ($rows as $r) { $exp = round($r->total_before_tax - ($r->discount_type=='percentage' ? $r->total_before_tax*$r->discount_amount/100 : $r->discount_amount) + $r->tax_amount, 2); echo "ROW: {$r->invoice_no} | {$r->transaction_date} | {$r->store} | {$r->cashier} | items+tax={$exp} | charged=".round($r->final_total,2)." | diff=".round($r->final_total-$exp,2)."\n"; } $tot = \Illuminate\Support\Facades\DB::table('transactions')->where('type','sell')->where('status','final')->where('transaction_date','>=',now()->subDays($d))->count(); echo "TOTAL_SALES: {$tot}\n";
+            PHP
+            echo "=== done ==="
