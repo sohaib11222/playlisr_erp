@@ -147,10 +147,10 @@ class BuyOfferCalculatorService
                 'cd_classical_opera_sealed' => ['label' => 'CD: Classical/Opera SEALED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.20],
                 'cd_nonmusic_used' => ['label' => 'CD: Non-Music USED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.05],
                 'cd_nonmusic_sealed' => ['label' => 'CD: Non-Music SEALED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.10],
-                // Sarah 11/9: a single CD worth $10+ pays 25% of its value (no
-                // speed bump/cut). In-store buy form only: not 'bulk_fixed', so
+                // Sarah 11/9: a single CD worth $10+ pays 25% of its value x the
+                // condition grade multiplier (cashier must pick one; no speed bump/cut). In-store buy form only: not 'bulk_fixed', so
                 // the website Get a Quote form (SellQuoteController) never lists it.
-                'cd_10_plus' => ['min_value' => 10, 'label' => 'CD: $10+ value (pays 25%)', 'mode' => 'value_percent', 'no_grading' => true, 'no_demand' => true, 'value_tiers' => [
+                'cd_10_plus' => ['min_value' => 10, 'label' => 'CD: $10+ value (pays 25%)', 'mode' => 'value_percent', 'no_demand' => true, 'value_tiers' => [
                     ['under' => null, 'percent' => 0.25],
                 ]],
                 'cd_no_case' => ['label' => 'CD: No Case', 'mode' => 'bulk_fixed', 'unit_rate' => 0.05],
@@ -461,7 +461,8 @@ class BuyOfferCalculatorService
                 // Value-based: pay a % of the eBay value the cashier entered into
                 // the median-price column. The % steps by value (see value_tiers).
                 $standardMultiplier = $this->percentForValue($payValue, $cfg['value_tiers'] ?? []);
-                $cashLine = $quantity * $payValue * $standardMultiplier;
+                // Graded value lines (CD $10+) also take the condition multiplier (1.0 if not graded).
+                $cashLine = $quantity * $payValue * $standardMultiplier * $gradeMultiplier;
             } else {
                 $cashLine = $quantity * $unitRate * $gradeMultiplier;
             }
