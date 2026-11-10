@@ -23,6 +23,22 @@
         <select name="location_id" onchange="this.form.submit()">@foreach ($locations as $id => $nm)<option value="{{ $id }}" {{ $id == $loc ? 'selected' : '' }}>{{ ucfirst($nm) }}</option>@endforeach</select>
         <a class="sh-small" href="/reports/shelf-count?location_id={{ $loc }}&kind=all">See every shelf and its last count</a>
     </form>
+    @if (!empty($yearEnd))
+    <div style="background:#EAF3FB;border:2px solid #2B6CB0;border-radius:12px;padding:12px 14px;margin:0 0 12px">
+        <b style="font-size:17px;display:block;margin-bottom:2px">Year-end count: do sealed first</b>
+        <span class="sh-small" style="font-size:14px">For taxes we need every sealed record, CD and cassette counted by 12/31/26. Count these before anything else.</span>
+        <div class="sh-grid" style="margin-top:8px">
+        @foreach ($yearEnd as $y)
+            @php $yp = $y['titles'] ? min(100, round(100 * $y['counted'] / $y['titles'])) : 0; @endphp
+            <a class="sh-tile" style="border-color:#2B6CB0" href="/reports/shelf-count?location_id={{ $loc }}&kind={{ $y['kind'] }}">
+                <b>{{ $y['name'] }}</b>
+                <div class="sh-bar"><span style="width:{{ $yp }}%"></span></div>
+                <span class="sh-small">{{ number_format($y['counted']) }} of {{ number_format($y['titles']) }} titles counted ({{ $yp }}%)</span>
+            </a>
+        @endforeach
+        </div>
+    </div>
+    @endif
     <div class="sh-grid">
         <a class="sh-tile" href="/reports/reorder?format=comics&location_id={{ $loc }}">@php $cp = $comics['series'] ? min(100, round(100 * $comics['recent'] / $comics['series'])) : 0; @endphp<b>Comics &amp; magazines</b><div class="sh-bar"><span style="width:{{ $cp }}%"></span></div><span class="sh-small">{{ $comics['recent'] }}/{{ $comics['series'] }} series{{ $comics['last'] ? ', last ' . \Carbon\Carbon::parse($comics['last'])->format('m/d/y') : ', never' }}</span></a>
         @foreach ($tiles as $t)

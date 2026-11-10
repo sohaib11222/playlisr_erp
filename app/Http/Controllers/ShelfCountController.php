@@ -24,6 +24,9 @@ class ShelfCountController extends Controller
     const RECOUNT_WARN_DAYS = 7;
     /** Deploy time of the fix that stopped bin Save from zeroing uncounted titles. */
     const SAVE_ONLY_COUNTED_FROM = '2026-10-16 12:14:00';
+    /** Year-end sealed count (Sarah 11/10/26): counts from this date on count toward the 12/31/26 inventory. */
+    const YEAR_END_FROM = '2026-11-01 00:00:00';
+    const YEAR_END_UNTIL = '2027-01-01 00:00:00';
 
     protected function location(Request $request): array
     {
@@ -225,6 +228,7 @@ class ShelfCountController extends Controller
             $c = $counted[$r->id] ?? null;
             if ($c) { $b['counted'] = ($b['counted'] ?? 0) + 1; if (!isset($b['last']) || $c['at'] > $b['last']) $b['last'] = $c['at']; }
             if ($c && $c['at'] >= $cut) $b['recent'] = ($b['recent'] ?? 0) + 1;
+            if ($c && $c['at'] >= self::YEAR_END_FROM) $b['ye'] = ($b['ye'] ?? 0) + 1;
             self::addWeb($b, $web[$r->id] ?? null, $c);
             unset($b);
         }
@@ -261,8 +265,24 @@ class ShelfCountController extends Controller
         $order = array_keys($kinds);
         uasort($tiles, function ($a, $b) use ($order) { return array_search($a['kind'], $order) <=> array_search($b['kind'], $order); });
         $allDone = array_sum(array_map(function ($t) { return $t['done'] ?? 0; }, $tiles));
+        // Year-end box (Sarah 11/10/26): sealed stock is what the 12/31 tax
+        // inventory value depends on, so it goes first, with titles counted
+        // since YEAR_END_FROM per sealed type.
+        $yearEnd = [];
+        if (now()->lt(self::YEAR_END_UNTIL)) {
+            foreach ($bins as $b) {
+                $nm = $kinds[$b['kind']] ?? '';
+                if (!in_array($b['kind'], ['vinyl-new', 'cd-new'], true) && stripos($nm, 'sealed') === false) continue;
+                $y = &$yearEnd[$b['kind']];
+                $y['kind'] = $b['kind']; $y['name'] = $nm;
+                $y['titles'] = ($y['titles'] ?? 0) + $b['titles']; $y['counted'] = ($y['counted'] ?? 0) + ($b['ye'] ?? 0);
+                unset($y);
+            }
+            $yo = ['vinyl-new' => 0, 'cd-new' => 1];
+            uasort($yearEnd, function ($a, $b) use ($yo) { return ($yo[$a['kind']] ?? 2) <=> ($yo[$b['kind']] ?? 2); });
+        }
         return view('report.shelf_count_home', ['locations' => $locations, 'loc' => $loc, 'tiles' => array_values($tiles),
-            'shelves' => count($bins), 'done' => $allDone, 'dueDays' => self::DUE_DAYS,
+            'shelves' => count($bins), 'done' => $allDone, 'dueDays' => self::DUE_DAYS, 'yearEnd' => array_values($yearEnd),
             'comics' => ['series' => count(\App\Services\ReorderService::COMIC_FAMILIES) + count(\App\Services\ReorderService::MAGAZINE_FAMILIES), 'recent' => $famRecent, 'last' => $famLast]]);
     }
 
