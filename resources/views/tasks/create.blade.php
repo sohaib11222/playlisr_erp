@@ -62,7 +62,7 @@
                         <input type="date" id="task_start_date" class="form-control" name="start_date" value="{{ old('start_date', now()->toDateString()) }}" required>
                         <span id="task_end_date_wrap" style="{{ $currentTaskType === 'daily' ? 'display:none;' : '' }}">
                             <span class="text-muted">to</span>
-                            <input type="text" id="task_end_date_preview" class="form-control" value="{{ now()->addDays(7)->format('M j, Y') }}" disabled style="width:120px;">
+                            <input type="date" id="task_end_date_preview" name="end_date" class="form-control" value="{{ old('end_date', now()->addDays(7)->toDateString()) }}" title="Due date. Defaults to a week after the start.">addDays(7)->format('M j, Y') }}" disabled style="width:120px;">
                         </span>
                         <span class="text-muted">by</span>
                         <input type="time" class="form-control" name="due_time" value="{{ old('due_time') }}" title="Optional. Blank means end of day.">
@@ -205,12 +205,13 @@
         if (!startDateEl || !startDateEl.value || !endDatePreview) {
             return;
         }
-        var d = new Date(startDateEl.value + 'T00:00:00');
-        if (!isDaily) {
-            d.setDate(d.getDate() + 7);
+        // The due date is editable now; only move it when it would land before the start.
+        if (isDaily || endDatePreview.value >= startDateEl.value) {
+            return;
         }
-        var opts = { year: 'numeric', month: 'short', day: 'numeric' };
-        endDatePreview.value = d.toLocaleDateString('en-US', opts);
+        var d = new Date(startDateEl.value + 'T00:00:00');
+        d.setDate(d.getDate() + 7);
+        endDatePreview.value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     }
 
     // "Today" row's Repeat checkbox + Daily/Weekly frequency select drive

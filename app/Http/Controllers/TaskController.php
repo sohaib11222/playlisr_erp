@@ -38,6 +38,19 @@ class TaskController extends Controller
         return $taskType === 'daily' ? $start->toDateString() : $start->addDays(7)->toDateString();
     }
 
+    /**
+     * A "This week" task can be given its own due date (Sarah 11/10/26:
+     * Zak's Pico count is due 11/30, not a week out). Blank or before the
+     * start date falls back to start + 7 days.
+     */
+    private static function pickEndDate(string $taskType, string $startDate, $endDate)
+    {
+        if ($taskType !== 'daily' && !empty($endDate) && $endDate >= \Carbon\Carbon::parse($startDate)->toDateString()) {
+            return \Carbon\Carbon::parse($endDate)->toDateString();
+        }
+        return self::computeEndDate($taskType, $startDate);
+    }
+
     /** Keep due_time only once its column exists (it ships in a migration run after deploy). */
     private static function withDueTime(array $data)
     {
@@ -533,6 +546,7 @@ class TaskController extends Controller
             'due_time' => 'nullable|date_format:H:i',
             'project_id' => 'nullable|integer',
             'no_due_date' => 'nullable|boolean',
+            'end_date' => 'nullable|date',
             'assignees' => 'nullable|array',
             'assignees.*' => 'integer',
         ]);
@@ -569,7 +583,7 @@ class TaskController extends Controller
         $data['business_id'] = $business_id;
         $data['created_by'] = auth()->id();
         $data['status'] = 'not_started';
-        $data['end_date'] = self::computeEndDate($data['task_type'], $data['start_date']);
+        $data['end_date'] = self::pickEndDate($data['task_type'], $data['start_date'], $data['end_date'] ?? null);
         // A fresh repeat_daily task shouldn't reset itself the moment
         // someone next loads /tasks — it's already at its starting state.
         $data['last_reset_date'] = $data['repeat_daily'] ? $data['start_date'] : null;
@@ -658,6 +672,7 @@ class TaskController extends Controller
             'due_time' => 'nullable|date_format:H:i',
             'project_id' => 'nullable|integer',
             'no_due_date' => 'nullable|boolean',
+            'end_date' => 'nullable|date',
             'assignees' => 'nullable|array',
             'assignees.*' => 'integer',
         ]);
@@ -708,7 +723,7 @@ class TaskController extends Controller
             }
         }
 
-        $data['end_date'] = self::computeEndDate($data['task_type'], $data['start_date']);
+        $data['end_date'] = self::pickEndDate($data['task_type'], $data['start_date'], $data['end_date'] ?? null);
 
         $this->applyStatusTransition($task, $data['status'], $photoConfirmed);
         unset($data['status']);
