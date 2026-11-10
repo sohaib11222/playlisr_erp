@@ -31,7 +31,7 @@ class ShelfCountController extends Controller
         $locations = BusinessLocation::forDropdown($business_id, false)->toArray();
         $permitted = auth()->user()->permitted_locations();
         if ($permitted !== 'all') $locations = array_intersect_key($locations, array_flip($permitted));
-        $locations = array_filter($locations, function ($n) { return stripos($n, 'warehouse') === false; });
+        // Warehouse included since 11/10/26 (Sarah): its sealed stock has to be counted for the 12/31 inventory.
         $loc = (int) $request->input('location_id');
         if (!isset($locations[$loc])) {
             $loc = (int) (array_search(true, array_map(function ($n) { return stripos($n, 'hollywood') !== false; }, $locations)) ?: array_key_first($locations));
