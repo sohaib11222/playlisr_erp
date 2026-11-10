@@ -618,7 +618,10 @@ HTML;
                                 {{-- Lookup is phone/email only (no browsing or searching by name), so the
                                      page only ships the already-picked contact; everything else comes
                                      from the seller-lookup endpoint. (Sarah 2026-11-10) --}}
-                                {!! Form::select('contact_id', collect($contacts)->only(array_filter([(string) ($input['contact_id'] ?? '')]))->all(), $input['contact_id'] ?? null, ['class' => 'form-control bfc-seller-lookup', 'id' => 'contact_id', 'style' => 'width:100%;', 'data-placeholder' => 'Type phone number or email']) !!}
+                                {!! Form::select('contact_id', collect($contacts)->only(array_filter([(string) ($input['contact_id'] ?? '')]))->all(), $input['contact_id'] ?? null, ['class' => 'form-control bfc-seller-lookup', 'id' => 'contact_id', 'style' => 'display:none;']) !!}
+                                <input type="text" id="bfc_seller_q" class="form-control" autocomplete="off" placeholder="Type phone number or email"
+                                       value="{{ collect($contacts)->get((string) ($input['contact_id'] ?? ''), '') }}">
+                                <div id="bfc_seller_results" class="list-group" style="display:none; position:absolute; z-index:1050; width:calc(100% - 30px); max-height:260px; overflow-y:auto; margin:0; box-shadow:0 4px 12px rgba(0,0,0,.15);"></div>
                                 <button type="button" class="btn btn-link btn-xs" id="bfc_view_account_btn" style="padding-left:0;">
                                     <i class="fa fa-user"></i> View account (store credit &amp; history)
                                 </button>
@@ -1261,27 +1264,53 @@ HTML;
         // delegated native `change` as a fallback in case select2 isn't
         // initialized. One of these fires whenever an account is picked, so the
         // gate re-runs and unlocks the items. (Sarah 2026-07-21)
-        // Seller lookup by phone number or email only — never by name.
+        // Seller lookup by phone number or email only — never by name. Plain
+        // input + result list (select2 here left a stacked dead copy you
+        // couldn't type into). Picking a result sets the hidden #contact_id.
         (function () {
-            var $c = $('#contact_id');
-            if (!$c.length || !$.fn.select2) return;
-            if ($c.hasClass('select2-hidden-accessible')) $c.select2('destroy');
-            $c.select2({
-                width: '100%',
-                placeholder: 'Type phone number or email',
-                allowClear: true,
-                minimumInputLength: 3,
-                language: {
-                    inputTooShort: function () { return 'Type the seller\'s phone number or email'; },
-                    noResults: function () { return 'No account with that phone/email'; }
-                },
-                ajax: {
-                    url: @json(url('/buy-from-customer/seller-lookup')),
-                    dataType: 'json',
-                    delay: 250,
-                    data: function (p) { return { q: p.term }; },
-                    processResults: function (d) { return { results: d.results || [] }; }
+            var $c = $('#contact_id'), $q = $('#bfc_seller_q'), $list = $('#bfc_seller_results');
+            if (!$q.length) return;
+            var url = @json(url('/buy-from-customer/seller-lookup')), timer = null, seq = 0;
+            function msg(t) { $list.html($('<div class="list-group-item text-muted"></div>').text(t)).show(); }
+            function setContact(id, text) {
+                $c.empty();
+                if (id) $c.append($('<option></option>').attr('value', id).text(text));
+                $c.val(id || '').trigger('change');
+            }
+            $q.on('input', function () {
+                var q = $.trim($q.val());
+                if ($c.val()) setContact('', '');
+                clearTimeout(timer);
+                var digits = q.replace(/\D/g, '');
+                if (q.indexOf('@') === -1 && digits.length < 4) {
+                    if (q.length) msg(/[a-z]/i.test(q) && q.indexOf('@') === -1 ? 'Search by phone number or email (not name)' : 'Keep typing the phone number…'); else $list.hide();
+                    return;
                 }
+                timer = setTimeout(function () {
+                    var my = ++seq;
+                    $.getJSON(url, { q: q }).done(function (d) {
+                        if (my !== seq) return;
+                        var res = (d && d.results) || [];
+                        if (!res.length) return msg('No account with that phone/email');
+                        $list.empty();
+                        res.forEach(function (r) {
+                            $('<a href="#" class="list-group-item"></a>').text(r.text).attr('data-id', r.id).appendTo($list);
+                        });
+                        $list.show();
+                    }).fail(function () { if (my === seq) msg('Lookup failed, try again'); });
+                }, 250);
+            });
+            $list.on('mousedown', 'a.list-group-item', function (e) {
+                e.preventDefault();
+                var $a = $(this);
+                setContact($a.attr('data-id'), $a.text());
+                $q.val($a.text());
+                $list.hide();
+            });
+            $q.on('blur', function () { setTimeout(function () { $list.hide(); }, 150); });
+            $q.on('keydown', function (e) {
+                if (e.key === 'Enter') { e.preventDefault(); var $f = $list.find('a.list-group-item').first(); if ($list.is(':visible') && $f.length) $f.trigger('mousedown'); }
+                if (e.key === 'Escape') $list.hide();
             });
         })();
         $('#contact_id').on('select2:select select2:unselect select2:clear change', bfcApplyItemsGate);
@@ -1529,7 +1558,7 @@ HTML;
             }
             if (mode === 'contact') {
                 if (!$('#contact_id').val()) {
-                    return { field: '#contact_id', msg: 'Select the seller\'s existing account before getting a quote.' };
+                    return { field: '#bfc_seller_q', msg: 'Select the seller\'s existing account before getting a quote.' };
                 }
                 return null;
             }
