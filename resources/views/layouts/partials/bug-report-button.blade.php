@@ -216,9 +216,46 @@
         }
     });
 
+    // Jon 11/10/26: big phone photos / Retina screenshots (and long-page auto
+    // pictures) went over the server upload limit, so the whole report failed.
+    // Shrink every picture to a small JPEG first; if it still will not send,
+    // send the report without the picture so the ticket always goes in.
+    function shrinkPic(blob, cb) {
+        if (!blob) return cb(null);
+        var url;
+        try { url = URL.createObjectURL(blob); } catch (e) { return cb(null); }
+        var img = new Image();
+        img.onload = function () {
+            try {
+                var max = 1600, w = img.naturalWidth, h = img.naturalHeight;
+                var k = Math.min(1, max / Math.max(w, h));
+                var c = document.createElement('canvas');
+                c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+                var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+                g.drawImage(img, 0, 0, c.width, c.height);
+                URL.revokeObjectURL(url);
+                c.toBlob(function (b) {
+                    if (b && b.size > 900000) {
+                        c.toBlob(function (b2) { cb(b2 || b); }, 'image/jpeg', 0.55);
+                    } else { cb(b); }
+                }, 'image/jpeg', 0.8);
+            } catch (e) { cb(null); }
+        };
+        img.onerror = function () { try { URL.revokeObjectURL(url); } catch (e) {} cb(null); };
+        img.src = url;
+    }
+
     form.addEventListener('submit', function (e) {
         e.preventDefault();
         if (!desc.value.trim()) { desc.focus(); return; }
+        var rawPic = ownShot ? ownShot : ((autoShot && autoShotOn) ? autoShot : null);
+        sendBtn.disabled = true; sendBtn.textContent = 'Sending...';
+        shrinkPic(rawPic, function (pic) {
+            sendReport(pic, !!rawPic && !pic);
+        });
+    });
+
+    function sendReport(pic, picDropped) {
         var fd = new FormData();
         fd.append('description', desc.value.trim());
         fd.append('kind', kind);
@@ -228,30 +265,38 @@
             user_agent: navigator.userAgent, screen: window.innerWidth + 'x' + window.innerHeight,
             page_title: document.title, js_errors: jsErrors, reported_at: new Date().toString()
         }));
-        if (ownShot) fd.append('screenshot', ownShot, ownShot.name || 'picture.png');
-        else if (autoShot && autoShotOn) fd.append('screenshot', autoShot, 'page.jpg');
+        if (pic) fd.append('screenshot', pic, 'picture.jpg');
         var tokenMeta = document.querySelector('meta[name="csrf-token"]');
         sendBtn.disabled = true; sendBtn.textContent = 'Sending...';
         fetch('/bug-fixes/report', {
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': tokenMeta ? tokenMeta.getAttribute('content') : '', 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
             body: fd, credentials: 'same-origin'
-        }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        }).then(function (r) {
+            return r.json().then(function (j) { return { ok: r.ok, j: j, status: r.status }; },
+                function () { return { ok: false, j: null, status: r.status }; });
+        })
           .then(function (res) {
-            if (!res.ok || !res.j.success) {
+            // Picture rejected or too big: send the report again without it.
+            if ((!res.ok || !res.j || !res.j.success) && pic && (res.status === 413 || res.status === 422 || !res.j)) {
+                sendReport(null, true);
+                return 'retry';
+            }
+            if (!res.ok || !res.j || !res.j.success) {
                 var err = (res.j && res.j.errors) ? Object.values(res.j.errors)[0][0] : ((res.j && res.j.message) || 'Could not send. Try again.');
                 msg.style.color = '#8A3A2E'; msg.textContent = err; return;
             }
             msg.style.color = '#2F6B3E';
-            msg.innerHTML = 'Thanks! #' + res.j.id + ' is in the queue. <a href="' + res.j.url + '">Track it here</a>.';
+            msg.innerHTML = 'Thanks! #' + res.j.id + ' is in the queue. <a href="' + res.j.url + '">Track it here</a>.'
+                + (picDropped ? ' (The picture could not be attached, so it went in without it.)' : '');
             desc.value = ''; fileInput.value = ''; ownShot = null; autoShot = null;
             Array.prototype.forEach.call(people.querySelectorAll('.eb-pill.on'), function (b) { b.classList.remove('on'); });
             renderPic();
             setTimeout(function () { if (msg.textContent.indexOf('Thanks') === 0) close(); }, 3500);
         }).catch(function () {
             msg.style.color = '#8A3A2E'; msg.textContent = 'Could not send. Check your connection and try again.';
-        }).then(function () { sendBtn.disabled = false; sendBtn.textContent = 'Send'; });
-    });
+        }).then(function (r) { if (r !== 'retry') { sendBtn.disabled = false; sendBtn.textContent = 'Send'; } });
+    }
 })();
 </script>
 @endauth

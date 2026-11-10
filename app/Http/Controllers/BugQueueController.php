@@ -328,7 +328,7 @@ class BugQueueController extends Controller
     {
         $request->validate([
             'description' => 'required|string|max:5000',
-            'screenshot' => 'nullable|image|max:8192',
+            'screenshot' => 'nullable|file|mimes:jpeg,jpg,png,gif,webp,bmp,heic,heif|max:20480',
         ]);
         $business_id_for_tags = (int) $request->session()->get('user.business_id');
         $allowed = array_column(self::taggableUsers($business_id_for_tags), 0);
