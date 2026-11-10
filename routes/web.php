@@ -965,6 +965,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/buy-from-customer/beta/calculate', 'BuyFromCustomerController@betaMoved');
     Route::post('/buy-from-customer/beta/calculate', 'BuyFromCustomerController@calculateBeta')->name('buy-from-customer.beta.calculate');
     Route::get('/buy-from-customer/beta/demand', 'BuyFromCustomerController@betaDemand')->name('buy-from-customer.beta.demand');
+    Route::get('/buy-from-customer/seller-lookup', 'BuyFromCustomerController@sellerLookup')->name('buy-from-customer.seller-lookup');
     Route::get('/buy-from-customer/signed-ebay-value', 'BuyFromCustomerController@signedEbayValue')->name('buy-from-customer.signed-ebay-value');
     Route::post('/buy-from-customer/autosave', 'BuyFromCustomerController@autosave')->name('buy-from-customer.autosave');
     Route::post('/buy-from-customer', 'BuyFromCustomerController@store')->name('buy-from-customer.store');

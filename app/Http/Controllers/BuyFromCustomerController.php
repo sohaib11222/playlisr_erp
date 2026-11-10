@@ -416,6 +416,67 @@ class BuyFromCustomerController extends Controller
     }
 
     /** Buy form signed lines: eBay asking-price lookup (SignedValueLookupService). */
+    /**
+     * Seller picker lookup for the buy form: phone number or email ONLY.
+     * Staff must not be able to find people by name here. (Sarah 2026-11-10)
+     */
+    public function sellerLookup(Request $request)
+    {
+        if (!auth()->user()->can('purchase.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $business_id = request()->session()->get('user.business_id');
+        $q = trim((string) $request->input('q', ''));
+
+        $query = Contact::where('business_id', $business_id)
+            ->where('type', '!=', 'lead')
+            ->active();
+
+        if (strpos($q, '@') !== false) {
+            if (strlen($q) < 5) {
+                return response()->json(['results' => []]);
+            }
+            $query->where('email', 'like', $q . '%');
+        } else {
+            $digits = preg_replace('/\D+/', '', $q);
+            if (strlen($digits) < 4) {
+                return response()->json(['results' => []]);
+            }
+            $norm = function ($col) {
+                return "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE($col,''),' ',''),'-',''),'(',''),')',''),'.',''),'+','')";
+            };
+            $like = '%' . $digits . '%';
+            $query->where(function ($w) use ($norm, $like) {
+                $w->whereRaw($norm('contacts.mobile') . ' LIKE ?', [$like])
+                  ->orWhereRaw($norm('contacts.alternate_number') . ' LIKE ?', [$like])
+                  ->orWhereRaw($norm('contacts.landline') . ' LIKE ?', [$like]);
+            });
+        }
+
+        if (!auth()->user()->can('supplier.view') && auth()->user()->can('supplier.view_own')) {
+            $user_id = auth()->user()->id;
+            $query->leftjoin('user_contact_access AS ucas', 'contacts.id', 'ucas.contact_id')
+                ->where(function ($w) use ($user_id) {
+                    $w->where('contacts.created_by', $user_id)->orWhere('ucas.user_id', $user_id);
+                });
+        }
+
+        $rows = $query->select('contacts.id', 'contacts.name', 'contacts.mobile', 'contacts.email', 'contacts.contact_id')
+            ->orderBy('contacts.name')
+            ->limit(20)
+            ->get();
+
+        $results = $rows->map(function ($c) {
+            $text = $c->name;
+            if (!empty($c->mobile)) $text .= ' — ' . $c->mobile;
+            if (!empty($c->email)) $text .= ' — ' . $c->email;
+            if (!empty($c->contact_id)) $text .= ' (' . $c->contact_id . ')';
+            return ['id' => $c->id, 'text' => $text];
+        })->values();
+
+        return response()->json(['results' => $results]);
+    }
+
     public function signedEbayValue(Request $request)
     {
         if (!auth()->user()->can('purchase.create')) {
