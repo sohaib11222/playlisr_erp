@@ -1,0 +1,89 @@
+# Delete website sell quotes by number (e.g. "Q1001-Q1006" or "Q1001,Q1003").
+# DRY RUN by default: lists the matching rows. Tick "commit" to delete them.
+# Deleted rows are backed up as JSON to storage/app/sell_quote_deletes/ first.
+
+name: Delete sell quotes
+
+on:
+  workflow_dispatch:
+    inputs:
+      numbers:
+        description: 'Quote numbers: range Q1001-Q1006 or list Q1001,Q1003'
+        required: true
+      commit:
+        description: 'Actually delete? (unchecked = dry run)'
+        type: boolean
+        default: false
+
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parse quote ids
+        id: ids
+        env:
+          NUMBERS: ${{ github.event.inputs.numbers }}
+        run: |
+          ids=""
+          IFS=',' read -ra parts <<< "$NUMBERS"
+          for p in "${parts[@]}"; do
+            p="$(echo "$p" | tr -d ' qQ')"
+            if [[ "$p" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+              a=${BASH_REMATCH[1]}; b=${BASH_REMATCH[2]}
+              for ((n=a; n<=b; n++)); do ids="$ids,$n"; done
+            elif [[ "$p" =~ ^[0-9]+$ ]]; then
+              ids="$ids,$p"
+            else
+              echo "Bad input: $p"; exit 1
+            fi
+          done
+          # Q1001 -> id 1
+          out=""
+          for n in ${ids//,/ }; do
+            if [ "$n" -gt 1000 ]; then n=$((n-1000)); fi
+            out="$out,$n"
+          done
+          echo "ids=${out#,}" >> "$GITHUB_OUTPUT"
+          echo "ids: ${out#,}"
+
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Run
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          command_timeout: 10m
+          script: |
+            cd /www/playlist.nivessa.com/app
+            cat > /tmp/del_sq.php <<'PHP'
+            <?php
+            require 'vendor/autoload.php';
+            $app = require 'bootstrap/app.php';
+            $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+            use Illuminate\Support\Facades\DB;
+            $ids = array_values(array_filter(array_map('intval', explode(',', $argv[1] ?? '')), function ($i) { return $i > 0; }));
+            $commit = ($argv[2] ?? '') === 'true';
+            if (!$ids) { echo "no ids\n"; exit(1); }
+            $rows = DB::table('sell_quotes')->whereIn('id', $ids)->orderBy('id')->get();
+            foreach ($rows as $r) {
+              printf("Q%d | %s | %s | phone ..%s | %s | items=%s | cash=%s\n", 1000 + $r->id, $r->created_at, $r->name, substr(preg_replace('/\D/', '', (string) $r->phone), -4), $r->status, $r->item_count ?? '', $r->cash_total ?? '');
+            }
+            printf("(%d of %d requested found)\n", count($rows), count($ids));
+            if (!$commit) { echo "DRY RUN - nothing deleted\n"; exit(0); }
+            $dir = storage_path('app/sell_quote_deletes');
+            if (!is_dir($dir)) mkdir($dir, 0775, true);
+            $file = $dir . '/' . date('Ymd_His') . '.json';
+            file_put_contents($file, json_encode($rows, JSON_PRETTY_PRINT));
+            echo "backup: $file\n";
+            $n = DB::table('sell_quotes')->whereIn('id', $rows->pluck('id'))->delete();
+            echo "DELETED $n rows\n";
+            PHP
+            php /tmp/del_sq.php "${{ steps.ids.outputs.ids }}" "${{ github.event.inputs.commit }}"
+            rm -f /tmp/del_sq.php
