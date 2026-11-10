@@ -618,7 +618,7 @@ HTML;
                                 {{-- Lookup is phone/email only (no browsing or searching by name), so the
                                      page only ships the already-picked contact; everything else comes
                                      from the seller-lookup endpoint. (Sarah 2026-11-10) --}}
-                                {!! Form::select('contact_id', collect($contacts)->only(array_filter([(string) ($input['contact_id'] ?? '')]))->all(), $input['contact_id'] ?? null, ['class' => 'form-control select2', 'id' => 'contact_id', 'style' => 'width:100%;', 'data-placeholder' => 'Type phone number or email']) !!}
+                                {!! Form::select('contact_id', collect($contacts)->only(array_filter([(string) ($input['contact_id'] ?? '')]))->all(), $input['contact_id'] ?? null, ['class' => 'form-control bfc-seller-lookup', 'id' => 'contact_id', 'style' => 'width:100%;', 'data-placeholder' => 'Type phone number or email']) !!}
                                 <button type="button" class="btn btn-link btn-xs" id="bfc_view_account_btn" style="padding-left:0;">
                                     <i class="fa fa-user"></i> View account (store credit &amp; history)
                                 </button>
@@ -1553,7 +1553,7 @@ HTML;
                     $('html, body').animate({ scrollTop: $f.offset().top - 140 }, 200);
                     // select2-backed contact picker opens on .select2-open; a plain
                     // input just focuses.
-                    if ($f.hasClass('select2')) { $f.select2('open'); } else { $f.trigger('focus'); }
+                    if ($f.hasClass('select2') || $f.hasClass('select2-hidden-accessible')) { $f.select2('open'); } else { $f.trigger('focus'); }
                 }
                 return false;
             }
