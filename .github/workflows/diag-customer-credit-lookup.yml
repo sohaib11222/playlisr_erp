@@ -1,0 +1,32 @@
+name: Diag customer credit + points lookup
+
+# Read-only: find a customer by name and print their store credit balance,
+# loyalty points, masked email/phone and recent credit notes. Used to check
+# why a customer's credit or points don't show on nivessa.com.
+
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: Customer name (e.g. "Jane Doe")
+        required: true
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run on prod
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          LOOKUP_NAME: ${{ inputs.name }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          envs: LOOKUP_NAME
+          command_timeout: 5m
+          script: |
+            echo 'PD9waHAKLy8gUmVhZC1vbmx5OiBhIGN1c3RvbWVyJ3MgRVJQIHN0b3JlIGNyZWRpdCArIHBvaW50cyBieSBuYW1lLCBmb3Igd2Vic2l0ZSBzdXBwb3J0LgokcSA9IHRyaW0oKHN0cmluZykgZ2V0ZW52KCdMT09LVVBfTkFNRScpKTsKJGJpZCA9IFxBcHBcQnVzaW5lc3M6OmZpcnN0KCktPmlkOwokbWFzayA9IGZ1bmN0aW9uICgkZSkgeyAkZSA9IChzdHJpbmcpICRlOyBpZiAoIXN0cl9jb250YWlucygkZSwgJ0AnKSkgcmV0dXJuICRlID09PSAnJyA/ICcobm9uZSknIDogJyhpbnZhbGlkKSc7IFskdSwgJGRdID0gZXhwbG9kZSgnQCcsICRlLCAyKTsgcmV0dXJuIHN1YnN0cigkdSwgMCwgMikgLiAnKioqQCcgLiAkZDsgfTsKJHBhcnRzID0gcHJlZ19zcGxpdCgnL1xzKy8nLCAkcSk7CiRyb3dzID0gXERCOjp0YWJsZSgnY29udGFjdHMnKS0+d2hlcmUoJ2J1c2luZXNzX2lkJywgJGJpZCktPndoZXJlSW4oJ3R5cGUnLCBbJ2N1c3RvbWVyJywgJ2JvdGgnXSktPndoZXJlTnVsbCgnZGVsZXRlZF9hdCcpCiAgLT53aGVyZShmdW5jdGlvbiAoJHcpIHVzZSAoJHEsICRwYXJ0cykgewogICAgJHctPndoZXJlKCduYW1lJywgJ2xpa2UnLCAiJSRxJSIpOwogICAgaWYgKGNvdW50KCRwYXJ0cykgPj0gMikgJHctPm9yV2hlcmUoZnVuY3Rpb24gKCR4KSB1c2UgKCRwYXJ0cykgeyAkeC0+d2hlcmUoJ2ZpcnN0X25hbWUnLCAnbGlrZScsICRwYXJ0c1swXSAuICclJyktPndoZXJlKCdsYXN0X25hbWUnLCAnbGlrZScsIGVuZCgkcGFydHMpIC4gJyUnKTsgfSk7CiAgfSktPmxpbWl0KDIwKS0+Z2V0KCk7CmVjaG8gIm1hdGNoZXM6ICIgLiBjb3VudCgkcm93cykgLiAiXG4iOwpmb3JlYWNoICgkcm93cyBhcyAkYykgewogICRkaWdpdHMgPSBwcmVnX3JlcGxhY2UoJy9cRCsvJywgJycsIChzdHJpbmcpICRjLT5tb2JpbGUpOwogIGVjaG8gIi0tLSBjb250YWN0ICN7JGMtPmlkfSB7JGMtPm5hbWV9IHwgZW1haWwgIiAuICRtYXNrKCRjLT5lbWFpbCkgLiAiIHwgcGhvbmUgIiAuICgkZGlnaXRzID8gJyoqKicgLiBzdWJzdHIoJGRpZ2l0cywgLTQpIDogJyhub25lKScpCiAgICAuICIgfCBzdG9yZSBjcmVkaXQgXCQiIC4gbnVtYmVyX2Zvcm1hdCgoZmxvYXQpICgkYy0+YmFsYW5jZSA/PyAwKSwgMikKICAgIC4gIiB8IGxveWFsdHlfcG9pbnRzICIgLiAoJGMtPmxveWFsdHlfcG9pbnRzID8/ICduL2EnKSAuICIgfCB0b3RhbF9ycCAiIC4gKCRjLT50b3RhbF9ycCA/PyAnbi9hJykKICAgIC4gIiB8IGNyZWF0ZWQgeyRjLT5jcmVhdGVkX2F0fVxuIjsKICAkbm90ZXMgPSB0cmltKChzdHJpbmcpICgkYy0+YmFsYW5jZV9ub3RlcyA/PyAnJykpOwogIGlmICgkbm90ZXMgIT09ICcnKSBlY2hvICIgICAgY3JlZGl0IG5vdGVzIChsYXN0IDUpOlxuICAgICAgIiAuIGltcGxvZGUoIlxuICAgICAgIiwgYXJyYXlfc2xpY2UoZXhwbG9kZSgiXG4iLCAkbm90ZXMpLCAtNSkpIC4gIlxuIjsKfQplY2hvICJET05FXG4iOwo=' | base64 -d > /tmp/credit_lookup.php
+            cd /www/playlist.nivessa.com/app && LOOKUP_NAME="$LOOKUP_NAME" php artisan tinker /tmp/credit_lookup.php 2>&1
+            rm -f /tmp/credit_lookup.php
