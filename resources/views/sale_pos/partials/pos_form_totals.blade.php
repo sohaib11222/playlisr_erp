@@ -663,8 +663,8 @@
                     <span class="pretax-cur">$</span><span id="pre_tax_amount">0.00</span>
                 </div>
                 <div class="clover-split" id="clover_split">
-                    <div class="clover-split-row"><span class="clover-split-key">Normal key</span><span class="clover-split-amt">$<span id="clover_split_taxed">0.00</span></span></div>
-                    <div class="clover-split-row"><span class="clover-split-key">+ No Tax key</span><span class="clover-split-amt">$<span id="clover_split_notax">0.00</span></span></div>
+                    <div class="clover-split-row"><span class="clover-split-key">Type in Clover</span><span class="clover-split-amt">$<span id="clover_split_taxed">0.00</span></span></div>
+                    <div class="clover-split-row"><span class="clover-split-key">+ No Tax item</span><span class="clover-split-amt">$<span id="clover_split_notax">0.00</span></span></div>
                 </div>
             </div>
 
@@ -1199,7 +1199,7 @@
                             <div class="card-amt-tag">pre-tax</div>
                         </div>
                         <div class="card-clover-row" id="card_prompt_notax" style="display:none;">
-                            <div class="card-instr">Then key this on the No Tax key</div>
+                            <div class="card-instr">Then tap the No Tax item in Clover and enter</div>
                             <div class="card-amt" id="card_prompt_notax_amt">$0.00</div>
                             <div class="card-amt-tag">bag fee and other tax-free items</div>
                         </div>
