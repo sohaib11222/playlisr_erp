@@ -1458,6 +1458,7 @@ HTML;
                 if (type === 'individual_vinyl' && qty > {{ (int) \App\Services\BuyOfferCalculatorService::INDIVIDUAL_MAX_QTY }}) sanity.push('Line ' + (i + 1) + ': "1-9 items" vinyl is for up to {{ (int) \App\Services\BuyOfferCalculatorService::INDIVIDUAL_MAX_QTY }} records. Use a 10+ Bulk Vinyl type.');
                 var title = $.trim($row.find('input[name$="[title]"]').val() || '');
                 if (type === 'individual_vinyl' && qty > 0 && (title || link || val > 0) && !$row.find('select.bfc-grade').val()) sanity.push('Line ' + (i + 1) + ': pick the record\'s condition grade.');
+                if (type === 'cd_10_plus' && qty > 0 && !$row.find('select.bfc-grade').val()) sanity.push('Line ' + (i + 1) + ': pick the CD\'s condition grade.');
                 var tcfg = BFC_RULES.types[type] || {};
                 if (bfcEbayLinkRequired(type + ' ' + ($row.find('select.bfc-genre').val() ? $row.find('select.bfc-genre option:selected').text().split(' › ')[0] : ''), tcfg, val) && qty > 0) {
                     if (!link) sanity.push('Line ' + (i + 1) + ': items worth more than ${{ (int) \App\Services\BuyOfferCalculatorService::EBAY_LINK_REQUIRED_OVER }} need an eBay link (paste the eBay page link).');
@@ -1727,7 +1728,7 @@ HTML;
             } else if (t.mode === 'individual_discogs') {
                 line = qty * median * gm * computeStdMult(median);
             } else if (t.mode === 'value_percent') {
-                line = qty * median * bfcPercentForValue(median, t.value_tiers);
+                line = qty * median * bfcPercentForValue(median, t.value_tiers) * gm;
             } else if (t.mode === 'ebay_margin') {
                 line = qty * median * bfcPayPct($row);
             } else {
@@ -1762,7 +1763,7 @@ HTML;
             }
             if (t.mode === 'value_percent') {
                 if (median <= 0) return '';
-                return qty + ' × ' + median + ' × ' + Math.round(bfcPercentForValue(median, t.value_tiers) * 100) + '%';
+                return qty + ' × ' + median + ' × ' + Math.round(bfcPercentForValue(median, t.value_tiers) * 100) + '%' + (t.no_grading ? '' : ' × ' + gm);
             }
             return qty + ' × ' + (parseFloat(t.unit_rate) || 0).toFixed(2) + (t.no_grading ? '' : ' × ' + gm);
         }

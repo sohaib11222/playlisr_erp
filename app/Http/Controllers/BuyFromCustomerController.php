@@ -1217,6 +1217,9 @@ class BuyFromCustomerController extends Controller
             if ($type === 'individual_vinyl' && empty($line['signed']) && $qty > 0 && ($title !== '' || $link !== '' || $value > 0) && trim((string) ($line['condition_grade'] ?? '')) === '') {
                 $errors["lines.$i.condition_grade"] = sprintf('Line %s: pick the record\'s condition grade.', $n);
             }
+            if ($type === 'cd_10_plus' && $qty > 0 && trim((string) ($line['condition_grade'] ?? '')) === '') {
+                $errors["lines.$i.condition_grade"] = sprintf('Line %s: pick the CD\'s condition grade.', $n);
+            }
             // The Beta category pick posts an id (c:123); match on its format name
             // ("Vinyl" of "Vinyl › Rock"), so "Audio Gear › Record Needle" still needs a link.
             $genre = (string) ($line['genre'] ?? '');
