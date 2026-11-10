@@ -75,6 +75,8 @@
         /* Live per-line value (read-out, computed client-side to mirror the server). */
         .bfc-create #offer_lines_table td.bfc-line-cell { text-align: right; white-space: nowrap; }
         .bfc-create .bfc-line-value { font-weight: 600; font-variant-numeric: tabular-nums; color: #333; }
+        .bfc-create #offer_lines_table td.bfc-line-credit-cell { text-align: right; white-space: nowrap; }
+        .bfc-create .bfc-line-credit { font-weight: 600; font-variant-numeric: tabular-nums; color: #2c699a; }
         .bfc-create .bfc-line-formula { display: block; font-size: 11px; color: #aaa; font-weight: 400; font-variant-numeric: tabular-nums; }
         /* Running totals bar above Calculate — offer builds live as items are typed. */
         .bfc-create .bfc-running { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 12px 0 8px; padding: 10px 14px; background: #fafafa; border: 1px solid #eee; border-radius: 8px; }
@@ -714,7 +716,8 @@ HTML;
                                     <th>Grade</th>
                                     <th>Qty</th>
                                     <th>Discogs median / eBay recently sold<br><small>price + link</small></th>
-                                    <th>Line value</th>
+                                    <th>Cash value</th>
+                                    <th>Store credit value</th>
                                     <th></th>
                                 </tr>
                             </thead>
@@ -758,6 +761,7 @@ HTML;
                                         </td>
                                         {{-- Jon 2026-10-26: no Destination column; an old draft keeps its pick. --}}
                                         <td class="bfc-line-cell">@if(!empty($line['disposition'])){!! Form::hidden("lines[$i][disposition]", $line['disposition']) !!}@endif<span class="bfc-line-value">$0.00</span><small class="bfc-line-formula"></small>@if($bfcRowDemand) {!! $bfcDemandChip($bfcRowDemand) !!} @endif</td>
+                                        <td class="bfc-line-credit-cell"><span class="bfc-line-credit">$0.00</span></td>
                                         <td><button type="button" class="btn btn-danger btn-xs remove-line"><i class="fa fa-times"></i></button></td>
                                     </tr>
                                 @endforeach
@@ -1431,6 +1435,7 @@ HTML;
                 + '<td><input type="number" step="0.01" min="0.01" name="lines[' + idx + '][quantity]" value="1" class="form-control"></td>'
                 + '<td><input type="number" step="0.01" min="0" name="lines[' + idx + '][discogs_median_price]" class="form-control"><input type="hidden" name="lines[' + idx + '][standard_multiplier]" value="' + prevStdMult + '" class="bfc-std"><input type="text" name="lines[' + idx + '][discogs_link]" class="form-control bfc-link" placeholder="Release ID or URL"><a class="bfc-ebay-search" href="#" target="_blank" rel="noopener" style="display:none;">Search eBay sold items ↗</a><a class="bfc-ebay-howto" href="#bfc_ebay_help" style="display:none;">How?</a>' + (BFC_BETA ? '<div class="bfc-lastsold" style="display:none;"><small>Last sold on Discogs</small><input type="date" name="lines[' + idx + '][discogs_last_sold]" max="{{ date('Y-m-d') }}" class="form-control bfc-lastsold-date"><label class="bfc-lastsold-never"><input type="checkbox" name="lines[' + idx + '][discogs_never_sold]" value="1"> never sold</label></div>' : '') + '</td>'
                 + '<td class="bfc-line-cell"><span class="bfc-line-value">$0.00</span><small class="bfc-line-formula"></small></td>'
+                + '<td class="bfc-line-credit-cell"><span class="bfc-line-credit">$0.00</span></td>'
                 + '<td><button type="button" class="btn btn-danger btn-xs remove-line"><i class="fa fa-times"></i></button></td>'
                 + '</tr>';
             var $newRow = $($.parseHTML(row));
@@ -1968,6 +1973,8 @@ HTML;
                 var $row = $(this);
                 var v = bfcLineValue($row);
                 $row.find('.bfc-line-value').text(bfcMoney(v));
+                // Jon 2026-11-10: store credit value = cash value x credit bonus (1.5x).
+                $row.find('.bfc-line-credit').text(bfcMoney(Math.round(v * (parseFloat(BFC_RULES.credit_bonus) || 1.5) * 100) / 100));
                 $row.find('.bfc-line-formula').text(bfcLineFormula($row));
                 cashTotal += v;
             });
