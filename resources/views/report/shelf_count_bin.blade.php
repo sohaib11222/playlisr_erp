@@ -120,9 +120,17 @@
     function d8(t) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t || ''); return m ? m[2] + '/' + m[3] + '/' + m[1].slice(2) : (t || ''); }
     function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
     function label(i) { return (i.artist && (i.name || '').toLowerCase().indexOf(String(i.artist).toLowerCase()) === -1 ? i.artist + ' - ' : '') + i.name; }
+    // Nivessa SKU (shelf sticker) + price + UPC, so you can tell which copy you're holding (Jon 11/9).
+    function ids(i) {
+        var p = [];
+        if (i.nsku) p.push('#' + esc(i.nsku));
+        if (i.price != null && i.price !== '') p.push('<b>$' + esc(Number(i.price).toFixed(2)) + '</b>');
+        if (i.sku && String(i.sku) !== String(i.nsku || '')) p.push('UPC ' + esc(i.sku));
+        return p.join(' · ');
+    }
     function row(i) {
         var n = count[i.id] || 0, none = touched[i.id] && !n;
-        return '<div class="sc-item' + (n ? ' seen' : '') + (none ? ' none' : '') + '" data-id="' + i.id + '"><div class="t">' + esc(label(i)) + '<div class="sc-small">' + (i.sku ? 'SKU ' + esc(i.sku) + ', ' : '') + (i.bin ? esc(i.bin) + ', ' : '') + 'ERP ' + (i.erp != null ? i.erp : '-') + (none ? ', marked none here' : (touched[i.id] ? '' : ', not counted yet')) + '</div>'
+        return '<div class="sc-item' + (n ? ' seen' : '') + (none ? ' none' : '') + '" data-id="' + i.id + '"><div class="t">' + esc(label(i)) + '<div class="sc-small">' + (ids(i) ? ids(i) + ', ' : '') + (i.bin ? esc(i.bin) + ', ' : '') + 'ERP ' + (i.erp != null ? i.erp : '-') + (none ? ', marked none here' : (touched[i.id] ? '' : ', not counted yet')) + '</div>'
             + prevLine(i)
             + (moved[i.id] ? '<div class="sc-small sc-moved">Genre changed to ' + esc(moved[i.id]) + '</div>' : '')
             + (editing === i.id ? genreSelect(i) : '') + '</div>'
@@ -193,7 +201,7 @@
     function fold(t) { return String(t == null ? '' : t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' '); }
     function matches(i) {
         if (!findWords.length) return true;
-        var hay = ' ' + fold([i.artist, i.artist ? fileAs(i.artist) : '', i.name, i.sku, i.bin].join(' ')) + ' ';
+        var hay = ' ' + fold([i.artist, i.artist ? fileAs(i.artist) : '', i.name, i.sku, i.nsku, i.bin].join(' ')) + ' ';
         return findWords.every(function (w) { return hay.indexOf(w) !== -1; });
     }
     var findEl = document.getElementById('scFind'), findClr = document.getElementById('scFindClear');
@@ -287,7 +295,7 @@
         render();
         var f = document.getElementById('scFlash'); f.className = 'sc-flash ok';
         // The count is a button (Jon 11/6): tap it to type the right number, e.g. after scanning the same record twice.
-        f.innerHTML = esc((d > 0 ? (count[i.id] > 1 && d === 1 ? 'Another copy: ' : 'Added: ') : (count[i.id] ? 'Changed: ' : 'None here: ')) + label(i))
+        f.innerHTML = esc((d > 0 ? (count[i.id] > 1 && d === 1 ? 'Another copy: ' : 'Added: ') : (count[i.id] ? 'Changed: ' : 'None here: ')) + label(i)) + (ids(known) ? ' <span class="sc-small">' + ids(known) + '</span>' : '')
             + (count[i.id] || d > 0 ? ' <button class="sc-qty" type="button" data-id="' + i.id + '" aria-label="Copies counted, tap to change">' + count[i.id] + '</button> <span class="sc-small">tap the number to change it</span>' : '');
     }
     function setQty(inp) {
@@ -421,7 +429,7 @@
     function showChoices(list) {
         choices = list;
         document.getElementById('scChoices').innerHTML = '<div class="sc-small">Which one? Tap it to add 1.</div>' + list.map(function (x, k) {
-            return '<div class="sc-item sc-choice" role="button" tabindex="0" data-k="' + k + '" style="cursor:pointer;"><div class="t">' + esc(label(x)) + '<div class="sc-small">' + esc(x.sku) + '</div></div></div>';
+            return '<div class="sc-item sc-choice" role="button" tabindex="0" data-k="' + k + '" style="cursor:pointer;"><div class="t">' + esc(label(x)) + '<div class="sc-small">' + ids(x) + '</div></div></div>';
         }).join('');
     }
     function clearChoices() { choices = []; document.getElementById('scChoices').innerHTML = ''; }
@@ -433,7 +441,7 @@
         // Barcode already in this bin: count it without a server call.
         if (/^\d{4,14}$/.test(digits)) {
             var key = digits.replace(/^0+/, '');
-            var hit = items.concat(extra).filter(function (i) { return String(i.sku || '').replace(/[\s-]/g, '').replace(/^0+/, '') === key; });
+            var hit = items.concat(extra).filter(function (i) { return [i.sku, i.nsku].some(function (s) { return String(s || '').replace(/[\s-]/g, '').replace(/^0+/, '') === key; }); });
             if (hit.length === 1) { bump(hit[0], 1); return; }
         }
         fetch('/reports/shelf-count/lookup?location_id=' + LOC + '&q=' + encodeURIComponent(q), { headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); }).then(function (j) {

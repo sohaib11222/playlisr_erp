@@ -271,6 +271,25 @@ class ShelfCountController extends Controller
      * how many, by whom, and which bin (counts saved from 11/8 on). 'recent' =
      * within RECOUNT_WARN_DAYS, so scanning it in a different bin asks first.
      */
+    /**
+     * Nivessa SKU (the shelf-sticker number, variations.sub_sku) and selling price per product,
+     * shown on every shelf-count row so staff can tell copies apart (Jon 11/9).
+     */
+    protected static function skuPrice(array $ids): array
+    {
+        if (!$ids) return [];
+        $out = [];
+        foreach (array_chunk($ids, 2000) as $ch) {
+            foreach (\DB::table('variations')->whereIn('product_id', $ch)->whereNull('deleted_at')
+                ->orderBy('id')->get(['product_id', 'sub_sku', 'sell_price_inc_tax']) as $v) {
+                $pid = (int) $v->product_id;
+                if (isset($out[$pid])) continue;
+                $out[$pid] = ['nsku' => (string) ($v->sub_sku ?? ''), 'price' => $v->sell_price_inc_tax !== null ? round((float) $v->sell_price_inc_tax, 2) : null];
+            }
+        }
+        return $out;
+    }
+
     protected static function prevCount(?array $c): ?array
     {
         if (!$c || empty($c['at'])) return null;
@@ -306,9 +325,10 @@ class ShelfCountController extends Controller
                 $genres[(int) $g->parent_id][] = ['id' => (int) $g->id, 'name' => $g->name];
             }
         }
+        $sp = self::skuPrice($items->pluck('id')->map(function ($x) { return (int) $x; })->all());
         return view('report.shelf_count_bin', ['locations' => $locations, 'loc' => $loc, 'kind' => $kind, 'kindLabel' => $labels[$kind],
             'name' => $name, 'sub' => $sub, 'genres' => (object) $genres,
-            'items' => $items->map(function ($i) use ($counted) { return ['id' => (int) $i->id, 'name' => $i->name, 'artist' => $i->artist, 'sku' => $i->sku, 'bin' => (string) ($i->bin_position ?? ''), 'erp' => (float) $i->qty, 'cat' => (int) $i->category_id, 'cnt' => self::prevCount($counted[(int) $i->id] ?? null)]; })->values(),
+            'items' => $items->map(function ($i) use ($counted, $sp) { return ['id' => (int) $i->id, 'name' => $i->name, 'artist' => $i->artist, 'sku' => $i->sku, 'nsku' => $sp[(int) $i->id]['nsku'] ?? '', 'price' => $sp[(int) $i->id]['price'] ?? null, 'bin' => (string) ($i->bin_position ?? ''), 'erp' => (float) $i->qty, 'cat' => (int) $i->category_id, 'cnt' => self::prevCount($counted[(int) $i->id] ?? null)]; })->values(),
             'binKey' => $kind . '|' . $sub, 'binLabel' => $labels[$kind] . ' / ' . $name, 'dueDays' => self::DUE_DAYS]);
     }
 
@@ -461,7 +481,7 @@ class ShelfCountController extends Controller
         $p = \DB::table('products')->where('business_id', $business_id)->where('id', $pid)->first(['id', 'name', 'artist', 'sku']);
         if (!$p) return response()->json(['ok' => false, 'msg' => 'Could not add it.'], 422);
         return response()->json(['ok' => true, 'existing' => $existing,
-            'item' => ['id' => (int) $p->id, 'name' => $p->name, 'artist' => $p->artist, 'sku' => $p->sku],
+            'item' => ['id' => (int) $p->id, 'name' => $p->name, 'artist' => $p->artist, 'sku' => $p->sku] + (self::skuPrice([(int) $p->id])[(int) $p->id] ?? []),
             'edit_url' => action('ProductController@edit', [(int) $p->id])]);
     }
 
@@ -487,6 +507,10 @@ class ShelfCountController extends Controller
             $x = \DB::table('products as p')->where('p.business_id', $business_id)->where('p.is_inactive', 0);
             foreach ($words as $w) $x->where(function ($y) use ($w) { $y->whereRaw('LOWER(p.name) LIKE ?', ['%' . $w . '%'])->orWhereRaw('LOWER(p.artist) LIKE ?', ['%' . $w . '%']); });
             $rows = $x->select('p.id', 'p.name', 'p.artist', 'p.sku')->limit(10)->get();
+        }
+        if ($rows->count()) {
+            $sp = self::skuPrice($rows->pluck('id')->map(function ($x) { return (int) $x; })->all());
+            $rows = $rows->map(function ($r) use ($sp) { $r->nsku = $sp[(int) $r->id]['nsku'] ?? ''; $r->price = $sp[(int) $r->id]['price'] ?? null; return $r; });
         }
         // ERP stock at this store + last count, so the bin page can ask "are you sure?"
         // when a scan goes over the ERP or the title was just counted in another bin (Jon 11/8).
