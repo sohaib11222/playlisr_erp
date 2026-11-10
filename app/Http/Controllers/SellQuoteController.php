@@ -80,7 +80,10 @@ class SellQuoteController extends StoreOrDiscogsController
     // look up, so the website lists them as "priced in store" ($0 on the
     // quote); the seller says what each is and staff price it on the buy form.
     const IN_STORE_TYPES = [
-        'signed_item' => ['Autographs & signed items', 'Autographs / signed items (any kind)'],
+        'signed_vinyl' => ['Autographs & signed items', 'Signed vinyl'],
+        'signed_cd' => ['Autographs & signed items', 'Signed CD'],
+        'signed_poster' => ['Autographs & signed items', 'Signed poster'],
+        'signed_item' => ['Autographs & signed items', 'Other signed item'],
         'card_pack' => ['Sealed card packs', 'Sealed card packs (any brand)'],
     ];
 
@@ -171,7 +174,7 @@ class SellQuoteController extends StoreOrDiscogsController
     /** GET /sell-quote/options */
     public function options()
     {
-        $data = Cache::remember('sellquote:options4', 600, function () {
+        $data = Cache::remember('sellquote:options5', 600, function () {
             $grades = [];
             foreach (array_reverse($this->calculator->getGradesForDropdown()) as $g) {
                 $grades[] = ['key' => $g, 'help' => self::GRADE_HELP[$g] ?? ''];

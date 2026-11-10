@@ -75,6 +75,19 @@
     @endforeach
     <div class="clearfix"></div>
     <div class="col-sm-12">
+        <h4 style="margin-top:10px;">Signed items (autographs)</h4>
+        <p class="help-block">The cashier types what the signed copy sells for; we pay this share of it in cash. No grade or speed adjustments.</p>
+    </div>
+    @foreach(['signed_vinyl' => 'Signed vinyl pays (%)', 'signed_cd' => 'Signed CD pays (%)', 'signed_poster' => 'Signed poster pays (%)', 'signed_other' => 'Other signed items pay (%)'] as $bmKey => $bmLabel)
+        <div class="col-sm-3">
+            <div class="form-group">
+                {!! Form::label('buy_margin_' . $bmKey, $bmLabel . ':') !!}
+                {!! Form::number('common_settings[buy_margin_' . $bmKey . ']', $bm[$bmKey], ['class' => 'form-control', 'id' => 'buy_margin_' . $bmKey, 'min' => 0, 'max' => 95, 'step' => 1]) !!}
+            </div>
+        </div>
+    @endforeach
+    <div class="clearfix"></div>
+    <div class="col-sm-12">
         <p class="help-block">
             <strong>Examples:</strong> a $15 item in a normal-speed category at 65% margin: we pay up to
             $5.25 cash. A $100 card: we pay up to $20 (20%), or $25 if its category is a super-fast seller.

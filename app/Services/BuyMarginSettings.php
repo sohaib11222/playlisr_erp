@@ -23,7 +23,9 @@ class BuyMarginSettings
         'bonus_warm' => 10, 'bonus_hot' => 20,
         // "Last sold on Discogs" on single records (BuyDemandService::lastSoldAdjust).
         'ls_min_median' => 20, 'ls_recent_days' => 30, 'ls_recent_bonus' => 10,
-        'ls_stale_days' => 365, 'ls_stale_cut' => 10, 'ls_old_days' => 730, 'ls_old_cut' => 20];
+        'ls_stale_days' => 365, 'ls_stale_cut' => 10, 'ls_old_days' => 730, 'ls_old_cut' => 20,
+        // Signed items: % of the signed copy's sold value we pay, by kind (Sarah 2026-11-09).
+        'signed_vinyl' => 20, 'signed_cd' => 20, 'signed_poster' => 20, 'signed_other' => 20];
 
     protected static $memo = [];
 

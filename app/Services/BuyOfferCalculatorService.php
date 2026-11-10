@@ -16,6 +16,28 @@ class BuyOfferCalculatorService
     // Signed copies sell for a lot but slowly (4 used signed LPs sold in a year,
     // 23 on the shelf), and a signature can be fake.
     const SIGNED_PAY = 0.20;
+    // Sarah 11/9: signed posters, CDs and vinyl pay different shares. Each
+    // signed line type maps to its Settings -> Buy Margins key (default 20%).
+    const SIGNED_TYPES = ['signed_vinyl' => 'signed_vinyl', 'signed_cd' => 'signed_cd', 'signed_poster' => 'signed_poster', 'signed_item' => 'signed_other'];
+
+    /** Share of the signed copy's value we pay for this signed line type. */
+    public static function signedPayFor($itemType)
+    {
+        $key = self::SIGNED_TYPES[$itemType] ?? 'signed_vinyl';
+        try {
+            $bid = 0;
+            try {
+                $bid = (int) (request()->hasSession() ? request()->session()->get('user.business_id') : 0);
+            } catch (\Throwable $e) {
+                $bid = 0;
+            }
+            $bid = $bid ?: (int) (config('services.nivessa_web.business_id') ?: 1);
+            $pct = BuyMarginSettings::get($bid)[$key] ?? null;
+        } catch (\Throwable $e) {
+            $pct = null;
+        }
+        return is_numeric($pct) ? round((float) $pct / 100, 4) : self::SIGNED_PAY;
+    }
     const SIGNED_SIGNOFF_VALUE = 100;
     // Jon 2026-10-25: "<format> - rare" lines are for items worth $15+, and pay
     // by how fast that category sells here (BuyDemandService speed tier).
@@ -239,7 +261,10 @@ class BuyOfferCalculatorService
                 'rare_framed_art' => ['min_value' => self::RARE_MIN_VALUE, 'label' => 'Framed Art - rare', 'mode' => 'ebay_margin', 'no_grading' => true, 'speed_pay' => true],
                 // Jon 2026-10-25: signed items get their own line (was a checkbox
                 // on single records): SIGNED_PAY of the signed copy's sold value.
-                'signed_item' => ['label' => 'Autograph / Signed item (enter the signed copy\'s sold value)', 'mode' => 'signed_value', 'no_grading' => true],
+                'signed_vinyl' => ['label' => 'Autograph: Signed vinyl (enter the signed copy\'s sold value)', 'mode' => 'signed_value', 'no_grading' => true],
+                'signed_cd' => ['label' => 'Autograph: Signed CD (enter the signed copy\'s sold value)', 'mode' => 'signed_value', 'no_grading' => true],
+                'signed_poster' => ['label' => 'Autograph: Signed poster (enter the signed copy\'s sold value)', 'mode' => 'signed_value', 'no_grading' => true],
+                'signed_item' => ['label' => 'Autograph: Other signed item (enter the signed copy\'s sold value)', 'mode' => 'signed_value', 'no_grading' => true],
 
                 'poster_2x3' => ['label' => "Poster 2'x3'", 'mode' => 'bulk_fixed', 'unit_rate' => 2.00, 'no_grading' => true],
 
@@ -395,7 +420,7 @@ class BuyOfferCalculatorService
             }
 
             // Old drafts flagged signed single records with a checkbox.
-            $signed = $itemType === 'signed_item' || ($itemType === 'individual_vinyl' && !empty($line['signed']));
+            $signed = isset(self::SIGNED_TYPES[$itemType]) || ($itemType === 'individual_vinyl' && !empty($line['signed']));
             $noGrading = !empty($cfg['no_grading']) || $signed;
             $grade = (string) ($line['condition_grade'] ?? '');
             if ($grade === '' || !isset($rules['grade_multipliers'][$grade])) {
@@ -417,8 +442,9 @@ class BuyOfferCalculatorService
             if ($signed) {
                 // Signed: SIGNED_PAY of the signed copy's value, no grade, no
                 // speed adjustments (see the demand block below).
-                $standardMultiplier = self::SIGNED_PAY;
-                $cashLine = $quantity * $payValue * self::SIGNED_PAY;
+                // Old checkbox-signed records count as signed vinyl.
+                $standardMultiplier = self::signedPayFor($itemType === 'individual_vinyl' ? 'signed_vinyl' : $itemType);
+                $cashLine = $quantity * $payValue * $standardMultiplier;
             } elseif ($cfg['mode'] === 'individual_discogs') {
                 $cashLine = $quantity * $payValue * $gradeMultiplier * $standardMultiplier;
             } elseif ($cfg['mode'] === 'ebay_margin') {
