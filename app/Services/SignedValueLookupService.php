@@ -85,6 +85,10 @@ class SignedValueLookupService
             if ($it['price'] <= 0 || !preg_match(self::SIGNED, $t) || preg_match(self::NOISE, $t)) {
                 continue;
             }
+            // A signed 8x10 photo isn't a signed record / CD / poster.
+            if ($type !== 'signed_item' && preg_match('/\b(8\s?x\s?10|11\s?x\s?14)\b/i', $t)) {
+                continue;
+            }
             $lt = mb_strtolower($t);
             $hit = 0;
             foreach ($tokens as $tok) {
