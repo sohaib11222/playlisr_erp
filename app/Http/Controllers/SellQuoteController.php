@@ -793,6 +793,61 @@ class SellQuoteController extends StoreOrDiscogsController
         return view('sell_quotes.index', compact('quotes', 'q', 'stores', 'startedCount'));
     }
 
+    /**
+     * GET /sell-quotes/lookup?number=Q1003: the buy form's "Quote #" box. Staff
+     * type the number the seller got from nivessa.com and see what was quoted.
+     */
+    public function lookup(Request $request)
+    {
+        if (!$this->staffAllowed()) {
+            return response()->json(['error' => 'Not allowed.'], 403);
+        }
+        $business_id = (int) $request->session()->get('user.business_id');
+        $id = self::idFromNumber($request->input('number'));
+        $quote = $id ? DB::table('sell_quotes')->where('business_id', $business_id)->where('id', $id)->first() : null;
+        if (!$quote || $quote->status === 'started') {
+            return response()->json(['error' => 'No quote found with that number. Check it with the seller (it looks like Q1234).'], 404);
+        }
+        $calc = json_decode((string) $quote->calculation_json, true) ?: [];
+        $stores = collect($this->stores())->pluck('name', 'id')->all();
+        $labels = $this->calculator->getItemTypesForDropdown(true, true);
+        $lines = [];
+        foreach (($calc['lines'] ?? []) as $i => $l) {
+            $d = $calc['display'][$i] ?? [];
+            $lines[] = [
+                'label' => $d['label'] ?? ($l['title'] ?? ($labels[$l['item_type']] ?? $l['item_type'])),
+                'qty' => (float) ($l['quantity'] ?? 0),
+                'grade' => $l['condition_grade'] ?? null,
+                'cash' => isset($d['cash']) ? (float) $d['cash'] : null,
+            ];
+        }
+        $expired = $quote->expires_at && now()->greaterThan($quote->expires_at);
+        return response()->json([
+            'id' => (int) $quote->id,
+            'number' => self::number($quote->id),
+            'name' => $quote->name,
+            'phone' => $quote->phone,
+            'email' => $quote->email,
+            'store' => $stores[$quote->location_id] ?? null,
+            'location_id' => $quote->location_id ? (int) $quote->location_id : null,
+            'large' => $quote->size_tier === 'large',
+            'cash' => $quote->cash_total !== null ? (float) $quote->cash_total : null,
+            'estimate_low_cash' => $quote->estimate_low_cash !== null ? (float) $quote->estimate_low_cash : null,
+            'credit' => $quote->credit_total !== null ? (float) $quote->credit_total : null,
+            'item_count' => (int) $quote->item_count,
+            'quoted_at' => $quote->quoted_at ? \Carbon\Carbon::parse($quote->quoted_at)->format('D n/j') : null,
+            'expires_at' => $quote->expires_at ? \Carbon\Carbon::parse($quote->expires_at)->format('D n/j') : null,
+            'expired' => (bool) $expired,
+            'status' => $quote->status,
+            'buy_offer_id' => $quote->buy_offer_id ? (int) $quote->buy_offer_id : null,
+            'notes' => $quote->notes,
+            'lines' => $lines,
+            'view_url' => url('/sell-quotes/' . $quote->id),
+            'start_buy_url' => url('/sell-quotes/' . $quote->id . '/start-buy'),
+            'buy_url' => $quote->buy_offer_id ? route('buy-from-customer.edit', [$quote->buy_offer_id, 'beta' => 1]) : null,
+        ]);
+    }
+
     /** GET /sell-quotes/{id} */
     public function staffShow(Request $request, $id)
     {
