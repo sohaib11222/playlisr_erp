@@ -9,6 +9,12 @@
 {{-- Sarah 11/10/26: one compact row per request. Changing the status saves
      right away; ETA / tracking / note to employee sit behind "Details". --}}
 <tr class="sr-row sr-{{ $st }}">
+    @php
+        $storeName = $r['location_name'] ?: 'No store';
+        $sk = strtolower($storeName);
+        $storeClass = strpos($sk, 'hollywood') !== false ? 'sr-hw' : (strpos($sk, 'pico') !== false ? 'sr-pico' : (strpos($sk, 'warehouse') !== false || strpos($sk, 'discogs') !== false ? 'sr-wh' : 'sr-none'));
+    @endphp
+    <td class="sr-store"><span class="sr-pill {{ $storeClass }}">{{ $storeName }}</span></td>
     <td class="sr-item">
         <strong>{{ $r['item'] ?? '' }}</strong>@if(!empty($r['qty'])) <span class="sr-qty">x {{ $r['qty'] }}</span>@endif
         @if(!empty($r['note']))<div class="sr-note">&ldquo;{{ $r['note'] }}&rdquo;</div>@endif
@@ -20,7 +26,6 @@
             </div>
         @endif
     </td>
-    <td class="sr-store">{{ $r['location_name'] ?: 'No store' }}</td>
     <td class="sr-who">{{ $r['requested_by_name'] ?? 'staff' }}<br>{{ $fmt($r['requested_at'] ?? '') }}</td>
     <td class="sr-act">
         <form method="POST" action="{{ action('SupplyRequestController@update') }}" class="sr-form">

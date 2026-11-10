@@ -11,7 +11,12 @@
     .sr-table tr.sr-store-head td { background: #FAF6EE; font-weight: 800; font-size: 13px; padding: 6px 10px; }
     .sr-qty { font-weight: 600; }
     .sr-note { font-size: 13px; margin-top: 2px; color: #3D352C; }
-    .sr-store { white-space: nowrap; text-transform: capitalize; }
+    .sr-store { white-space: nowrap; width: 1%; }
+    .sr-pill { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 800; text-transform: capitalize; }
+    .sr-hw { background: #E6DDF7; color: #4B2E83; border: 1px solid #C9B8EC; }
+    .sr-pico { background: #DDF0E3; color: #1F5A30; border: 1px solid #B4DCC0; }
+    .sr-wh { background: #FDE7CF; color: #7A3F0C; border: 1px solid #F3C99B; }
+    .sr-none { background: #F3EEE3; color: #3D352C; border: 1px solid #DFD2B3; }
     .sr-who { font-size: 13px; white-space: nowrap; }
     .sr-act { width: 220px; }
     .sr-status { width: 100%; padding: 4px 6px; border: 1px solid #DFD2B3; border-radius: 6px; font-size: 13px; background: #fff; }
@@ -51,10 +56,9 @@
                 <div class="sr-empty">Nothing to order right now. New staff requests show up here.</div>
             @else
                 <table class="sr-table">
-                    <thead><tr><th>Item</th><th>Store</th><th>Asked by</th><th>Status</th></tr></thead>
+                    <thead><tr><th>Store</th><th>Item</th><th>Asked by</th><th>Status</th></tr></thead>
                     <tbody>
                     @foreach ($byStore($requests) as $store => $rows)
-                        <tr class="sr-store-head"><td colspan="4" style="text-transform:capitalize;">{{ $store }} ({{ count($rows) }})</td></tr>
                         @foreach ($rows as $r)
                             @include('admin._supply_request_row', ['r' => $r])
                         @endforeach
@@ -75,7 +79,7 @@
         </div>
         <div class="box-body" style="padding:0;">
             <table class="sr-table">
-                <thead><tr><th>Item</th><th>Store</th><th>Asked by</th><th>Status</th></tr></thead>
+                <thead><tr><th>Store</th><th>Item</th><th>Asked by</th><th>Status</th></tr></thead>
                 <tbody>
                 @foreach ($done as $r)
                     @include('admin._supply_request_row', ['r' => $r])
