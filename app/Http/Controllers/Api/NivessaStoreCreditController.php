@@ -17,27 +17,74 @@ class NivessaStoreCreditController extends Controller
     }
 
     /**
+     * Find the ERP customer for a website account: by email first, then by
+     * phone (last 10 digits of mobile/alternate/landline) for customers who
+     * only gave us a phone number in store. Among phone matches, a contact
+     * holding credit wins, then the oldest, so balance() and adjust() always
+     * pick the same one.
+     *
+     * @return array{0: ?Contact, 1: ?string}
+     */
+    private function findContact(?string $email, ?string $phone): array
+    {
+        $business_id = $this->businessId();
+        $base = function () use ($business_id) {
+            return Contact::where('business_id', $business_id)->whereIn('type', ['customer', 'both']);
+        };
+
+        $email = strtolower(trim((string) $email));
+        if ($email !== '') {
+            $c = $base()->whereRaw('LOWER(email) = ?', [$email])->first();
+            if ($c) {
+                return [$c, 'email'];
+            }
+        }
+
+        $digits = preg_replace('/\D+/', '', (string) $phone);
+        if (strlen($digits) > 10) {
+            $digits = substr($digits, -10);
+        }
+        if (strlen($digits) === 10) {
+            $norm = function ($col) {
+                return "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE($col,''),' ',''),'-',''),'(',''),')',''),'.',''),'+','')";
+            };
+            $like = '%' . $digits;
+            $c = $base()
+                ->where(function ($w) use ($norm, $like) {
+                    $w->whereRaw($norm('mobile') . ' LIKE ?', [$like])
+                      ->orWhereRaw($norm('alternate_number') . ' LIKE ?', [$like])
+                      ->orWhereRaw($norm('landline') . ' LIKE ?', [$like]);
+                })
+                ->orderByRaw('CASE WHEN COALESCE(balance,0) > 0 THEN 0 ELSE 1 END')
+                ->orderBy('id')
+                ->first();
+            if ($c) {
+                return [$c, 'phone'];
+            }
+        }
+
+        return [null, null];
+    }
+
+    /**
      * POST /api/v1/nivessa-web/store-credit/adjust
      * Body: { email, delta, reason?, source?, metadata? }
      */
     public function adjust(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'email' => 'required|email|max:255',
+            'email' => 'required_without:phone|nullable|email|max:255',
+            'phone' => 'nullable|string|max:32',
             'delta' => 'required|numeric|not_in:0',
             'reason' => 'nullable|string|max:255',
             'source' => 'nullable|string|max:64',
             'metadata' => 'nullable|array',
         ]);
 
-        $email = strtolower(trim((string) $data['email']));
+        $email = strtolower(trim((string) ($data['email'] ?? '')));
         $delta = round((float) $data['delta'], 2);
-        $business_id = $this->businessId();
 
-        $contact = Contact::where('business_id', $business_id)
-            ->whereIn('type', ['customer', 'both'])
-            ->whereRaw('LOWER(email) = ?', [$email])
-            ->first();
+        [$contact] = $this->findContact($email, $data['phone'] ?? null);
 
         if (!$contact) {
             return response()->json([
@@ -92,15 +139,11 @@ class NivessaStoreCreditController extends Controller
     public function balance(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'email' => 'required|email|max:255',
+            'email' => 'required_without:phone|nullable|email|max:255',
+            'phone' => 'nullable|string|max:32',
         ]);
 
-        $email = strtolower(trim((string) $data['email']));
-
-        $contact = Contact::where('business_id', $this->businessId())
-            ->whereIn('type', ['customer', 'both'])
-            ->whereRaw('LOWER(email) = ?', [$email])
-            ->first();
+        [$contact, $matchedBy] = $this->findContact($data['email'] ?? null, $data['phone'] ?? null);
 
         if (!$contact) {
             return response()->json([
@@ -113,6 +156,7 @@ class NivessaStoreCreditController extends Controller
         return response()->json([
             'success' => true,
             'found' => true,
+            'matched_by' => $matchedBy,
             'balance' => round((float) ($contact->balance ?? 0), 2),
         ]);
     }
