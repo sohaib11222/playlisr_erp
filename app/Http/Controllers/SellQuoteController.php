@@ -72,6 +72,7 @@ class SellQuoteController extends StoreOrDiscogsController
         ['Toys & collectibles', '/^(toy_|funko|furry|mask|board_game|pin$)/'],
         ['Cards', '/^(pokemon|sports_card)/'],
         ['Posters & art', '/^(poster_2x3|framed_art)/'],
+        ['Sealed card packs', '/(?!)/'],
         ['Autographs & signed items', '/(?!)/'],
     ];
 
@@ -79,8 +80,8 @@ class SellQuoteController extends StoreOrDiscogsController
     // look up, so the website lists them as "priced in store" ($0 on the
     // quote); the seller says what each is and staff price it on the buy form.
     const IN_STORE_TYPES = [
-        'signed_item' => ['Autographs & signed items', 'Autographs / signed items'],
-        'card_pack' => ['Cards', 'Sealed card packs'],
+        'signed_item' => ['Autographs & signed items', 'Autographs / signed items (any kind)'],
+        'card_pack' => ['Sealed card packs', 'Sealed card packs (any brand)'],
     ];
 
     /** @var BuyOfferCalculatorService */
@@ -170,7 +171,7 @@ class SellQuoteController extends StoreOrDiscogsController
     /** GET /sell-quote/options */
     public function options()
     {
-        $data = Cache::remember('sellquote:options3', 600, function () {
+        $data = Cache::remember('sellquote:options4', 600, function () {
             $grades = [];
             foreach (array_reverse($this->calculator->getGradesForDropdown()) as $g) {
                 $grades[] = ['key' => $g, 'help' => self::GRADE_HELP[$g] ?? ''];
