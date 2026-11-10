@@ -1,0 +1,49 @@
+name: Ops - adjust a customer's store credit
+
+# Same as Contacts -> Adjust store credit in the ERP (audit note, store
+# credit log, nivessa.com sync), for fixing mistakes from outside the UI.
+# Dry run by default; refuses if the contact's name doesn't match.
+
+on:
+  workflow_dispatch:
+    inputs:
+      contact_id:
+        description: ERP contact id
+        required: true
+      amount:
+        description: Signed amount, e.g. -5 to remove $5
+        required: true
+      reason:
+        description: Reason (goes in the audit note)
+        required: true
+      expect_name:
+        description: Contact's name, as a safety check
+        required: true
+      apply:
+        description: Apply the change (false = dry run)
+        type: boolean
+        default: false
+
+jobs:
+  adjust:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run on prod
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          ADJ_CONTACT_ID: ${{ inputs.contact_id }}
+          ADJ_AMOUNT: ${{ inputs.amount }}
+          ADJ_REASON: ${{ inputs.reason }}
+          ADJ_EXPECT_NAME: ${{ inputs.expect_name }}
+          ADJ_APPLY: ${{ inputs.apply }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          envs: ADJ_CONTACT_ID,ADJ_AMOUNT,ADJ_REASON,ADJ_EXPECT_NAME,ADJ_APPLY
+          command_timeout: 5m
+          script: |
+            echo 'PD9waHAKLy8gU3RvcmUgY3JlZGl0IGFkanVzdG1lbnQsIHNhbWUgc3RlcHMgYXMgQ29udGFjdHMg4oaSIEFkanVzdCBzdG9yZSBjcmVkaXQ6Ci8vIGJhbGFuY2UsIGJhbGFuY2Vfbm90ZXMgYXVkaXQgbGluZSwgc3RvcmVfY3JlZGl0X2xvZ3Mgcm93LCB3ZWJzaXRlIHN5bmMuCiRpZCA9IChpbnQpIGdldGVudignQURKX0NPTlRBQ1RfSUQnKTsKJGRlbHRhID0gcm91bmQoKGZsb2F0KSBnZXRlbnYoJ0FESl9BTU9VTlQnKSwgMik7CiRyZWFzb24gPSB0cmltKChzdHJpbmcpIGdldGVudignQURKX1JFQVNPTicpKTsKJGV4cGVjdCA9IHN0cnRvbG93ZXIodHJpbSgoc3RyaW5nKSBnZXRlbnYoJ0FESl9FWFBFQ1RfTkFNRScpKSk7CiRhcHBseSA9IGdldGVudignQURKX0FQUExZJykgPT09ICd0cnVlJzsKJGMgPSBcQXBwXENvbnRhY3Q6OmZpbmQoJGlkKTsKaWYgKCEkYykgeyBlY2hvICJBQk9SVDogY29udGFjdCAkaWQgbm90IGZvdW5kXG4iOyByZXR1cm47IH0KaWYgKCRleHBlY3QgIT09ICcnICYmIHN0cnRvbG93ZXIodHJpbSgoc3RyaW5nKSAkYy0+bmFtZSkpICE9PSAkZXhwZWN0KSB7IGVjaG8gIkFCT1JUOiBjb250YWN0ICRpZCBpcyAneyRjLT5uYW1lfScsIGV4cGVjdGVkICckZXhwZWN0J1xuIjsgcmV0dXJuOyB9CmlmIChhYnMoJGRlbHRhKSA8IDAuMDEgfHwgJHJlYXNvbiA9PT0gJycpIHsgZWNobyAiQUJPUlQ6IGFtb3VudCBhbmQgcmVhc29uIHJlcXVpcmVkXG4iOyByZXR1cm47IH0KJGN1ciA9IChmbG9hdCkgJGMtPmJhbGFuY2U7ICRuZXcgPSByb3VuZCgkY3VyICsgJGRlbHRhLCAyKTsKZWNobyAiY29udGFjdCAjeyRjLT5pZH0geyRjLT5uYW1lfTogYmFsYW5jZSBcJCIgLiBudW1iZXJfZm9ybWF0KCRjdXIsIDIpIC4gIiDihpIgXCQiIC4gbnVtYmVyX2Zvcm1hdCgkbmV3LCAyKSAuICIgKCIgLiAoJGRlbHRhID49IDAgPyAnKycgOiAnJykgLiAkZGVsdGEgLiAiKVxuIjsKaWYgKCRuZXcgPCAwKSB7IGVjaG8gIkFCT1JUOiB3b3VsZCBnbyBiZWxvdyBcJDBcbiI7IHJldHVybjsgfQppZiAoISRhcHBseSkgeyBlY2hvICJEUlkgUlVOIOKAlCBub3RoaW5nIGNoYW5nZWRcbiI7IHJldHVybjsgfQokYy0+YmFsYW5jZSA9ICRuZXc7CiRsaW5lID0gc3ByaW50ZignWyVzXSBzdG9yZS1jcmVkaXQgJXMkJXMgYnkgb3BzIHdvcmtmbG93IOKGkiBuZXcgYmFsYW5jZSAkJXMuIFJlYXNvbjogJXMnLCBub3coKS0+Zm9ybWF0KCdZLW0tZCBIOmknKSwgJGRlbHRhID49IDAgPyAnKycgOiAn4oiSJywgbnVtYmVyX2Zvcm1hdChhYnMoJGRlbHRhKSwgMiksIG51bWJlcl9mb3JtYXQoJG5ldywgMiksICRyZWFzb24pOwokYy0+YmFsYW5jZV9ub3RlcyA9IHRyaW0oKCRjLT5iYWxhbmNlX25vdGVzID8/ICcnKSAuICJcbiIgLiAkbGluZSk7CiRjLT5zYXZlKCk7CmlmIChcU2NoZW1hOjpoYXNUYWJsZSgnc3RvcmVfY3JlZGl0X2xvZ3MnKSkgewogIFxBcHBcU3RvcmVDcmVkaXRMb2c6OmNyZWF0ZShbJ2J1c2luZXNzX2lkJyA9PiAoaW50KSAkYy0+YnVzaW5lc3NfaWQsICdjb250YWN0X2lkJyA9PiAoaW50KSAkYy0+aWQsICd1c2VyX2lkJyA9PiBudWxsLCAnc291cmNlJyA9PiAnbWFudWFsX2FkanVzdCcsICdhbW91bnQnID0+ICRkZWx0YSwgJ2JhbGFuY2VfYWZ0ZXInID0+ICRuZXcsICdyZWFzb24nID0+ICRyZWFzb24sICdidXlfY3VzdG9tZXJfb2ZmZXJfaWQnID0+IG51bGxdKTsKfQppZiAoaW5fYXJyYXkoJGMtPnR5cGUsIFsnY3VzdG9tZXInLCAnYm90aCddKSAmJiAhZW1wdHkoJGMtPmVtYWlsKSkgewogICRvayA9IGFwcChcQXBwXFNlcnZpY2VzXE5pdmVzc2FCYWNrZW5kQ3JlZGl0U3luY1NlcnZpY2U6OmNsYXNzKS0+c3luY0RlbHRhQnlFbWFpbCgoc3RyaW5nKSAkYy0+ZW1haWwsICRkZWx0YSwgJHJlYXNvbiwgWydjb250YWN0X2lkJyA9PiAoaW50KSAkYy0+aWQsICdhY3Rpb24nID0+ICdhZGp1c3QnXSk7CiAgZWNobyAid2Vic2l0ZSBzeW5jOiAiIC4gKCRvayA/ICdvaycgOiAnbm90IGFwcGxpZWQgKG5vIHdlYnNpdGUgYWNjb3VudCB3aXRoIHRoaXMgZW1haWwsIG9yIHN5bmMgZmFpbGVkKScpIC4gIlxuIjsKfQplY2hvICJBUFBMSUVEOiAkbGluZVxuIjsK' | base64 -d > /tmp/adjust_credit.php
+            cd /www/playlist.nivessa.com/app && ADJ_CONTACT_ID="$ADJ_CONTACT_ID" ADJ_AMOUNT="$ADJ_AMOUNT" ADJ_REASON="$ADJ_REASON" ADJ_EXPECT_NAME="$ADJ_EXPECT_NAME" ADJ_APPLY="$ADJ_APPLY" php artisan tinker /tmp/adjust_credit.php 2>&1
+            rm -f /tmp/adjust_credit.php
