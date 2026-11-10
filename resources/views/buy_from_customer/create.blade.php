@@ -296,6 +296,9 @@
         .bfc-create .bfc-lastsold { margin-top: 4px; }
         .bfc-create .bfc-link { margin-top: 4px; }
         .bfc-create .bfc-ebay-search { display: inline-block; margin: 4px 8px 0 0; font-size: 12px; white-space: nowrap; }
+        .bfc-create .bfc-signed-lookup { margin-top: 4px; max-width: 320px; }
+        .bfc-create .bfc-signed-lookup small { line-height: 1.4; }
+        .bfc-create .bfc-signed-bible { color: #2a7a2a; }
         .bfc-create .bfc-ebay-help { background: #fff8e1; border-radius: 8px; padding: 10px 16px; margin-bottom: 12px; font-size: 14px; }
         .bfc-create .bfc-ebay-help summary { font-weight: 700; cursor: pointer; }
         .bfc-create .bfc-ebay-help ol { margin: 8px 0 4px; padding-left: 20px; }
@@ -1883,6 +1886,60 @@ HTML;
             var $row = $(this).closest('tr');
             $row.find('a.bfc-ebay-search').attr('href', bfcEbaySearchHref($row));
         });
+        // Signed lines: "Look up eBay value" = current signed Buy It Now listings
+        // on eBay -> suggested value (SignedValueLookupService). Staff can overwrite.
+        var BFC_SIGNED_URL = @json(route('buy-from-customer.signed-ebay-value'));
+        function bfcSignedLookupUi($row, t) {
+            var $cell = $row.find('input[name$="[discogs_median_price]"]').closest('td');
+            var $box = $cell.find('.bfc-signed-lookup');
+            if (t.mode !== 'signed_value') { $box.remove(); return; }
+            if ($box.length) return;
+            $box = $('<div class="bfc-signed-lookup"><button type="button" class="btn btn-xs btn-info bfc-signed-btn"><i class="fa fa-search"></i> Look up eBay value</button><div class="bfc-signed-out"></div></div>');
+            $cell.append($box);
+        }
+        function bfcEsc(s) { return $('<div>').text(s == null ? '' : String(s)).html(); }
+        $(document).on('click', '#offer_lines_table .bfc-signed-btn', function () {
+            var $btn = $(this), $row = $btn.closest('tr'), $out = $row.find('.bfc-signed-out');
+            var title = $.trim($row.find('input[name$="[title]"]').val() || '');
+            if (!title) { $out.html('<small class="text-danger">Type the artist and title first.</small>'); return; }
+            $btn.prop('disabled', true);
+            $out.html('<small class="text-muted">Checking eBay…</small>');
+            $.getJSON(BFC_SIGNED_URL, { title: title, item_type: $row.find('select[name$="[item_type]"]').val() || '' }).done(function (d) {
+                var h = '';
+                if (d.bible) {
+                    h += '<small class="bfc-signed-bible">Genre Bible: ' + bfcEsc(d.bible.name) + ' (' + bfcEsc(d.bible.genre) + ')</small><br>';
+                } else {
+                    h += '<small class="text-muted">Artist not in the Genre Bible</small><br>';
+                }
+                if (d.ok) {
+                    h += '<small>eBay asking ~<b>$' + Math.round(d.median) + '</b> (' + d.count + ' signed listings, $' + Math.round(d.low) + '–$' + Math.round(d.high) + ')<br>'
+                        + '→ suggested value <b>$' + d.suggested + '</b> (' + d.pct + '% of asking) '
+                        + '<a href="#" class="bfc-signed-use" data-v="' + d.suggested + '">use</a></small>';
+                } else {
+                    h += '<small class="text-warning">' + bfcEsc(d.msg || 'No result.') + '</small>';
+                }
+                if (d.listings && d.listings.length) {
+                    h += '<details class="bfc-signed-list"><summary><small>listings</small></summary>';
+                    $.each(d.listings, function (_, it) {
+                        h += '<small><a href="' + bfcEsc(it.url) + '" target="_blank" rel="noopener">$' + Math.round(it.price) + ' · ' + bfcEsc(it.title) + '</a></small><br>';
+                    });
+                    h += '</details>';
+                }
+                if (d.search_url) h += '<small><a href="' + bfcEsc(d.search_url) + '" target="_blank" rel="noopener">check sold prices on eBay ↗</a></small>';
+                $out.html(h);
+                var $m = $row.find('input[name$="[discogs_median_price]"]');
+                if (d.ok && !$.trim($m.val())) { $m.val(d.suggested).trigger('input').trigger('change'); }
+            }).fail(function () {
+                $out.html('<small class="text-danger">eBay lookup failed. Use eBay by hand.</small>');
+            }).always(function () { $btn.prop('disabled', false); });
+        });
+        $(document).on('click', '#offer_lines_table .bfc-signed-use', function (e) {
+            e.preventDefault();
+            $(this).closest('tr').find('input[name$="[discogs_median_price]"]').val($(this).data('v')).trigger('input').trigger('change');
+        });
+        $(document).on('input', '#offer_lines_table input[name$="[title]"]', function () {
+            $(this).closest('tr').find('.bfc-signed-out').empty();
+        });
         function bfcApplyRowState($row) {
             var type = $row.find('select[name$="[item_type]"]').val();
             var t = BFC_RULES.types[type] || {};
@@ -1892,6 +1949,7 @@ HTML;
                 .toggle(ebay || t.mode === 'individual_discogs' || !!$.trim($row.find('input[name$="[discogs_link]"]').val()));
             $row.find('a.bfc-ebay-search').attr('href', bfcEbaySearchHref($row)).toggle(ebay);
             $row.find('a.bfc-ebay-howto').toggle(ebay);
+            bfcSignedLookupUi($row, t);
             $('#bfc_ebay_help').toggle($('#offer_lines_table a.bfc-ebay-howto').filter(function () { return this.style.display !== 'none'; }).length > 0);
             var usesValue = (t.mode === 'individual_discogs' || t.mode === 'value_percent' || t.mode === 'ebay_margin' || t.mode === 'signed_value');
             var $median = $row.find('input[name$="[discogs_median_price]"]');

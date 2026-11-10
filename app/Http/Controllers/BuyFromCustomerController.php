@@ -415,6 +415,21 @@ class BuyFromCustomerController extends Controller
         return response()->json($this->demandService->forLine($line, $business_id, $locationId));
     }
 
+    /** Buy form signed lines: eBay asking-price lookup (SignedValueLookupService). */
+    public function signedEbayValue(Request $request)
+    {
+        if (!auth()->user()->can('purchase.create')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $business_id = (int) $request->session()->get('user.business_id');
+        $type = (string) $request->input('item_type', '');
+        if (!array_key_exists($type, \App\Services\SignedValueLookupService::FORMAT_WORDS)) {
+            return response()->json(['ok' => false, 'msg' => 'Not a signed line.']);
+        }
+        return response()->json(app(\App\Services\SignedValueLookupService::class)
+            ->lookup($business_id, mb_substr((string) $request->input('title', ''), 0, 200), $type));
+    }
+
     protected function betaRecord($business_id, $offerId)
     {
         try {
