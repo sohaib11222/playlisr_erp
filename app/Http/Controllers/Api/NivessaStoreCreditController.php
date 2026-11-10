@@ -158,6 +158,8 @@ class NivessaStoreCreditController extends Controller
             'found' => true,
             'matched_by' => $matchedBy,
             'balance' => round((float) ($contact->balance ?? 0), 2),
+            // In-store loyalty points, same number the POS customer panel shows.
+            'points' => (int) ($contact->loyalty_points ?? $contact->total_rp ?? 0),
         ]);
     }
 }
