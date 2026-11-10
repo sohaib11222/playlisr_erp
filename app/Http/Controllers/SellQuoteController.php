@@ -607,229 +607,11 @@ class SellQuoteController extends StoreOrDiscogsController
         if (!$storeIds) {
             return $this->json(['error' => 'Quotes are offline right now. Please bring your items in.'], 503);
         }
-        $rules = $this->calculator->getRules();
-        $grades = $rules['grade_multipliers'];
-        $types = array_column($this->publicTypes(), null, 'key');
-
-        $records = (array) $request->input('records', []);
-        $imported = count(array_filter($records, function ($r) {
-            return !empty($r['imported']);
-        }));
-        $records = array_slice($records, 0, $imported > 0 ? self::MAX_IMPORT_RECORDS + self::MAX_RECORDS : self::MAX_RECORDS);
-        $groups = array_slice((array) $request->input('groups', []), 0, self::MAX_GROUPS);
-        $notes = trim(mb_substr(strip_tags((string) $request->input('notes')), 0, 2000));
-
-        // Clean the seller's input.
-        $cleanRecords = [];
-        foreach ($records as $r) {
-            $title = trim(mb_substr(strip_tags((string) ($r['title'] ?? '')), 0, 200));
-            $grade = (string) ($r['grade'] ?? '');
-            if ($title === '') continue;
-            if (!isset($grades[$grade])) {
-                return $this->json(['error' => 'Pick a condition for "' . $title . '".'], 422);
-            }
-            $cleanRecords[] = ['title' => $title, 'release_id' => (int) ($r['release_id'] ?? 0) ?: null, 'grade' => $grade]
-                + (!empty($r['imported']) ? ['imported' => true] : []);
+        $priced = $this->priceList($request, $storeIds, false);
+        if (isset($priced['error_response'])) {
+            return $priced['error_response'];
         }
-        $cleanGroups = [];
-        foreach ($groups as $g) {
-            $key = (string) ($g['type'] ?? '');
-            $qty = (int) ($g['quantity'] ?? 0);
-            if (!isset($types[$key]) || $qty <= 0) continue;
-            $qty = min($qty, self::MAX_GROUP_QTY);
-            $grade = null;
-            if ($types[$key]['graded']) {
-                $grade = (string) ($g['grade'] ?? '');
-                if (!isset($grades[$grade])) {
-                    return $this->json(['error' => 'Pick a condition for your ' . $types[$key]['group'] . ': ' . $types[$key]['label'] . '.'], 422);
-                }
-                $grade = $this->capBulkGrade($grade);
-            }
-            $clean = ['type' => $key, 'quantity' => $qty, 'grade' => $grade];
-            if (!empty($types[$key]['in_store'])) {
-                $clean['description'] = trim(mb_substr(strip_tags((string) ($g['description'] ?? '')), 0, 150));
-            }
-            $cleanGroups[] = $clean;
-        }
-        $count = count($cleanRecords) + array_sum(array_column($cleanGroups, 'quantity'));
-        if ($count === 0) {
-            return $this->json(['error' => 'Add at least one item.'], 422);
-        }
-        $tier = $count >= self::LARGE_FROM ? 'large' : ($count >= self::MEDIUM_FROM ? 'medium' : 'small');
-
-        // Build buy-form lines, keeping a display row for each.
-        $lines = [];
-        $display = [];
-        // Big lists (a Discogs import): bulk-rate records collapse into one
-        // line per bulk type + grade instead of hundreds of single lines.
-        $collapse = count($cleanRecords) > self::MAX_RECORDS;
-        $bulkPiles = [];
-        $lookups = 0;
-        $unchecked = 0;
-        foreach ($cleanRecords as $r) {
-            $value = null;
-            $notChecked = false;
-            if ($r['release_id']) {
-                if (Cache::has('sod-release-value:' . $r['release_id']) || $lookups < self::LOOKUP_BUDGET) {
-                    $wasCached = Cache::has('sod-release-value:' . $r['release_id']);
-                    $value = $this->releaseValueFor($r['release_id']);
-                    if (!$wasCached) $lookups++;
-                    if (!empty($value['rate_limited'])) {
-                        if (count($cleanRecords) <= self::MAX_RECORDS) {
-                            return $this->json(['error' => 'Our record lookups are busy. Wait a minute and press Get my quote again.'], 429);
-                        }
-                        // Big import: don't fail the whole quote, price the rest by the piece.
-                        $lookups = self::LOOKUP_BUDGET;
-                        $value = null;
-                        $unchecked++;
-                        $notChecked = true;
-                    }
-                } else {
-                    $unchecked++;
-                    $notChecked = true;
-                }
-            }
-            $price = (!empty($value['found']) && !empty($value['price'])) ? (float) $value['price'] : 0.0;
-            $individual = $price > 0 && ($tier === 'small' || $price >= self::CHERRY_MIN);
-            if ($individual) {
-                $lines[] = [
-                    'item_type' => 'individual_vinyl',
-                    'quantity' => 1,
-                    'title' => $r['title'],
-                    'discogs_link' => 'https://www.discogs.com/release/' . $r['release_id'],
-                    'discogs_median_price' => $price,
-                    'condition_grade' => $r['grade'],
-                    'standard_multiplier' => self::stdMult($price),
-                ];
-                $display[] = ['label' => $r['title'], 'quantity' => 1, 'grade' => $r['grade'], 'how' => 'record'];
-            } else {
-                $meta = $r['release_id'] ? $this->releaseMeta($r['release_id']) : ['genre' => [], 'style' => []];
-                $type = self::bulkVinylTypeFor($meta['genre'] ?? [], $meta['style'] ?? []);
-                if ($collapse) {
-                    $pk = $type . '|' . $this->capBulkGrade($r['grade']);
-                    $bulkPiles[$pk] = ($bulkPiles[$pk] ?? 0) + 1;
-                    continue;
-                }
-                $lines[] = [
-                    'item_type' => $type,
-                    'quantity' => 1,
-                    'title' => $r['title'],
-                    'condition_grade' => $this->capBulkGrade($r['grade']),
-                    'genre' => '',
-                ];
-                $display[] = [
-                    'label' => $r['title'],
-                    'quantity' => 1,
-                    'grade' => $this->capBulkGrade($r['grade']),
-                    'how' => $price > 0 ? 'bulk_rate' : ($notChecked ? 'not_checked' : 'no_sales_data'),
-                ];
-            }
-        }
-        $typeLabels = $collapse ? $this->calculator->getItemTypesForDropdown(true, true) : [];
-        foreach ($bulkPiles as $pk => $qty) {
-            [$type, $grade] = explode('|', $pk, 2);
-            $lines[] = [
-                'item_type' => $type,
-                'quantity' => $qty,
-                'title' => null,
-                'condition_grade' => $grade,
-                'genre' => '',
-            ];
-            $display[] = [
-                'label' => 'Records from your list: ' . trim(preg_replace('/^10\+ Bulk (SEALED )?Vinyl: /', '', $typeLabels[$type] ?? $type)),
-                'quantity' => $qty,
-                'grade' => $grade,
-                'how' => 'per_piece',
-            ];
-        }
-        $inStoreCount = 0;
-        $signedLookups = 0;
-        foreach ($cleanGroups as $g) {
-            if (!empty($types[$g['type']]['in_store'])) {
-                $desc = $g['description'] ?? '';
-                // Jon 11/9: signed items with a "who signed it, what is it"
-                // get an eBay estimate (same lookup as the buy form's
-                // "Look up eBay value"); no data = still priced in store.
-                $est = null;
-                if ($desc !== '' && array_key_exists($g['type'], SignedValueLookupService::FORMAT_WORDS) && $signedLookups < self::SIGNED_LOOKUP_BUDGET) {
-                    $signedLookups++;
-                    $est = app(SignedValueLookupService::class)->lookup($this->businessId(), $desc, $g['type']);
-                }
-                if (!empty($est['ok']) && $est['suggested'] > 0) {
-                    $lines[] = [
-                        'item_type' => $g['type'],
-                        'quantity' => $g['quantity'],
-                        'title' => $desc,
-                        'discogs_median_price' => (float) $est['suggested'],
-                        'discogs_link' => $est['search_url'],
-                        'genre' => '',
-                    ];
-                    $display[] = [
-                        'label' => $types[$g['type']]['label'] . ': ' . $desc,
-                        'quantity' => $g['quantity'],
-                        'grade' => null,
-                        'how' => 'signed_ebay',
-                    ];
-                    continue;
-                }
-                // No value on the quote: staff enter it on the buy form.
-                $inStoreCount += $g['quantity'];
-                $lines[] = [
-                    'item_type' => $g['type'],
-                    'quantity' => $g['quantity'],
-                    'title' => $desc !== '' ? $desc : $types[$g['type']]['label'],
-                    'discogs_median_price' => 0,
-                    'genre' => '',
-                ];
-                $display[] = [
-                    'label' => $types[$g['type']]['label'] . ($desc !== '' ? ': ' . $desc : ''),
-                    'quantity' => $g['quantity'],
-                    'grade' => null,
-                    'how' => 'in_store',
-                ];
-                continue;
-            }
-            $lines[] = [
-                'item_type' => $g['type'],
-                'quantity' => $g['quantity'],
-                'title' => null,
-                'condition_grade' => $g['grade'] ?? $this->calculator->defaultGradeFor($g['type']),
-                'genre' => '',
-            ];
-            $display[] = [
-                'label' => $types[$g['type']]['group'] . ': ' . $types[$g['type']]['label'],
-                'quantity' => $g['quantity'],
-                'grade' => $g['grade'],
-                'how' => 'per_piece',
-            ];
-        }
-
-        // Price the same list once per store (each store's own demand levels).
-        $byStore = [];
-        foreach ($storeIds as $sid) {
-            $calculation = $this->calculator->calculate($lines, [], $this->demandHook($sid, $lines));
-            $final = (float) $calculation['final_offer_cash'];
-            $cashTotal = (float) $calculation['calculated_cash_total'];
-            $share = $cashTotal > 0 ? $final / $cashTotal : 0;
-            // Map calculator rows back to display rows (it skips nothing we
-            // built, but match on line_order to be safe).
-            $outLines = [];
-            foreach ($calculation['lines'] as $row) {
-                $i = (int) $row['line_order'];
-                $d = $display[$i] ?? ['label' => '', 'quantity' => $row['quantity'], 'grade' => null, 'how' => 'per_piece'];
-                $mult = (float) ($row['demand_multiplier'] ?? 1);
-                $d['cash'] = ($d['how'] ?? '') === 'in_store' ? null : round((float) $row['line_cash_total'] * $share, 2);
-                $d['demand'] = $mult > 1.001 ? 'wanted' : ($mult < 0.999 ? 'overstocked' : null);
-                $outLines[] = $d;
-            }
-            $byStore[$sid] = [
-                'cash' => $final,
-                'credit' => (float) $calculation['final_offer_credit'],
-                'estimate_low_cash' => $tier === 'large' ? BuyOfferCalculatorService::roundOffer($final * self::LARGE_LOW_SHARE) : null,
-                'lines' => $calculation['lines'],
-                'display' => $outLines,
-            ];
-        }
+        extract($priced); // $byStore $tier $count $cleanRecords $cleanGroups $notes $inStoreCount $unchecked
         // Until the seller picks, the quote row carries the best-paying store.
         $bestId = $storeIds[0];
         foreach ($byStore as $sid => $o) {
@@ -880,6 +662,300 @@ class SellQuoteController extends StoreOrDiscogsController
         DB::table('sell_quotes')->where('id', $quote->id)->update(['calculation_json' => json_encode($calcSaved)]);
         $fresh = DB::table('sell_quotes')->find($quote->id);
         return $this->json($this->publicQuote($fresh) + ['sent' => $sent]);
+    }
+
+    /**
+     * Clean the seller's list and price it once per store. Shared by price()
+     * (saves the quote) and estimate() (the form's live per-item prices, no
+     * save). Returns ['error_response' => Response] on bad input.
+     */
+    protected function priceList(Request $request, array $storeIds, $live)
+    {
+        $rules = $this->calculator->getRules();
+        $grades = $rules['grade_multipliers'];
+        $types = array_column($this->publicTypes(), null, 'key');
+
+        $records = (array) $request->input('records', []);
+        // Live mode (the form's running prices) skips half-filled lines
+        // instead of erroring, and echoes each line's client ref back.
+        $countAll = 0;
+        $imported = count(array_filter($records, function ($r) {
+            return !empty($r['imported']);
+        }));
+        $records = array_slice($records, 0, $imported > 0 ? self::MAX_IMPORT_RECORDS + self::MAX_RECORDS : self::MAX_RECORDS);
+        $groups = array_slice((array) $request->input('groups', []), 0, self::MAX_GROUPS);
+        $notes = trim(mb_substr(strip_tags((string) $request->input('notes')), 0, 2000));
+
+        // Clean the seller's input.
+        $cleanRecords = [];
+        foreach ($records as $r) {
+            $title = trim(mb_substr(strip_tags((string) ($r['title'] ?? '')), 0, 200));
+            $grade = (string) ($r['grade'] ?? '');
+            if ($title === '') continue;
+            $countAll++;
+            if (!isset($grades[$grade])) {
+                if ($live) continue;
+                return ['error_response' => $this->json(['error' => 'Pick a condition for "' . $title . '".'], 422)];
+            }
+            $cleanRecords[] = ['title' => $title, 'release_id' => (int) ($r['release_id'] ?? 0) ?: null, 'grade' => $grade]
+                + (!empty($r['imported']) ? ['imported' => true] : [])
+                + ($live ? ['ref' => mb_substr((string) ($r['ref'] ?? ''), 0, 80)] : []);
+        }
+        $cleanGroups = [];
+        foreach ($groups as $g) {
+            $key = (string) ($g['type'] ?? '');
+            $qty = (int) ($g['quantity'] ?? 0);
+            if (!isset($types[$key]) || $qty <= 0) continue;
+            $qty = min($qty, self::MAX_GROUP_QTY);
+            $countAll += $qty;
+            $grade = null;
+            if ($types[$key]['graded']) {
+                $grade = (string) ($g['grade'] ?? '');
+                if (!isset($grades[$grade])) {
+                    if ($live) continue;
+                    return ['error_response' => $this->json(['error' => 'Pick a condition for your ' . $types[$key]['group'] . ': ' . $types[$key]['label'] . '.'], 422)];
+                }
+                $grade = $this->capBulkGrade($grade);
+            }
+            $clean = ['type' => $key, 'quantity' => $qty, 'grade' => $grade]
+                + ($live ? ['ref' => mb_substr((string) ($g['ref'] ?? ''), 0, 80)] : []);
+            if (!empty($types[$key]['in_store'])) {
+                $clean['description'] = trim(mb_substr(strip_tags((string) ($g['description'] ?? '')), 0, 150));
+            }
+            $cleanGroups[] = $clean;
+        }
+        $count = count($cleanRecords) + array_sum(array_column($cleanGroups, 'quantity'));
+        if ($count === 0) {
+            return ['error_response' => $this->json(['error' => 'Add at least one item.'], 422)];
+        }
+        // Live: size the lot by everything listed, condition picked or not, so
+        // the running prices match what Get my quote will say.
+        $tierCount = $live ? max($count, $countAll) : $count;
+        $tier = $tierCount >= self::LARGE_FROM ? 'large' : ($tierCount >= self::MEDIUM_FROM ? 'medium' : 'small');
+
+        // Build buy-form lines, keeping a display row for each.
+        $lines = [];
+        $display = [];
+        // Big lists (a Discogs import): bulk-rate records collapse into one
+        // line per bulk type + grade instead of hundreds of single lines.
+        $collapse = count($cleanRecords) > self::MAX_RECORDS;
+        $bulkPiles = [];
+        $lookups = 0;
+        $unchecked = 0;
+        foreach ($cleanRecords as $r) {
+            $value = null;
+            $notChecked = false;
+            if ($r['release_id']) {
+                if (Cache::has('sod-release-value:' . $r['release_id']) || $lookups < self::LOOKUP_BUDGET) {
+                    $wasCached = Cache::has('sod-release-value:' . $r['release_id']);
+                    $value = $this->releaseValueFor($r['release_id']);
+                    if (!$wasCached) $lookups++;
+                    if (!empty($value['rate_limited'])) {
+                        if (!$live && count($cleanRecords) <= self::MAX_RECORDS) {
+                            return ['error_response' => $this->json(['error' => 'Our record lookups are busy. Wait a minute and press Get my quote again.'], 429)];
+                        }
+                        // Big import: don't fail the whole quote, price the rest by the piece.
+                        $lookups = self::LOOKUP_BUDGET;
+                        $value = null;
+                        $unchecked++;
+                        $notChecked = true;
+                    }
+                } else {
+                    $unchecked++;
+                    $notChecked = true;
+                }
+            }
+            $price = (!empty($value['found']) && !empty($value['price'])) ? (float) $value['price'] : 0.0;
+            $individual = $price > 0 && ($tier === 'small' || $price >= self::CHERRY_MIN);
+            if ($individual) {
+                $lines[] = [
+                    'item_type' => 'individual_vinyl',
+                    'quantity' => 1,
+                    'title' => $r['title'],
+                    'discogs_link' => 'https://www.discogs.com/release/' . $r['release_id'],
+                    'discogs_median_price' => $price,
+                    'condition_grade' => $r['grade'],
+                    'standard_multiplier' => self::stdMult($price),
+                ];
+                $display[] = ['label' => $r['title'], 'quantity' => 1, 'grade' => $r['grade'], 'how' => 'record', 'ref' => $r['ref'] ?? null];
+            } else {
+                $meta = $r['release_id'] ? $this->releaseMeta($r['release_id']) : ['genre' => [], 'style' => []];
+                $type = self::bulkVinylTypeFor($meta['genre'] ?? [], $meta['style'] ?? []);
+                if ($collapse) {
+                    $pk = $type . '|' . $this->capBulkGrade($r['grade']);
+                    $bulkPiles[$pk] = ($bulkPiles[$pk] ?? 0) + 1;
+                    continue;
+                }
+                $lines[] = [
+                    'item_type' => $type,
+                    'quantity' => 1,
+                    'title' => $r['title'],
+                    'condition_grade' => $this->capBulkGrade($r['grade']),
+                    'genre' => '',
+                ];
+                $display[] = [
+                    'label' => $r['title'],
+                    'quantity' => 1,
+                    'grade' => $this->capBulkGrade($r['grade']),
+                    'how' => $price > 0 ? 'bulk_rate' : ($notChecked ? 'not_checked' : 'no_sales_data'),
+                    'ref' => $r['ref'] ?? null,
+                ];
+            }
+        }
+        $typeLabels = $collapse ? $this->calculator->getItemTypesForDropdown(true, true) : [];
+        foreach ($bulkPiles as $pk => $qty) {
+            [$type, $grade] = explode('|', $pk, 2);
+            $lines[] = [
+                'item_type' => $type,
+                'quantity' => $qty,
+                'title' => null,
+                'condition_grade' => $grade,
+                'genre' => '',
+            ];
+            $display[] = [
+                'label' => 'Records from your list: ' . trim(preg_replace('/^10\+ Bulk (SEALED )?Vinyl: /', '', $typeLabels[$type] ?? $type)),
+                'quantity' => $qty,
+                'grade' => $grade,
+                'how' => 'per_piece',
+            ];
+        }
+        $inStoreCount = 0;
+        $signedLookups = 0;
+        foreach ($cleanGroups as $g) {
+            if (!empty($types[$g['type']]['in_store'])) {
+                $desc = $g['description'] ?? '';
+                // Jon 11/9: signed items with a "who signed it, what is it"
+                // get an eBay estimate (same lookup as the buy form's
+                // "Look up eBay value"); no data = still priced in store.
+                $est = null;
+                if ($desc !== '' && array_key_exists($g['type'], SignedValueLookupService::FORMAT_WORDS) && $signedLookups < self::SIGNED_LOOKUP_BUDGET) {
+                    $signedLookups++;
+                    $est = app(SignedValueLookupService::class)->lookup($this->businessId(), $desc, $g['type']);
+                }
+                if (!empty($est['ok']) && $est['suggested'] > 0) {
+                    $lines[] = [
+                        'item_type' => $g['type'],
+                        'quantity' => $g['quantity'],
+                        'title' => $desc,
+                        'discogs_median_price' => (float) $est['suggested'],
+                        'discogs_link' => $est['search_url'],
+                        'genre' => '',
+                    ];
+                    $display[] = [
+                        'label' => $types[$g['type']]['label'] . ': ' . $desc,
+                        'quantity' => $g['quantity'],
+                        'grade' => null,
+                        'how' => 'signed_ebay',
+                        'ref' => $g['ref'] ?? null,
+                    ];
+                    continue;
+                }
+                // No value on the quote: staff enter it on the buy form.
+                $inStoreCount += $g['quantity'];
+                $lines[] = [
+                    'item_type' => $g['type'],
+                    'quantity' => $g['quantity'],
+                    'title' => $desc !== '' ? $desc : $types[$g['type']]['label'],
+                    'discogs_median_price' => 0,
+                    'genre' => '',
+                ];
+                $display[] = [
+                    'label' => $types[$g['type']]['label'] . ($desc !== '' ? ': ' . $desc : ''),
+                    'quantity' => $g['quantity'],
+                    'grade' => null,
+                    'how' => 'in_store',
+                    'ref' => $g['ref'] ?? null,
+                ];
+                continue;
+            }
+            $lines[] = [
+                'item_type' => $g['type'],
+                'quantity' => $g['quantity'],
+                'title' => null,
+                'condition_grade' => $g['grade'] ?? $this->calculator->defaultGradeFor($g['type']),
+                'genre' => '',
+            ];
+            $display[] = [
+                'label' => $types[$g['type']]['group'] . ': ' . $types[$g['type']]['label'],
+                'quantity' => $g['quantity'],
+                'grade' => $g['grade'],
+                'how' => 'per_piece',
+                'ref' => $g['ref'] ?? null,
+            ];
+        }
+
+        // Price the same list once per store (each store's own demand levels).
+        $byStore = [];
+        foreach ($storeIds as $sid) {
+            $calculation = $this->calculator->calculate($lines, [], $this->demandHook($sid, $lines));
+            $final = (float) $calculation['final_offer_cash'];
+            $cashTotal = (float) $calculation['calculated_cash_total'];
+            $share = $cashTotal > 0 ? $final / $cashTotal : 0;
+            // Map calculator rows back to display rows (it skips nothing we
+            // built, but match on line_order to be safe).
+            $outLines = [];
+            foreach ($calculation['lines'] as $row) {
+                $i = (int) $row['line_order'];
+                $d = $display[$i] ?? ['label' => '', 'quantity' => $row['quantity'], 'grade' => null, 'how' => 'per_piece'];
+                $mult = (float) ($row['demand_multiplier'] ?? 1);
+                $d['cash'] = ($d['how'] ?? '') === 'in_store' ? null : round((float) $row['line_cash_total'] * $share, 2);
+                $d['demand'] = $mult > 1.001 ? 'wanted' : ($mult < 0.999 ? 'overstocked' : null);
+                if (!$live) unset($d['ref']);
+                $outLines[] = $d;
+            }
+            $byStore[$sid] = [
+                'cash' => $final,
+                'credit' => (float) $calculation['final_offer_credit'],
+                'estimate_low_cash' => $tier === 'large' ? BuyOfferCalculatorService::roundOffer($final * self::LARGE_LOW_SHARE) : null,
+                'lines' => $calculation['lines'],
+                'display' => $outLines,
+            ];
+        }
+        return compact('byStore', 'tier', 'count', 'cleanRecords', 'cleanGroups', 'notes', 'inStoreCount', 'unchecked');
+    }
+
+    /**
+     * POST /sell-quote/estimate: live per-item prices while the seller fills
+     * the form (Sarah 11/10). Same pricing as Get my quote, nothing saved or
+     * sent. Lines carry the client's ref so the form can put each price next
+     * to its item. Best-paying store first, like the quote screen.
+     */
+    public function estimate(Request $request)
+    {
+        $stores = $this->stores();
+        $storeIds = array_column($stores, 'id');
+        if (!$storeIds) {
+            return $this->json(['error' => 'Quotes are offline right now.'], 503);
+        }
+        $priced = $this->priceList($request, $storeIds, true);
+        if (isset($priced['error_response'])) {
+            return $this->json(['tier' => null, 'cash' => 0, 'credit' => 0, 'lines' => []]);
+        }
+        $names = array_column($stores, 'name', 'id');
+        $best = null;
+        foreach ($priced['byStore'] as $sid => $o) {
+            if ($best === null || $o['cash'] > $priced['byStore'][$best]['cash'] + 0.004) $best = $sid;
+        }
+        $o = $priced['byStore'][$best];
+        $lines = [];
+        foreach ($o['display'] as $d) {
+            $lines[] = [
+                'ref' => $d['ref'] ?? null,
+                'cash' => $d['cash'] ?? null,
+                'how' => $d['how'] ?? null,
+                'demand' => $d['demand'] ?? null,
+            ];
+        }
+        return $this->json([
+            'tier' => $priced['tier'],
+            'store' => $names[$best] ?? null,
+            'cash' => $o['cash'],
+            'credit' => $o['credit'],
+            'estimate_low_cash' => $o['estimate_low_cash'],
+            'estimate_low_credit' => $o['estimate_low_cash'] !== null ? round((float) $o['estimate_low_cash'] * 1.5, 2) : null,
+            'unchecked' => $priced['unchecked'],
+            'lines' => $lines,
+        ]);
     }
 
     /** Old quotes (one store, picked up front) count as already chosen. */

@@ -110,6 +110,8 @@ Route::middleware(['setData'])->group(function () {
     // Website "Get a Quote" (nivessa.com Sell Your Stuff). Public, CORS, no
     // CSRF (VerifyCsrfToken except list), throttled per IP. See SellQuoteController.
     Route::options('/sell-quote/{any}', 'SellQuoteController@preflight')->where('any', '.*');
+    // Live per-item prices: the form calls this ~1/sec while someone edits.
+    Route::post('/sell-quote/estimate', 'SellQuoteController@estimate')->middleware('throttle:150,1');
     Route::middleware('throttle:60,1')->group(function () {
         Route::get('/sell-quote/options', 'SellQuoteController@options');
         Route::post('/sell-quote/start', 'SellQuoteController@start');
