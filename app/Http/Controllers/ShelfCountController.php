@@ -24,8 +24,8 @@ class ShelfCountController extends Controller
     const RECOUNT_WARN_DAYS = 7;
     /** Deploy time of the fix that stopped bin Save from zeroing uncounted titles. */
     const SAVE_ONLY_COUNTED_FROM = '2026-10-16 12:14:00';
-    /** Year-end sealed count (Sarah 11/10/26): counts from this date on count toward the 12/31/26 inventory. */
-    const YEAR_END_FROM = '2026-11-01 00:00:00';
+    /** Year-end sealed count (Sarah 11/10/26): counts saved after the 10/16 zero-save fix count toward the 12/31/26 inventory (sales after a count come off automatically). */
+    const YEAR_END_FROM = self::SAVE_ONLY_COUNTED_FROM; // counts before the 10/16 fix may be bad zeros
     const YEAR_END_UNTIL = '2027-01-01 00:00:00';
 
     protected function location(Request $request): array
