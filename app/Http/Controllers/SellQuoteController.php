@@ -587,10 +587,19 @@ class SellQuoteController extends StoreOrDiscogsController
         if ($quote->status === 'in_buy') {
             return $this->json(['error' => 'This quote is already being used for a buy in store.'], 409);
         }
-        $storeIds = array_column($this->stores(), 'id');
-        $locationId = (int) ($request->input('location_id') ?: $quote->location_id);
-        if (!in_array($locationId, $storeIds, true)) {
-            return $this->json(['error' => 'Pick which store you\'ll bring it to.'], 422);
+        // Sarah 11/9: the seller no longer picks a store up front. We price the
+        // list for every buying store and show the offers side by side; they
+        // pick on the quote screen (POST /sell-quote/{token}/store). A store
+        // they already picked sticks across re-prices.
+        $stores = $this->stores();
+        $storeIds = array_column($stores, 'id');
+        $prevCalc = json_decode((string) $quote->calculation_json, true) ?: [];
+        $chosenId = (int) $request->input('location_id');
+        if (!in_array($chosenId, $storeIds, true)) {
+            $chosenId = (self::storeChosen($prevCalc) && in_array((int) $quote->location_id, $storeIds, true)) ? (int) $quote->location_id : 0;
+        }
+        if (!$storeIds) {
+            return $this->json(['error' => 'Quotes are offline right now. Please bring your items in.'], 503);
         }
         $rules = $this->calculator->getRules();
         $grades = $rules['grade_multipliers'];
@@ -763,25 +772,40 @@ class SellQuoteController extends StoreOrDiscogsController
             ];
         }
 
-        $calculation = $this->calculator->calculate($lines, [], $this->demandHook($locationId, $lines));
-        $final = (float) $calculation['final_offer_cash'];
-        $credit = (float) $calculation['final_offer_credit'];
-        $cashTotal = (float) $calculation['calculated_cash_total'];
-        $share = $cashTotal > 0 ? $final / $cashTotal : 0;
-
-        // Map calculator rows back to display rows (it skips nothing we built,
-        // but match on line_order to be safe).
-        $outLines = [];
-        foreach ($calculation['lines'] as $row) {
-            $i = (int) $row['line_order'];
-            $d = $display[$i] ?? ['label' => '', 'quantity' => $row['quantity'], 'grade' => null, 'how' => 'per_piece'];
-            $mult = (float) ($row['demand_multiplier'] ?? 1);
-            $d['cash'] = ($d['how'] ?? '') === 'in_store' ? null : round((float) $row['line_cash_total'] * $share, 2);
-            $d['demand'] = $mult > 1.001 ? 'wanted' : ($mult < 0.999 ? 'overstocked' : null);
-            $outLines[] = $d;
+        // Price the same list once per store (each store's own demand levels).
+        $byStore = [];
+        foreach ($storeIds as $sid) {
+            $calculation = $this->calculator->calculate($lines, [], $this->demandHook($sid, $lines));
+            $final = (float) $calculation['final_offer_cash'];
+            $cashTotal = (float) $calculation['calculated_cash_total'];
+            $share = $cashTotal > 0 ? $final / $cashTotal : 0;
+            // Map calculator rows back to display rows (it skips nothing we
+            // built, but match on line_order to be safe).
+            $outLines = [];
+            foreach ($calculation['lines'] as $row) {
+                $i = (int) $row['line_order'];
+                $d = $display[$i] ?? ['label' => '', 'quantity' => $row['quantity'], 'grade' => null, 'how' => 'per_piece'];
+                $mult = (float) ($row['demand_multiplier'] ?? 1);
+                $d['cash'] = ($d['how'] ?? '') === 'in_store' ? null : round((float) $row['line_cash_total'] * $share, 2);
+                $d['demand'] = $mult > 1.001 ? 'wanted' : ($mult < 0.999 ? 'overstocked' : null);
+                $outLines[] = $d;
+            }
+            $byStore[$sid] = [
+                'cash' => $final,
+                'credit' => (float) $calculation['final_offer_credit'],
+                'estimate_low_cash' => $tier === 'large' ? BuyOfferCalculatorService::roundOffer($final * self::LARGE_LOW_SHARE) : null,
+                'lines' => $calculation['lines'],
+                'display' => $outLines,
+            ];
         }
+        // Until the seller picks, the quote row carries the best-paying store.
+        $bestId = $storeIds[0];
+        foreach ($byStore as $sid => $o) {
+            if ($o['cash'] > $byStore[$bestId]['cash'] + 0.004) $bestId = $sid;
+        }
+        $locationId = $chosenId ?: $bestId;
+        $primary = $byStore[$locationId];
 
-        $estimateLow = $tier === 'large' ? BuyOfferCalculatorService::roundOffer($final * self::LARGE_LOW_SHARE) : null;
         $now = now();
         // Every quote, estimates too, is valid VALID_DAYS (Sarah 11/4).
         $expires = $now->copy()->addDays(self::VALID_DAYS)->endOfDay();
@@ -791,29 +815,129 @@ class SellQuoteController extends StoreOrDiscogsController
             'status' => 'quoted',
             'item_count' => $count,
             'input_json' => json_encode(['records' => $cleanRecords, 'groups' => $cleanGroups]),
-            'calculation_json' => json_encode(['lines' => $calculation['lines'], 'display' => $outLines, 'in_store_count' => $inStoreCount, 'unchecked' => $unchecked]),
-            'cash_total' => $final,
-            'credit_total' => $credit,
-            'estimate_low_cash' => $estimateLow,
+            'calculation_json' => json_encode([
+                'lines' => $primary['lines'],
+                'display' => $primary['display'],
+                'in_store_count' => $inStoreCount,
+                'unchecked' => $unchecked,
+                'by_store' => $byStore,
+                'store_chosen' => $chosenId > 0,
+            ]),
+            'cash_total' => $primary['cash'],
+            'credit_total' => $primary['credit'],
+            'estimate_low_cash' => $primary['estimate_low_cash'],
             'notes' => $notes !== '' ? $notes : null,
             'quoted_at' => $now,
             'expires_at' => $expires,
             'updated_at' => $now,
         ]);
         $fresh = DB::table('sell_quotes')->find($quote->id);
-        $prevCalc = json_decode((string) $quote->calculation_json, true) ?: [];
         $sent = $this->notifySeller($fresh, $prevCalc['notified'] ?? null);
         // Markers kept across re-prices: when the seller was last sent this
-        // number, and whether the store's Slack channel already heard about it.
+        // number, and which stores' Slack channels already heard about it.
         $calcSaved = json_decode((string) $fresh->calculation_json, true) ?: [];
         if ($sent['sms'] || $sent['email']) {
             $calcSaved['notified'] = ['cash' => (float) $fresh->cash_total, 'at' => $now->timestamp];
         } elseif (!empty($prevCalc['notified'])) {
             $calcSaved['notified'] = $prevCalc['notified'];
         }
-        $calcSaved['slacked'] = !empty($prevCalc['slacked']) || $this->alertStore($fresh);
+        $calcSaved['slacked'] = $this->slackedStores($prevCalc, $quote->location_id);
+        if (!$calcSaved['slacked'] && $this->alertStore($fresh)) {
+            $calcSaved['slacked'] = [(int) $locationId];
+        }
         DB::table('sell_quotes')->where('id', $quote->id)->update(['calculation_json' => json_encode($calcSaved)]);
+        $fresh = DB::table('sell_quotes')->find($quote->id);
         return $this->json($this->publicQuote($fresh) + ['sent' => $sent]);
+    }
+
+    /** Old quotes (one store, picked up front) count as already chosen. */
+    protected static function storeChosen(array $calc)
+    {
+        return !isset($calc['by_store']) || !empty($calc['store_chosen']);
+    }
+
+    /** Store ids whose Slack channel already got this quote (was a bool before 11/9). */
+    protected function slackedStores(array $calc, $locationId)
+    {
+        $s = $calc['slacked'] ?? [];
+        if ($s === true) return $locationId ? [(int) $locationId] : [];
+        return is_array($s) ? array_values(array_map('intval', $s)) : [];
+    }
+
+    /**
+     * POST /sell-quote/{token}/store: the seller picks the store they'll bring
+     * it to. Swaps that store's numbers onto the quote, texts / emails them the
+     * single-store quote, and alerts that store's Slack if it hadn't heard yet.
+     */
+    public function chooseStore(Request $request, $token)
+    {
+        $quote = $this->findByToken($token);
+        if (!$quote || $quote->status === 'started') {
+            return $this->json(['error' => 'Quote not found.'], 404);
+        }
+        if ($quote->status === 'in_buy') {
+            return $this->json(['error' => 'This quote is already being used for a buy in store.'], 409);
+        }
+        $calc = json_decode((string) $quote->calculation_json, true) ?: [];
+        $sid = (int) $request->input('location_id');
+        $byStore = $calc['by_store'] ?? [];
+        if (!isset($byStore[$sid])) {
+            return $this->json(['error' => 'Pick one of our stores.'], 422);
+        }
+        $o = $byStore[$sid];
+        $wasChosen = !empty($calc['store_chosen']) && (int) $quote->location_id === $sid;
+        $calc['lines'] = $o['lines'];
+        $calc['display'] = $o['display'];
+        $calc['store_chosen'] = true;
+        DB::table('sell_quotes')->where('id', $quote->id)->update([
+            'location_id' => $sid,
+            'cash_total' => $o['cash'],
+            'credit_total' => $o['credit'],
+            'estimate_low_cash' => $o['estimate_low_cash'],
+            'calculation_json' => json_encode($calc),
+            'updated_at' => now(),
+        ]);
+        $fresh = DB::table('sell_quotes')->find($quote->id);
+        $sent = ['sms' => false, 'email' => false];
+        if (!$wasChosen) {
+            $sent = $this->notifySeller($fresh, null);
+            $slacked = $this->slackedStores($calc, $quote->location_id);
+            if (!in_array($sid, $slacked, true) && $this->alertStore($fresh)) {
+                $slacked[] = $sid;
+            }
+            $calc['slacked'] = $slacked;
+            if ($sent['sms'] || $sent['email']) {
+                $calc['notified'] = ['cash' => (float) $fresh->cash_total, 'at' => time()];
+            }
+            DB::table('sell_quotes')->where('id', $quote->id)->update(['calculation_json' => json_encode($calc)]);
+            $fresh = DB::table('sell_quotes')->find($quote->id);
+        }
+        return $this->json($this->publicQuote($fresh) + ['sent' => $sent]);
+    }
+
+    /** Every store's offer for this quote, best first (one row for old quotes). */
+    protected function offers($q, array $calc)
+    {
+        $names = collect($this->stores())->pluck('name', 'id')->all();
+        $rows = [];
+        if (!empty($calc['by_store'])) {
+            foreach ($calc['by_store'] as $sid => $o) {
+                if (!isset($names[(int) $sid])) continue;
+                $rows[] = [
+                    'location_id' => (int) $sid,
+                    'store' => $names[(int) $sid],
+                    'cash' => (float) $o['cash'],
+                    'credit' => (float) $o['credit'],
+                    'estimate_low_cash' => $o['estimate_low_cash'] !== null ? (float) $o['estimate_low_cash'] : null,
+                    'estimate_low_credit' => $o['estimate_low_cash'] !== null ? round((float) $o['estimate_low_cash'] * 1.5, 2) : null,
+                    'lines' => $o['display'] ?? [],
+                ];
+            }
+            usort($rows, function ($a, $b) {
+                return ($b['cash'] <=> $a['cash']) ?: strcmp($a['store'], $b['store']);
+            });
+        }
+        return $rows;
     }
 
     /**
@@ -847,6 +971,12 @@ class SellQuoteController extends StoreOrDiscogsController
             }
             if ($inStore > 0 && (float) $q->cash_total > 0) {
                 $money .= ' Plus ' . $inStore . ' autograph / card pack item' . ($inStore === 1 ? '' : 's') . ' to price in store.';
+            }
+            $calcAll = json_decode((string) $q->calculation_json, true) ?: [];
+            if (!self::storeChosen($calcAll)) {
+                $money .= ' Hasn\'t picked a store yet (this one pays the most).';
+            } elseif (isset($calcAll['by_store'])) {
+                $money .= ' They picked this store.';
             }
             $text = ':moneybag: New website sell quote *' . self::number($q->id) . '*: ' . $who . ' · ' . $items . ' · ' . $money
                 . "\n<" . url('/sell-quotes/' . $q->id) . '|Open the quote>';
@@ -901,6 +1031,35 @@ class SellQuoteController extends StoreOrDiscogsController
         $goodThrough = $q->expires_at ? \Carbon\Carbon::parse($q->expires_at)->format('l, F j') : '';
         $goodThroughShort = $q->expires_at ? \Carbon\Carbon::parse($q->expires_at)->format('D n/j') : '';
         $street = trim(explode(',', $store['address'])[0]);
+        $calcAll = json_decode((string) $q->calculation_json, true) ?: [];
+        $offers = self::storeChosen($calcAll) ? [] : $this->offers($q, $calcAll);
+
+        if (count($offers) > 1) {
+            // No store picked yet: one text with every store's offer, best
+            // first, and the link to pick. The email waits for the pick.
+            $hi = 'Hi' . ($first !== '' ? ' ' . $first : '') . ', Nivessa here. ';
+            if ($onlyInStore) {
+                $sms = $hi . 'Quote ' . $number . ': we price autographs and sealed card packs when we see them. Bring your ' . $items
+                    . ' to either store and show this text at the counter. ' . $link;
+            } else {
+                $parts = [];
+                foreach ($offers as $o) {
+                    $parts[] = $o['store'] . ' ' . ($large ? $m($o['estimate_low_cash']) . '-' . $m($o['cash']) : $m($o['cash'])) . ' cash';
+                }
+                $sms = $hi . ($large ? 'Estimate ' : 'Quote ') . $number . ' for ' . $items . $inStoreText . ': ' . implode(', ', $parts)
+                    . ' (1.5x that in store credit). Valid through ' . $goodThroughShort . ', final price confirmed on appraisal. Pick your store here: ' . $link;
+            }
+            try {
+                $res = app(\App\Services\OpenPhoneService::class)->sendFromStore($storeName ?: $store['name'], (string) $q->phone, $sms);
+                $out['sms'] = (bool) ($res['success'] ?? false);
+                if (!$out['sms']) {
+                    \Log::warning('Sell quote ' . $number . ' text failed: ' . ($res['msg'] ?? ''));
+                }
+            } catch (\Throwable $e) {
+                \Log::warning('Sell quote ' . $number . ' text failed: ' . $e->getMessage());
+            }
+            return $out;
+        }
 
         if ($onlyInStore) {
             $sms = 'Hi' . ($first !== '' ? ' ' . $first : '') . ', Nivessa here. Quote ' . $number . ': we price autographs and sealed card packs when we see them. Bring your '
@@ -967,6 +1126,9 @@ class SellQuoteController extends StoreOrDiscogsController
             'status' => $q->status,
             'tier' => $q->size_tier,
             'store' => $store['name'] ?? null,
+            'location_id' => $q->location_id ? (int) $q->location_id : null,
+            'store_chosen' => self::storeChosen($calc),
+            'offers' => $this->offers($q, $calc),
             'item_count' => (int) $q->item_count,
             'cash' => $q->cash_total !== null ? (float) $q->cash_total : null,
             'credit' => $q->credit_total !== null ? $credit : null,
