@@ -6,6 +6,7 @@ use App\BuyCustomerOffer;
 use App\Services\BuyBetaOffers;
 use App\Services\BuyDemandService;
 use App\Services\BuyOfferCalculatorService;
+use App\Services\SignedValueLookupService;
 use App\Services\DiscogsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -87,6 +88,9 @@ class SellQuoteController extends StoreOrDiscogsController
     // Sarah 11/8: priced off each item's real sold value, which a seller can't
     // look up, so the website lists them as "priced in store" ($0 on the
     // quote); the seller says what each is and staff price it on the buy form.
+    /** eBay lookups for signed lines per price press. */
+    const SIGNED_LOOKUP_BUDGET = 10;
+
     const IN_STORE_TYPES = [
         'signed_vinyl' => ['Autographs & signed items', 'Signed vinyl'],
         'signed_cd' => ['Autographs & signed items', 'Signed CD'],
@@ -737,11 +741,37 @@ class SellQuoteController extends StoreOrDiscogsController
             ];
         }
         $inStoreCount = 0;
+        $signedLookups = 0;
         foreach ($cleanGroups as $g) {
             if (!empty($types[$g['type']]['in_store'])) {
+                $desc = $g['description'] ?? '';
+                // Jon 11/9: signed items with a "who signed it, what is it"
+                // get an eBay estimate (same lookup as the buy form's
+                // "Look up eBay value"); no data = still priced in store.
+                $est = null;
+                if ($desc !== '' && array_key_exists($g['type'], SignedValueLookupService::FORMAT_WORDS) && $signedLookups < self::SIGNED_LOOKUP_BUDGET) {
+                    $signedLookups++;
+                    $est = app(SignedValueLookupService::class)->lookup($this->businessId(), $desc, $g['type']);
+                }
+                if (!empty($est['ok']) && $est['suggested'] > 0) {
+                    $lines[] = [
+                        'item_type' => $g['type'],
+                        'quantity' => $g['quantity'],
+                        'title' => $desc,
+                        'discogs_median_price' => (float) $est['suggested'],
+                        'discogs_link' => $est['search_url'],
+                        'genre' => '',
+                    ];
+                    $display[] = [
+                        'label' => $types[$g['type']]['label'] . ': ' . $desc,
+                        'quantity' => $g['quantity'],
+                        'grade' => null,
+                        'how' => 'signed_ebay',
+                    ];
+                    continue;
+                }
                 // No value on the quote: staff enter it on the buy form.
                 $inStoreCount += $g['quantity'];
-                $desc = $g['description'] ?? '';
                 $lines[] = [
                     'item_type' => $g['type'],
                     'quantity' => $g['quantity'],
