@@ -4127,8 +4127,10 @@ function update_clover_split() {
         return;
     }
     var taxed = Math.round((shown - notax) * 100) / 100;
-    $('#clover_split_taxed').text(__currency_trans_from_en(taxed, false));
-    $('#clover_split_notax').text(__currency_trans_from_en(notax, false));
+    $('#clover_split_taxed').text(taxed.toFixed(2));
+    $('#clover_split_notax').text(notax.toFixed(2));
+    // Nothing taxable (only bag / drinks): show just the No Tax key.
+    $('#clover_split_taxed').closest('.clover-split-row').toggle(taxed >= 0.01);
     $bar.addClass('has-split');
     $split.css('display', 'flex');
 }
