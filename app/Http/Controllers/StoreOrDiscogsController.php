@@ -442,6 +442,9 @@ class StoreOrDiscogsController extends Controller
         $titleSold = array_sum($r['title_sold']);
         $artistSold = array_sum($r['artist_sold']);
         $have = array_sum($r['artist_have']);
+        $haveAt = $this->haveAtStores($r['artist_have']);
+        // Every store call ends with what's on hand per store (Sarah 2026-11-10).
+        $onHand = $have > 0 ? ' · on hand: ' . $haveAt : ' · none on hand';
         $overstocked = $have > max(1, $r['artist_sold_12m']) * self::OVERSTOCK_RATIO;
         $sellThrough = $artistSold > 0 ? $artistSold / ($artistSold + $have) : 0;
 
@@ -455,8 +458,8 @@ class StoreOrDiscogsController extends Controller
         if ($titleSold > 0) {
             if ((string) $r['title_last_at'] >= $recentFrom) {
                 $why = 'Sold this title ' . $this->n($titleSold) . 'x' . $this->atStores($r['title_sold']);
-                if ($overstocked) $why .= ' (but we have ' . $this->n($have) . ' of the artist)';
-                return ['store', $this->bestStore($r['title_sold']), $why];
+                $why .= $overstocked ? ' (but we have ' . $this->n($have) . ' of the artist: ' . $haveAt . ')' : $onHand;
+                return ['store', $this->bestStore($r['title_sold'], $r['artist_have']), $why];
             }
             $note = 'Title last sold ' . $this->year($r['title_last_at']) . $this->atStores($r['title_sold']) . '. ';
         }
@@ -464,25 +467,25 @@ class StoreOrDiscogsController extends Controller
             // Never had this title and the artist moves every ~4 months or faster: try it (Sarah 2026-11-04).
             if ($titleNeverHad && $r['artist_sold_12m'] >= self::NEW_TITLE_ARTIST_12M) {
                 $days = (int) round(365 / $r['artist_sold_12m']);
-                return ['store', $this->bestStore($r['artist_sold']), 'Never had this title; artist sells about 1 every ' . $days . ' days ('
-                    . $this->n($r['artist_sold_12m']) . ' in 12 mo), worth trying' . ($overstocked ? ' (we have ' . $this->n($have) . ' of the artist)' : '')];
+                return ['store', $this->bestStore($r['artist_sold'], $r['artist_have']), 'Never had this title; artist sells about 1 every ' . $days . ' days ('
+                    . $this->n($r['artist_sold_12m']) . ' in 12 mo), worth trying' . $onHand];
             }
             if ($r['artist_sold_recent'] <= 0) {
                 return ['discogs', 'Discogs', $note . 'Artist last sold ' . $this->year($r['artist_last_at']) . ', nothing since'];
             }
             if ($overstocked) {
-                return ['discogs', 'Discogs', $note . 'Artist sells (' . $this->n($r['artist_sold_12m']) . ' in 12 mo) but we already have ' . $this->n($have)];
+                return ['discogs', 'Discogs', $note . 'Artist sells (' . $this->n($r['artist_sold_12m']) . ' in 12 mo) but we already have ' . $this->n($have) . ' (' . $haveAt . ')'];
             }
             if ($sellThrough < self::MIN_SELL_THROUGH) {
-                return ['discogs', 'Discogs', $note . 'Only ' . round($sellThrough * 100) . '% of this artist we stocked has sold (' . $this->n($artistSold) . ' sold, ' . $this->n($have) . ' left)'];
+                return ['discogs', 'Discogs', $note . 'Only ' . round($sellThrough * 100) . '% of this artist we stocked has sold (' . $this->n($artistSold) . ' sold, ' . $this->n($have) . ' left: ' . $haveAt . ')'];
             }
-            if ($titleNeverHad) return ['store', $this->bestStore($r['artist_sold']), rtrim($note, '. ')];
-            return ['store', $this->bestStore($r['artist_sold']), $note . 'Sold this artist ' . $this->n($artistSold) . 'x' . $this->atStores($r['artist_sold']) . ($titleSold > 0 ? '' : ', not this title')];
+            if ($titleNeverHad) return ['store', $this->bestStore($r['artist_sold'], $r['artist_have']), rtrim($note, '. ') . $onHand];
+            return ['store', $this->bestStore($r['artist_sold'], $r['artist_have']), $note . 'Sold this artist ' . $this->n($artistSold) . 'x' . $this->atStores($r['artist_sold']) . ($titleSold > 0 ? '' : ', not this title') . $onHand];
         }
         // No sales = no call either way; the page shows the Discogs price next to it.
         if ($r['artist_listed'] > 0) {
             return ['never_sold', 'Never sold', 'Had this artist (' . $r['artist_listed'] . ' listing' . ($r['artist_listed'] > 1 ? 's' : '') . '), never sold one'
-                . ($have > 0 ? ', ' . $this->n($have) . ' on hand' : '')];
+                . ($have > 0 ? ', on hand: ' . $haveAt : '')];
         }
         return ['never_had', 'Never had for sale', 'We have never carried this artist'];
     }
@@ -544,6 +547,7 @@ class StoreOrDiscogsController extends Controller
                 foreach ($everAtBy[$pid] ?? [] as $v) $r['had_at'][$storeOf[(int) $v->location_id] ?? 'other'] = true;
                 foreach ($stockBy[$pid] ?? [] as $v) {
                     $r['title_have'] += (float) $v->qty_available;
+                    $r['title_have_at'][$storeOf[(int) $v->location_id] ?? 'other'] += (float) $v->qty_available;
                     if ($this->forSale($byId[$pid])) {
                         $r['for_sale'][$storeOf[(int) $v->location_id] ?? 'other'] += (float) $v->qty_available;
                         $shelfPrices[] = (float) $v->price;
@@ -556,14 +560,15 @@ class StoreOrDiscogsController extends Controller
             if (!$it['words']) {
                 $v = ['unknown', '', 'Nothing to match on this line'];
             } elseif ($sold > 0 && $soldRecent > 0 && $r['title_have'] <= max(1, $sold12m) * self::OVERSTOCK_RATIO) {
-                $v = ['store', $this->bestStore($r['title_sold']), 'Sold ' . $this->n($sold) . 'x' . $this->atStores($r['title_sold'])];
+                $v = ['store', $this->bestStore($r['title_sold'], $r['title_have_at']), 'Sold ' . $this->n($sold) . 'x' . $this->atStores($r['title_sold'])
+                    . ($r['title_have'] > 0 ? ' · on hand: ' . $this->haveAtStores($r['title_have_at']) : ' · none on hand')];
             } elseif ($sold > 0 && $soldRecent > 0) {
-                $v = ['ebay', 'eBay', 'Sells (' . $this->n($sold12m) . ' in 12 mo) but we already have ' . $this->n($r['title_have'])];
+                $v = ['ebay', 'eBay', 'Sells (' . $this->n($sold12m) . ' in 12 mo) but we already have ' . $this->n($r['title_have']) . ' (' . $this->haveAtStores($r['title_have_at']) . ')'];
             } elseif ($sold > 0) {
                 $v = ['ebay', 'eBay', 'Last sold ' . $this->year($r['title_last_at']) . $this->atStores($r['title_sold']) . ', nothing since'];
             } elseif ($r['title_listed'] > 0) {
                 $v = ['never_sold', 'Never sold', 'Had it (' . $r['title_listed'] . ' listing' . ($r['title_listed'] > 1 ? 's' : '') . '), never sold one'
-                    . ($r['title_have'] > 0 ? ', ' . $this->n($r['title_have']) . ' on hand' : '')];
+                    . ($r['title_have'] > 0 ? ', on hand: ' . $this->haveAtStores($r['title_have_at']) : '')];
             } else {
                 $v = ['never_had', 'Never had for sale', 'We have never carried this in ' . $cat->name];
             }
@@ -616,7 +621,7 @@ class StoreOrDiscogsController extends Controller
     {
         $z = ['pico' => 0, 'hollywood' => 0, 'other' => 0];
         return ['line' => $line, 'artist' => $artist, 'title' => $title,
-            'title_sold' => $z, 'title_last_price' => null, 'title_last_at' => null, 'title_have' => 0, 'title_listed' => 0, 'title_sold_12m' => 0,
+            'title_sold' => $z, 'title_last_price' => null, 'title_last_at' => null, 'title_have' => 0, 'title_have_at' => $z, 'title_listed' => 0, 'title_sold_12m' => 0,
             'artist_sold' => $z, 'artist_sold_12m' => 0, 'artist_sold_recent' => 0, 'artist_last_at' => null, 'artist_avg_price' => null,
             'artist_have' => $z, 'artist_listed' => 0,
             // This exact title/item in stock and actually for sale (priced, active), per store.
@@ -756,10 +761,27 @@ class StoreOrDiscogsController extends Controller
         return ' (' . implode(', ', array_map(function ($x) { return $x[0] . ' ' . $x[1]; }, $parts)) . ')';
     }
 
-    protected function bestStore($counts)
+    /**
+     * Which store to send it to. $counts = sold per store. When both stores
+     * sell it, favor the one with fewer copies on hand ($have) so the store
+     * that's out gets restocked first (Sarah 2026-11-10); tie → more sold.
+     */
+    protected function bestStore($counts, $have = null)
     {
+        if ($have !== null && $counts['pico'] > 0 && $counts['hollywood'] > 0
+            && (float) ($have['pico'] ?? 0) != (float) ($have['hollywood'] ?? 0)) {
+            return (float) ($have['pico'] ?? 0) < (float) ($have['hollywood'] ?? 0) ? 'Pico' : 'Hollywood';
+        }
         if ($counts['pico'] == $counts['hollywood']) return 'Pico or Hollywood';
         return $counts['pico'] > $counts['hollywood'] ? 'Pico' : 'Hollywood';
+    }
+
+    /** "0 Pico, 12 Hollywood" — always both stores, plus the other location(s) when they hold any. */
+    protected function haveAtStores($have)
+    {
+        $out = $this->n($have['pico'] ?? 0) . ' Pico, ' . $this->n($have['hollywood'] ?? 0) . ' Hollywood';
+        if (($have['other'] ?? 0) > 0) $out .= ', ' . $this->n($have['other']) . ' ' . $this->otherLabel;
+        return $out;
     }
 
     protected function year($at)
