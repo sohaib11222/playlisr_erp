@@ -62,7 +62,7 @@
                         <input type="date" id="task_start_date" class="form-control" name="start_date" value="{{ old('start_date', now()->toDateString()) }}" required>
                         <span id="task_end_date_wrap" style="{{ $currentTaskType === 'daily' ? 'display:none;' : '' }}">
                             <span class="text-muted">to</span>
-                            <input type="date" id="task_end_date_preview" name="end_date" class="form-control" value="{{ old('end_date', now()->addDays(7)->toDateString()) }}" title="Due date. Defaults to a week after the start.">addDays(7)->format('M j, Y') }}" disabled style="width:120px;">
+                            <input type="date" id="task_end_date_preview" name="end_date" class="form-control" value="{{ old('end_date', now()->addDays(7)->toDateString()) }}" title="Due date. Defaults to a week after the start.">
                         </span>
                         <span class="text-muted">by</span>
                         <input type="time" class="form-control" name="due_time" value="{{ old('due_time') }}" title="Optional. Blank means end of day.">
