@@ -244,6 +244,24 @@ class EbayService
         ]);
     }
 
+    /**
+     * Raw Browse API item_summary search with any query params (q, filter,
+     * limit, category_ids, sort...). App token, no seller consent needed.
+     */
+    public function browseSearch(array $query): array
+    {
+        $token = $this->getOAuthToken()['access_token'];
+
+        return $this->makeRequest($this->baseUrl . '/buy/browse/v1/item_summary/search', [
+            'headers' => [
+                'Authorization' => 'Bearer ' . $token,
+                'Content-Type' => 'application/json',
+                'X-EBAY-C-MARKETPLACE-ID' => 'EBAY_US',
+            ],
+            'query' => $query,
+        ]);
+    }
+
     public function getProductPrice(string $query, ?string $gtin = null, ?string $categoryIds = null, ?string $compatibilityFilter = null): array
     {
         $results = $this->searchProducts($query, $gtin, $categoryIds, $compatibilityFilter);
