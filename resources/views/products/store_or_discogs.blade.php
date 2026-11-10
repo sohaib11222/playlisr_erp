@@ -388,7 +388,7 @@
                     + '<td class="sd-num">' + valueCell(r) + '</td>'
                     + '<td class="sd-stack"><span>Pico</span> ' + num(r.for_sale.pico) + '<br><span>HW</span> ' + num(r.for_sale.hollywood) + '<br><span>' + esc(otherStore === 'Online warehouse' ? 'Online' : otherStore) + '</span> ' + num(r.for_sale.other) + '</td>'
                     + (music
-                        ? '<td class="sd-stack"><span>sold</span> ' + num(sum(r.artist_sold)) + '<br><span>12 mo</span> ' + num(r.artist_sold_12m) + '<br><span>on hand</span> ' + num(sum(r.artist_have)) + '</td>'
+                        ? '<td class="sd-stack"><span>sold</span> ' + num(sum(r.artist_sold)) + '<br><span>12 mo</span> ' + num(r.artist_sold_12m) + '<br><span>on hand</span> ' + num(sum(r.artist_have)) + '<div class="sd-sub">' + num(r.artist_have.pico || 0) + ' Pico · ' + num(r.artist_have.hollywood || 0) + ' HW</div></td>'
                         : '')
                     + '<td style="white-space:nowrap">' + (music
                         ? '<a href="https://www.discogs.com/search/?type=release&q=' + q + '" target="_blank" rel="noopener">Discogs</a>'
