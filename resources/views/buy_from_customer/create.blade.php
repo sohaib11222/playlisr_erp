@@ -615,7 +615,10 @@ HTML;
                         <div class="col-md-3 seller-contact-block">
                             <div class="form-group">
                                 <label>Existing contact <span class="text-danger">*</span></label>
-                                {!! Form::select('contact_id', $contacts, $input['contact_id'] ?? null, ['class' => 'form-control select2', 'id' => 'contact_id', 'style' => 'width:100%;']) !!}
+                                {{-- Lookup is phone/email only (no browsing or searching by name), so the
+                                     page only ships the already-picked contact; everything else comes
+                                     from the seller-lookup endpoint. (Sarah 2026-11-10) --}}
+                                {!! Form::select('contact_id', collect($contacts)->only(array_filter([(string) ($input['contact_id'] ?? '')]))->all(), $input['contact_id'] ?? null, ['class' => 'form-control select2', 'id' => 'contact_id', 'style' => 'width:100%;', 'data-placeholder' => 'Type phone number or email']) !!}
                                 <button type="button" class="btn btn-link btn-xs" id="bfc_view_account_btn" style="padding-left:0;">
                                     <i class="fa fa-user"></i> View account (store credit &amp; history)
                                 </button>
@@ -1258,6 +1261,29 @@ HTML;
         // delegated native `change` as a fallback in case select2 isn't
         // initialized. One of these fires whenever an account is picked, so the
         // gate re-runs and unlocks the items. (Sarah 2026-07-21)
+        // Seller lookup by phone number or email only — never by name.
+        (function () {
+            var $c = $('#contact_id');
+            if (!$c.length || !$.fn.select2) return;
+            if ($c.hasClass('select2-hidden-accessible')) $c.select2('destroy');
+            $c.select2({
+                width: '100%',
+                placeholder: 'Type phone number or email',
+                allowClear: true,
+                minimumInputLength: 3,
+                language: {
+                    inputTooShort: function () { return 'Type the seller\'s phone number or email'; },
+                    noResults: function () { return 'No account with that phone/email'; }
+                },
+                ajax: {
+                    url: @json(url('/buy-from-customer/seller-lookup')),
+                    dataType: 'json',
+                    delay: 250,
+                    data: function (p) { return { q: p.term }; },
+                    processResults: function (d) { return { results: d.results || [] }; }
+                }
+            });
+        })();
         $('#contact_id').on('select2:select select2:unselect select2:clear change', bfcApplyItemsGate);
         $(document).on('change', '#contact_id', bfcApplyItemsGate);
 
