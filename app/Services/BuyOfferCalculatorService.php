@@ -147,6 +147,12 @@ class BuyOfferCalculatorService
                 'cd_classical_opera_sealed' => ['label' => 'CD: Classical/Opera SEALED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.20],
                 'cd_nonmusic_used' => ['label' => 'CD: Non-Music USED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.05],
                 'cd_nonmusic_sealed' => ['label' => 'CD: Non-Music SEALED', 'mode' => 'bulk_fixed', 'unit_rate' => 0.10],
+                // Sarah 11/9: a single CD worth $10+ pays 25% of its value (no
+                // speed bump/cut). In-store buy form only: not 'bulk_fixed', so
+                // the website Get a Quote form (SellQuoteController) never lists it.
+                'cd_10_plus' => ['min_value' => 10, 'label' => 'CD: $10+ value (pays 25%)', 'mode' => 'value_percent', 'no_grading' => true, 'no_demand' => true, 'value_tiers' => [
+                    ['under' => null, 'percent' => 0.25],
+                ]],
                 'cd_no_case' => ['label' => 'CD: No Case', 'mode' => 'bulk_fixed', 'unit_rate' => 0.05],
                 'cd_boxset_used' => ['label' => 'CD: Boxset USED', 'mode' => 'bulk_fixed', 'unit_rate' => 1.50],
                 'cd_boxset_sealed' => ['label' => 'CD: Boxset SEALED', 'mode' => 'bulk_fixed', 'unit_rate' => 3.00],
@@ -497,7 +503,7 @@ class BuyOfferCalculatorService
                     'demand_super_fast' => $superFast,
                     'demand_base_margin' => $margin,
                 ];
-            } elseif ($demand !== null && !$signed) {
+            } elseif ($demand !== null && !$signed && empty($cfg['no_demand'])) {
                 try {
                     // A $0 line can't earn a bonus, so skip its lookups.
                     $raw = $cashLine > 0 ? $demand($line, $i) : null;
@@ -593,7 +599,7 @@ class BuyOfferCalculatorService
         if (!$cfg || !in_array($cfg['mode'], ['ebay_margin', 'value_percent'], true)) {
             return false;
         }
-        if (preg_match('/vinyl|record|cassette|\b7"|45 ?rpm/i', $itemType . ' ' . ($cfg['label'] ?? '') . ' ' . $genre)) {
+        if (preg_match('/vinyl|record|cassette|^cd_|\b7"|45 ?rpm/i', $itemType . ' ' . ($cfg['label'] ?? '') . ' ' . $genre)) {
             return false;
         }
         return $value === null || (float) $value > self::EBAY_LINK_REQUIRED_OVER;
