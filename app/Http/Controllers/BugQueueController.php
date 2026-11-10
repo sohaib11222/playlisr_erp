@@ -136,6 +136,22 @@ class BugQueueController extends Controller
         }
     }
 
+    /** "Fix now" requests: [id => ['by' => name, 'at' => 'Y-m-d H:i:s']] kept in settings.json. */
+    private static function fixNowList(): array
+    {
+        $s = self::settings();
+        return isset($s['fix_now']) && is_array($s['fix_now']) ? $s['fix_now'] : [];
+    }
+
+    private static function clearFixNow(int $id): void
+    {
+        $s = self::settings();
+        if (isset($s['fix_now'][$id]) || isset($s['fix_now'][(string) $id])) {
+            unset($s['fix_now'][$id], $s['fix_now'][(string) $id]);
+            self::saveSettings($s);
+        }
+    }
+
     private function userName(): string
     {
         $u = auth()->user();
@@ -303,6 +319,7 @@ class BugQueueController extends Controller
             'routine_seen' => $routine_seen,
             'have_token' => self::storedToken() !== null,
             'tag_names' => $tag_names,
+            'fix_now' => self::fixNowList(),
         ]);
     }
 
@@ -482,6 +499,7 @@ class BugQueueController extends Controller
                 self::github('DELETE', '/repos/' . self::REPO . '/git/refs/heads/' . $row->branch, $token);
             }
         }
+        self::clearFixNow((int) $row->id);
         DB::table('erp_bug_reports')->where('id', $row->id)->update([
             'status' => 'wont_fix',
             'review_note' => trim((string) $request->input('note')) !== '' ? $this->userName() . ': ' . trim((string) $request->input('note')) : $row->review_note,
@@ -491,6 +509,21 @@ class BugQueueController extends Controller
             'updated_at' => now(),
         ]);
         return back()->with('status', ['success' => true, 'msg' => 'Bug #' . $row->id . " marked won't fix."]);
+    }
+
+    /** "Fix now": ask the fixer to work this one right away (picked up within ~10 minutes). */
+    public function fixNow(Request $request, $id)
+    {
+        $this->requireAdmin();
+        $row = DB::table('erp_bug_reports')->where('id', (int) $id)->first();
+        if (!$row || !in_array($row->status, ['new', 'rework'], true)) {
+            return back()->with('status', ['success' => false, 'msg' => 'Bug #' . (int) $id . ' is not waiting for a fix.']);
+        }
+        $s = self::settings();
+        $s['fix_now'] = isset($s['fix_now']) && is_array($s['fix_now']) ? $s['fix_now'] : [];
+        $s['fix_now'][(string) $row->id] = ['by' => $this->userName(), 'at' => now()->toDateTimeString()];
+        self::saveSettings($s);
+        return back()->with('status', ['success' => true, 'msg' => 'Sent #' . $row->id . ' to Claude. It starts within about 10 minutes and shows up under Ready to approve when done.']);
     }
 
     /** Put a closed report back in the queue. */
@@ -513,10 +546,15 @@ class BugQueueController extends Controller
         $s['last_poll_at'] = now()->toDateTimeString();
         self::saveSettings($s);
 
+        $fix_now = self::fixNowList();
         $rows = DB::table('erp_bug_reports')->whereIn('status', ['new', 'rework'])->orderBy('created_at')->limit(50)->get();
-        return response()->json(['reports' => $rows->map(function ($r) {
+        $rows = $rows->sortBy(function ($r) use ($fix_now) {
+            return isset($fix_now[(string) $r->id]) ? 0 : 1;
+        })->values();
+        return response()->json(['reports' => $rows->map(function ($r) use ($fix_now) {
             return [
                 'id' => $r->id,
+                'fix_now' => isset($fix_now[(string) $r->id]),
                 'status' => $r->status,
                 'source' => $r->source,
                 'kind' => $r->kind,
@@ -537,6 +575,32 @@ class BugQueueController extends Controller
                 'created_at' => $r->created_at,
             ];
         })->values()]);
+    }
+
+    /**
+     * GET /bug-queue/api/fix-now — cheap check for the every-10-minutes fixer:
+     * ids someone pressed "Fix now" on that still wait for a fix.
+     */
+    public function apiFixNow(Request $request)
+    {
+        if (!$this->routineAuthorized($request)) {
+            return response()->json(['error' => 'unauthorized'], 401);
+        }
+        $fix_now = self::fixNowList();
+        $ids = array_map('intval', array_keys($fix_now));
+        $live = $ids ? DB::table('erp_bug_reports')->whereIn('id', $ids)->whereIn('status', ['new', 'rework'])->pluck('id')->map(function ($i) {
+            return (int) $i;
+        })->all() : [];
+        $stale = array_diff($ids, $live);
+        if ($stale) {
+            $s = self::settings();
+            foreach ($stale as $i) {
+                unset($s['fix_now'][(string) $i], $s['fix_now'][$i]);
+            }
+            self::saveSettings($s);
+        }
+        sort($live);
+        return response()->json(['ids' => array_values($live)]);
     }
 
     public function apiScreenshot(Request $request, $id)
@@ -651,6 +715,7 @@ class BugQueueController extends Controller
             $upd['merged_at'] = now();
         }
         DB::table('erp_bug_reports')->where('id', $row->id)->update($upd);
+        self::clearFixNow((int) $row->id);
         if ($status === 'needs_info' && $row->reported_by && !empty($upd['question'])) {
             self::notify((int) $row->business_id, [(int) $row->reported_by], 'Quick question about your report #' . $row->id . ': '
                 . self::short($upd['question'], 300) . ' Answer here: ' . url('/bug-fixes?tab=mine#bug-' . $row->id));

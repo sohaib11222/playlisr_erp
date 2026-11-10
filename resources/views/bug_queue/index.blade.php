@@ -121,6 +121,16 @@
 
 			@if($is_admin)
 				<div class="bq-actions">
+					@if(in_array($r->status, ['new', 'rework']))
+						@if(isset($fix_now[(string) $r->id]))
+							<span class="bq-btn" style="background:#DCEBFA;border-color:#8DB6DE;cursor:default;">Sent to Claude {{ \Carbon\Carbon::parse($fix_now[(string) $r->id]['at'])->format('m/d/y g:ia') }}</span>
+						@else
+							<form method="POST" action="/bug-fixes/{{ $r->id }}/fix-now" onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Sending...';">
+								@csrf
+								<button class="bq-btn bq-btn-go">Fix now</button>
+							</form>
+						@endif
+					@endif
 					@if($r->status === 'fix_ready')
 						<form method="POST" action="/bug-fixes/{{ $r->id }}/approve" onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Approving...';">
 							@csrf

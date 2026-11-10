@@ -88,6 +88,7 @@ Route::middleware(['setData'])->group(function () {
     // a GitHub token with push access to the ERP repo, checked in
     // BugQueueController. Outside auth + CSRF.
     Route::get('/bug-queue/api/pending', 'BugQueueController@apiPending')->middleware('throttle:60,1');
+    Route::get('/bug-queue/api/fix-now', 'BugQueueController@apiFixNow')->middleware('throttle:60,1');
     Route::get('/bug-queue/api/{id}/screenshot', 'BugQueueController@apiScreenshot')->where('id', '[0-9]+')->middleware('throttle:120,1');
     Route::post('/bug-queue/api/report', 'BugQueueController@apiReport')->middleware('throttle:60,1');
     Route::post('/bug-queue/api/digest', 'BugQueueController@apiDigest')->middleware('throttle:10,1');
@@ -1668,6 +1669,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/bug-fixes/{id}/send-back', 'BugQueueController@sendBack')->where('id', '[0-9]+');
     Route::post('/bug-fixes/{id}/wont-fix', 'BugQueueController@wontFix')->where('id', '[0-9]+');
     Route::post('/bug-fixes/{id}/reopen', 'BugQueueController@reopen')->where('id', '[0-9]+');
+    Route::post('/bug-fixes/{id}/fix-now', 'BugQueueController@fixNow')->where('id', '[0-9]+');
 
     Route::get('/register-recon', 'RegisterReconController@index');
     Route::post('/register-recon/settings', 'RegisterReconController@saveSettings');
