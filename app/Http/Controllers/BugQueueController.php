@@ -33,7 +33,7 @@ class BugQueueController extends Controller
     const STATUS_LABELS = [
         'new' => 'Waiting for a fix',
         'rework' => 'Being reworked',
-        'needs_info' => 'Question for you',
+        'needs_info' => 'Question for Sarah',
         'fix_ready' => 'Fix ready, waiting for approval',
         'merged' => 'Fixed and live',
         'wont_fix' => "Won't fix",
@@ -389,6 +389,7 @@ class BugQueueController extends Controller
     /** Reporter answers the routine's question. */
     public function answer(Request $request, $id)
     {
+        $this->requireAdmin();
         $request->validate(['answer' => 'required|string|max:5000']);
         $row = DB::table('erp_bug_reports')->where('id', (int) $id)->first();
         if (!$row || $row->status !== 'needs_info') {
@@ -398,7 +399,12 @@ class BugQueueController extends Controller
         DB::table('erp_bug_reports')->where('id', $row->id)->update([
             'answer' => $answer, 'status' => 'new', 'updated_at' => now(),
         ]);
-        return back()->with('status', ['success' => true, 'msg' => 'Thanks, bug #' . $row->id . ' is back in the queue.']);
+        // Answered by Sarah/Jon: send it straight to the Fix now lane.
+        $s = self::settings();
+        $s['fix_now'] = isset($s['fix_now']) && is_array($s['fix_now']) ? $s['fix_now'] : [];
+        $s['fix_now'][(string) $row->id] = ['by' => $this->userName(), 'at' => now()->toDateTimeString()];
+        self::saveSettings($s);
+        return back()->with('status', ['success' => true, 'msg' => 'Thanks, Claude picks #' . $row->id . ' back up within about 10 minutes.']);
     }
 
     // --------------------------------------------------------- admin actions
@@ -716,9 +722,16 @@ class BugQueueController extends Controller
         }
         DB::table('erp_bug_reports')->where('id', $row->id)->update($upd);
         self::clearFixNow((int) $row->id);
-        if ($status === 'needs_info' && $row->reported_by && !empty($upd['question'])) {
-            self::notify((int) $row->business_id, [(int) $row->reported_by], 'Quick question about your report #' . $row->id . ': '
-                . self::short($upd['question'], 300) . ' Answer here: ' . url('/bug-fixes?tab=mine#bug-' . $row->id));
+        // Sarah 11/10/26: the fixer asks Sarah, never the employee who reported it.
+        if ($status === 'needs_info' && !empty($upd['question'])) {
+            $sarah = [];
+            foreach (self::taggableUsers((int) ($row->business_id ?: DB::table('business')->orderBy('id')->value('id'))) as $u) {
+                if (strtolower(strtok($u[1], ' ')) === 'sarah') {
+                    $sarah[] = $u[0];
+                }
+            }
+            self::notify((int) $row->business_id, $sarah, 'Question about #' . $row->id . ' (from ' . ($row->reporter_name ?: 'staff') . '): '
+                . self::short($upd['question'], 400) . ' Answer here: ' . url('/bug-fixes?tab=open#bug-' . $row->id));
         }
         return response()->json(['ok' => true, 'id' => $row->id, 'status' => $status, 'review_url' => url('/bug-fixes?tab=review')]);
     }
