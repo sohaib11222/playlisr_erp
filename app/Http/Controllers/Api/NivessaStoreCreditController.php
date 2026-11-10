@@ -82,4 +82,38 @@ class NivessaStoreCreditController extends Controller
             'new_balance' => $next,
         ]);
     }
+
+    /**
+     * POST /api/v1/nivessa-web/store-credit/balance
+     * Body: { email }
+     * The website reads a customer's store credit live from here so the ERP
+     * stays the one place the balance lives. Same contact match as adjust().
+     */
+    public function balance(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'email' => 'required|email|max:255',
+        ]);
+
+        $email = strtolower(trim((string) $data['email']));
+
+        $contact = Contact::where('business_id', $this->businessId())
+            ->whereIn('type', ['customer', 'both'])
+            ->whereRaw('LOWER(email) = ?', [$email])
+            ->first();
+
+        if (!$contact) {
+            return response()->json([
+                'success' => true,
+                'found' => false,
+                'balance' => 0,
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'found' => true,
+            'balance' => round((float) ($contact->balance ?? 0), 2),
+        ]);
+    }
 }

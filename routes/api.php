@@ -39,6 +39,7 @@ Route::prefix('v1/nivessa-web')
         Route::post('gift-cards/credit', [\App\Http\Controllers\Api\NivessaGiftCardController::class, 'credit']);
         Route::post('gift-cards/issue',  [\App\Http\Controllers\Api\NivessaGiftCardController::class, 'issue']);
         Route::post('store-credit/adjust', [\App\Http\Controllers\Api\NivessaStoreCreditController::class, 'adjust']);
+        Route::post('store-credit/balance', [\App\Http\Controllers\Api\NivessaStoreCreditController::class, 'balance']);
         Route::post('products/zero-stock', [\App\Http\Controllers\Api\NivessaStockController::class, 'zero']);
         Route::post('products/stock', [\App\Http\Controllers\Api\NivessaStockController::class, 'stock']);
         Route::post('products/find', [\App\Http\Controllers\Api\NivessaStockController::class, 'find']);
