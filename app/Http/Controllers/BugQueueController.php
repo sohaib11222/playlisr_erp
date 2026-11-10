@@ -404,7 +404,7 @@ class BugQueueController extends Controller
         $s['fix_now'] = isset($s['fix_now']) && is_array($s['fix_now']) ? $s['fix_now'] : [];
         $s['fix_now'][(string) $row->id] = ['by' => $this->userName(), 'at' => now()->toDateTimeString()];
         self::saveSettings($s);
-        return back()->with('status', ['success' => true, 'msg' => 'Thanks, Claude picks #' . $row->id . ' back up within about 10 minutes.']);
+        return back()->with('status', ['success' => true, 'msg' => 'Thanks, Claude picks #' . $row->id . ' back up at the next check (10am, 2pm or 6pm).']);
     }
 
     // --------------------------------------------------------- admin actions
@@ -529,7 +529,7 @@ class BugQueueController extends Controller
         $s['fix_now'] = isset($s['fix_now']) && is_array($s['fix_now']) ? $s['fix_now'] : [];
         $s['fix_now'][(string) $row->id] = ['by' => $this->userName(), 'at' => now()->toDateTimeString()];
         self::saveSettings($s);
-        return back()->with('status', ['success' => true, 'msg' => 'Sent #' . $row->id . ' to Claude. It starts within about 10 minutes and shows up under Ready to approve when done.']);
+        return back()->with('status', ['success' => true, 'msg' => 'Sent #' . $row->id . ' to Claude. Claude picks it up at the next check (10am, 2pm or 6pm) and it shows up under Ready to approve when done.']);
     }
 
     /** Put a closed report back in the queue. */
