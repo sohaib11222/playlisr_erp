@@ -208,6 +208,13 @@
     }
     /* When store credit is applied, make the reduced (after-credit) figure pop
        so the cashier keys THAT into Clover — deeper mustard + subtle glow. */
+    /* Bug #3 (11/10/26): sale has tax-free lines (bag fee etc). Hide the
+       single amount and show two: normal key + No Tax key. */
+    .pos-pretax-bar.has-split .pretax-amt { display: none; }
+    .pos-pretax-bar .clover-split { display: none; flex-direction: column; align-items: flex-end; gap: 2px; }
+    .pos-pretax-bar .clover-split-row { display: flex; align-items: baseline; gap: 8px; color: #5A4410; white-space: nowrap; }
+    .pos-pretax-bar .clover-split-key { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+    .pos-pretax-bar .clover-split-amt { font-size: 22px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
     .pos-pretax-bar.has-credit .pretax-cur,
     .pos-pretax-bar.has-credit #pre_tax_amount {
         color: #7A5A00;
@@ -655,6 +662,10 @@
                     <span class="pretax-orig" id="pre_tax_original" style="display:none;"></span>
                     <span class="pretax-cur">$</span><span id="pre_tax_amount">0.00</span>
                 </div>
+                <div class="clover-split" id="clover_split">
+                    <div class="clover-split-row"><span class="clover-split-key">Normal key</span><span class="clover-split-amt">$<span id="clover_split_taxed">0.00</span></span></div>
+                    <div class="clover-split-row"><span class="clover-split-key">+ No Tax key</span><span class="clover-split-amt">$<span id="clover_split_notax">0.00</span></span></div>
+                </div>
             </div>
 
             {{-- Tax row --}}
@@ -1027,6 +1038,14 @@
                 function openCardPrompt(btn) {
                     var total = readTotalDue();
                     $('#card_prompt_pretax').text(fmtMoney(readPreTax()));
+                    // Bug #3: tax-free part goes on Clover's No Tax key.
+                    if ($('.pos-pretax-bar').hasClass('has-split')) {
+                        $('#card_prompt_pretax').text('$' + $('#clover_split_taxed').text());
+                        $('#card_prompt_notax_amt').text('$' + $('#clover_split_notax').text());
+                        $('#card_prompt_notax').show();
+                    } else {
+                        $('#card_prompt_notax').hide();
+                    }
                     $('#card_prompt_total').text(fmtMoney(total));
                     $('#card_prompt_confirm').off('click.cashier').on('click.cashier', function () {
                         // Tell the show.bs.modal hook to suppress
@@ -1178,6 +1197,11 @@
                             <div class="card-instr">Key this amount into Clover</div>
                             <div class="card-amt" id="card_prompt_pretax">$0.00</div>
                             <div class="card-amt-tag">pre-tax</div>
+                        </div>
+                        <div class="card-clover-row" id="card_prompt_notax" style="display:none;">
+                            <div class="card-instr">Then key this on the No Tax key</div>
+                            <div class="card-amt" id="card_prompt_notax_amt">$0.00</div>
+                            <div class="card-amt-tag">bag fee and other tax-free items</div>
                         </div>
                         <div class="card-verify-row">
                             <div class="card-verify-instr">After tax, Clover should show this amount</div>

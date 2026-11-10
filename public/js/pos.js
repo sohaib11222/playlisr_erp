@@ -3772,6 +3772,22 @@ function calculate_billing_details(price_total) {
     var shown_pre_tax = pre_tax_rounded * curr_exchange_rate;
     $('span#pre_tax_amount').text(__currency_trans_from_en(shown_pre_tax, false));
 
+    // Sarah 2026-11-10 (bug #3): Clover adds tax to whatever is keyed in, so
+    // tax-free lines (bag fee, tax-exempt items, shipping) must go on Clover's
+    // "No Tax" key or Clover taxes them. Remember the tax-free part so the
+    // Clover bar can split it out. The ERP taxes (taxable lines - discount).
+    try {
+        var __chan = $('.pos-channel-picker input[name="channel"]:checked').val();
+        var __notax = 0;
+        if (__chan !== 'discogs' && __chan !== 'whatnot') {
+            var __taxable_part = Math.max(0, get_taxable_subtotal() - discount);
+            __notax = Math.max(0, pre_tax_rounded - __taxable_part);
+        }
+        window.__clover_notax = __notax * curr_exchange_rate;
+    } catch (e) {
+        window.__clover_notax = 0;
+    }
+
     // Reset the store-credit strike-through each recalc. Stash the full
     // (pre-credit) pre-tax so apply_store_credit_to_order_totals_display()
     // can show it struck through when credit is applied. Default state = no
@@ -4081,6 +4097,43 @@ function update_pos_pay_row_for_store_credit_coverage(fullTotalWithTax, creditAp
  * credit being subtracted more than once.
  */
 function apply_store_credit_to_order_totals_display() {
+    _apply_store_credit_to_order_totals_display_inner();
+    try {
+        update_clover_split();
+    } catch (e) {}
+}
+
+/**
+ * Sarah 2026-11-10 (bug #3): when the sale has tax-free lines, show two
+ * amounts in the Clover bar: the taxed part for the normal key and the
+ * tax-free part for the "No Tax" key. Otherwise the bar is unchanged.
+ * Display only; never touches totals or payments.
+ */
+function update_clover_split() {
+    var $bar = $('.pos-pretax-bar');
+    var $split = $('#clover_split');
+    if (!$bar.length || !$split.length) {
+        return;
+    }
+    var shown = 0;
+    try {
+        shown = __number_uf($('span#pre_tax_amount').text(), false) || 0;
+    } catch (e) {}
+    var notax = Math.min(Math.max(0, window.__clover_notax || 0), Math.max(0, shown));
+    notax = Math.round(notax * 100) / 100;
+    if (notax < 0.01 || shown <= 0) {
+        $bar.removeClass('has-split');
+        $split.hide();
+        return;
+    }
+    var taxed = Math.round((shown - notax) * 100) / 100;
+    $('#clover_split_taxed').text(__currency_trans_from_en(taxed, false));
+    $('#clover_split_notax').text(__currency_trans_from_en(notax, false));
+    $bar.addClass('has-split');
+    $split.css('display', 'flex');
+}
+
+function _apply_store_credit_to_order_totals_display_inner() {
     var $totalWithTax = $('span#total_with_tax');
     var $preTax = $('span#pre_tax_amount');
     var $orderTaxDisplay = $('span#order_tax_display');
