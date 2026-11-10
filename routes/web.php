@@ -114,6 +114,7 @@ Route::middleware(['setData'])->group(function () {
         Route::post('/sell-quote/start', 'SellQuoteController@start');
         Route::get('/sell-quote/search', 'SellQuoteController@search');
         Route::get('/sell-quote/release-value', 'SellQuoteController@releaseValue');
+        Route::get('/sell-quote/discogs-collection', 'SellQuoteController@discogsCollection');
         Route::post('/sell-quote/{token}/price', 'SellQuoteController@price')->where('token', '[A-Za-z0-9]{32}');
         Route::get('/sell-quote/{token}', 'SellQuoteController@show')->where('token', '[A-Za-z0-9]{32}');
     });

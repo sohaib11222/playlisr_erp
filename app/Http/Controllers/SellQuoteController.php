@@ -39,6 +39,14 @@ class SellQuoteController extends StoreOrDiscogsController
     // Sarah 11/4: 3 days (was 7) so sellers come in while it's fresh.
     const VALID_DAYS = 3;
     const MAX_RECORDS = 60;
+    // A Discogs collection import can bring in far more records than anyone
+    // would type (customer idea 11/9). Past MAX_RECORDS the bulk-rate ones are
+    // grouped into one line per genre + condition.
+    const MAX_IMPORT_RECORDS = 1000;
+    const IMPORT_PAGES = 10; // x100 per page
+    // Discogs value lookups (2 API calls each, shared ~60/min app limit) one
+    // Get-my-quote press may make; the rest use cached values or the bulk rate.
+    const LOOKUP_BUDGET = 20;
     const MAX_GROUPS = 40;
     const MAX_GROUP_QTY = 20000;
     // Large lots: the low end of the estimate range, as a share of the quote.
@@ -330,6 +338,198 @@ class SellQuoteController extends StoreOrDiscogsController
         return $this->json(['found' => !empty($v['found']) && !empty($v['price'])]);
     }
 
+    const DISCOGS_GRADES = [
+        'Mint (M)' => 'Mint',
+        'Near Mint (NM or M-)' => 'Near Mint',
+        'Very Good Plus (VG+)' => 'VG+',
+        'Very Good (VG)' => 'VG',
+        'Good Plus (G+)' => 'Good+',
+        'Good (G)' => 'Good',
+        'Fair (F)' => 'Fair',
+        'Poor (P)' => 'Poor',
+    ];
+
+    /** "discogs.com/user/jdoe/collection", "@jdoe", "jdoe" -> "jdoe". */
+    public static function discogsUsername($input)
+    {
+        $s = trim((string) $input);
+        if (preg_match('~discogs\.com/(?:[a-z]{2}/)?(?:user|seller)/([^/?#\s]+)~i', $s, $m)) {
+            $s = urldecode($m[1]);
+        }
+        $s = ltrim($s, '@');
+        return preg_match('/^[A-Za-z0-9._-]{2,64}$/', $s) ? $s : null;
+    }
+
+    /**
+     * GET /sell-quote/discogs-collection?user= (customer idea 11/9): paste a
+     * Discogs profile / collection link and the quote fills itself. LPs come
+     * back as records (priced like looked-up ones); CDs, tapes and 7-inches
+     * come back as per-piece counts by genre. Collection must be public.
+     */
+    public function discogsCollection(Request $request)
+    {
+        $user = self::discogsUsername($request->input('user'));
+        if (!$user) {
+            return $this->json(['error' => 'Paste your Discogs collection link (like discogs.com/user/yourname/collection) or just your Discogs username.'], 422);
+        }
+        $key = 'sellquote:dcoll1:' . strtolower($user);
+        if ($hit = Cache::get($key)) {
+            return $this->json($hit);
+        }
+        $discogs = new DiscogsService($this->businessId());
+        if (!$discogs->isConfigured()) {
+            return $this->json(['error' => 'Discogs lookups are offline right now. You can still list your items below.'], 503);
+        }
+        $token = urlencode($this->discogsToken($this->businessId()));
+        $items = [];
+        $total = 0;
+        for ($page = 1; $page <= self::IMPORT_PAGES; $page++) {
+            $res = $discogs->callApi('https://api.discogs.com/users/' . rawurlencode($user) . '/collection/folders/0/releases?per_page=100&sort=artist&page=' . $page . '&token=' . $token);
+            if (!empty($res['error'])) {
+                $code = preg_match('/HTTP Error: (\d+)/', (string) ($res['message'] ?? ''), $cm) ? (int) $cm[1] : 0;
+                if ($page > 1) break; // keep what we got
+                if ($code === 429) {
+                    return $this->json(['error' => 'Lots of Discogs lookups right now. Try again in a minute.'], 429);
+                }
+                if ($code === 404) {
+                    return $this->json(['error' => 'We couldn\'t find a Discogs user called "' . $user . '". Check the link and try again.'], 404);
+                }
+                if ($code === 403 || $code === 401) {
+                    return $this->json(['error' => 'That Discogs collection is private. In Discogs go to Settings → Privacy, turn on "Show my collection", then try again.'], 403);
+                }
+                return $this->json(['error' => 'We couldn\'t read that collection. Try again in a minute.'], 502);
+            }
+            $data = $res['data'] ?? null;
+            $total = (int) ($data->pagination->items ?? 0);
+            foreach ((array) ($data->releases ?? []) as $rel) {
+                $items[] = $rel;
+            }
+            if ($page >= (int) ($data->pagination->pages ?? 1)) break;
+        }
+        if (!$items) {
+            return $this->json(['error' => 'That Discogs collection is empty (or private). In Discogs go to Settings → Privacy and turn on "Show my collection".'], 404);
+        }
+
+        $publicTypes = array_column($this->publicTypes(), null, 'key');
+        $records = [];
+        $groups = [];
+        $skipped = 0;
+        foreach ($items as $it) {
+            $b = $it->basic_information ?? null;
+            if (!$b || empty($b->id)) continue;
+            $id = (int) $b->id;
+            $genres = array_values((array) ($b->genres ?? []));
+            $styles = array_values((array) ($b->styles ?? []));
+            Cache::put('sellquote:rel:' . $id, ['genre' => $genres, 'style' => $styles], now()->addDays(30));
+
+            $fmtNames = [];
+            $desc = [];
+            $qty = 0;
+            foreach ((array) ($b->formats ?? []) as $f) {
+                $fmtNames[] = (string) ($f->name ?? '');
+                $qty += (int) ($f->qty ?? 1);
+                foreach ((array) ($f->descriptions ?? []) as $d) $desc[] = (string) $d;
+            }
+            $descS = implode(' ', $desc);
+            $artists = implode(', ', array_map(function ($a) {
+                return preg_replace('/\s*\(\d+\)$/', '', (string) ($a->name ?? ''));
+            }, (array) ($b->artists ?? [])));
+            $title = trim(($artists !== '' ? $artists . ' - ' : '') . (string) ($b->title ?? ''));
+            $grade = null;
+            foreach ((array) ($it->notes ?? []) as $n) {
+                if ((int) ($n->field_id ?? 0) === 1 && isset(self::DISCOGS_GRADES[(string) ($n->value ?? '')])) {
+                    $grade = self::DISCOGS_GRADES[(string) $n->value];
+                }
+            }
+
+            $type = null;
+            if (in_array('Vinyl', $fmtNames, true)) {
+                if (preg_match('/\b7"/', $descS) && !preg_match('/\bLP\b|12"/', $descS)) {
+                    $type = self::rpm45TypeFor($genres, $styles);
+                } else {
+                    $label = (array) ($b->labels ?? []);
+                    $records[] = [
+                        'release_id' => $id,
+                        'title' => mb_substr($title, 0, 200),
+                        'thumb' => (string) ($b->thumb ?? ''),
+                        'sub' => implode(' · ', array_filter([(string) ($b->year ?: ''), (string) ($label[0]->name ?? '')])),
+                        'grade' => $grade,
+                    ];
+                    continue;
+                }
+            } elseif (in_array('CD', $fmtNames, true)) {
+                $type = ($qty >= 4 || stripos($descS, 'Box Set') !== false) ? 'cd_boxset_used' : self::cdTypeFor($genres, $styles);
+            } elseif (in_array('Cassette', $fmtNames, true)) {
+                $type = self::cassetteTypeFor($genres, $styles);
+            }
+            if (!$type || !isset($publicTypes[$type])) {
+                $skipped++;
+                continue;
+            }
+            $gk = $type . '|' . ($publicTypes[$type]['graded'] ? (string) $grade : '');
+            if (!isset($groups[$gk])) {
+                $groups[$gk] = [
+                    'type' => $type,
+                    'group' => $publicTypes[$type]['group'],
+                    'label' => $publicTypes[$type]['label'],
+                    'quantity' => 0,
+                    'grade' => $publicTypes[$type]['graded'] && $grade ? $this->capBulkGrade($grade) : '',
+                ];
+            }
+            $groups[$gk]['quantity']++;
+        }
+        $out = [
+            'username' => $user,
+            'total' => $total,
+            'records' => array_slice($records, 0, self::MAX_IMPORT_RECORDS),
+            'groups' => array_values($groups),
+            'skipped' => $skipped,
+            'capped' => $total > count($items) || count($records) > self::MAX_IMPORT_RECORDS,
+        ];
+        Cache::put($key, $out, now()->addHour());
+        return $this->json($out);
+    }
+
+    public static function cdTypeFor(array $genres, array $styles)
+    {
+        $g = array_map('strtolower', $genres);
+        $s = strtolower(implode(' | ', $styles));
+        if (in_array('hip hop', $g, true)) return 'cd_hiphop_used';
+        if (preg_match('/metal|grindcore/', $s)) return 'cd_metal_used';
+        if (preg_match('/punk|hardcore/', $s)) return 'cd_punk_used';
+        if (in_array('rock', $g, true)) return 'cd_rock_alt_newwave_used';
+        if (in_array('electronic', $g, true)) return 'cd_electronic_used';
+        if (in_array('pop', $g, true)) return 'cd_pop_used';
+        if (array_intersect($g, ['jazz', 'funk / soul', 'blues'])) return 'cd_rb_jazz_used';
+        if (in_array('stage & screen', $g, true)) return 'cd_soundtracks_used';
+        if (in_array('classical', $g, true)) return 'cd_classical_opera_used';
+        if (array_intersect($g, ['non-music', 'children\'s'])) return 'cd_nonmusic_used';
+        return 'cd_general_used';
+    }
+
+    public static function cassetteTypeFor(array $genres, array $styles)
+    {
+        $g = array_map('strtolower', $genres);
+        $s = strtolower(implode(' | ', $styles));
+        if (in_array('hip hop', $g, true)) return 'cassette_hiphop_used';
+        if (preg_match('/metal|grindcore/', $s)) return 'cassette_metal_used';
+        if (preg_match('/punk|hardcore/', $s)) return 'cassette_punk_used';
+        if (in_array('funk / soul', $g, true)) return 'cassette_rnb_used';
+        if (in_array('jazz', $g, true)) return 'cassette_jazz_used';
+        if (in_array('rock', $g, true)) return preg_match('/alternative|indie|grunge|shoegaze/', $s) ? 'cassette_alt' : 'cassette_rock_used';
+        return 'cassette_everything_else';
+    }
+
+    public static function rpm45TypeFor(array $genres, array $styles)
+    {
+        $g = array_map('strtolower', $genres);
+        $s = strtolower(implode(' | ', $styles));
+        if (in_array('hip hop', $g, true) || preg_match('/punk|hardcore|metal/', $s)) return 'rpm45_hh_metal_punk';
+        if (in_array('rock', $g, true) || strpos($s, 'new wave') !== false) return 'rpm45_newwave_rock_alt';
+        if (in_array('funk / soul', $g, true)) return 'rpm45_rnb';
+        return 'rpm45_anything_else';
+    }
+
     /** A used LP's bulk type from its Discogs genres / styles. */
     public static function bulkVinylTypeFor(array $genres, array $styles)
     {
@@ -396,7 +596,11 @@ class SellQuoteController extends StoreOrDiscogsController
         $grades = $rules['grade_multipliers'];
         $types = array_column($this->publicTypes(), null, 'key');
 
-        $records = array_slice((array) $request->input('records', []), 0, self::MAX_RECORDS);
+        $records = (array) $request->input('records', []);
+        $imported = count(array_filter($records, function ($r) {
+            return !empty($r['imported']);
+        }));
+        $records = array_slice($records, 0, $imported > 0 ? self::MAX_IMPORT_RECORDS + self::MAX_RECORDS : self::MAX_RECORDS);
         $groups = array_slice((array) $request->input('groups', []), 0, self::MAX_GROUPS);
         $notes = trim(mb_substr(strip_tags((string) $request->input('notes')), 0, 2000));
 
@@ -409,7 +613,8 @@ class SellQuoteController extends StoreOrDiscogsController
             if (!isset($grades[$grade])) {
                 return $this->json(['error' => 'Pick a condition for "' . $title . '".'], 422);
             }
-            $cleanRecords[] = ['title' => $title, 'release_id' => (int) ($r['release_id'] ?? 0) ?: null, 'grade' => $grade];
+            $cleanRecords[] = ['title' => $title, 'release_id' => (int) ($r['release_id'] ?? 0) ?: null, 'grade' => $grade]
+                + (!empty($r['imported']) ? ['imported' => true] : []);
         }
         $cleanGroups = [];
         foreach ($groups as $g) {
@@ -440,10 +645,34 @@ class SellQuoteController extends StoreOrDiscogsController
         // Build buy-form lines, keeping a display row for each.
         $lines = [];
         $display = [];
+        // Big lists (a Discogs import): bulk-rate records collapse into one
+        // line per bulk type + grade instead of hundreds of single lines.
+        $collapse = count($cleanRecords) > self::MAX_RECORDS;
+        $bulkPiles = [];
+        $lookups = 0;
+        $unchecked = 0;
         foreach ($cleanRecords as $r) {
-            $value = $r['release_id'] ? $this->releaseValueFor($r['release_id']) : null;
-            if (!empty($value['rate_limited'])) {
-                return $this->json(['error' => 'Our record lookups are busy. Wait a minute and press Get my quote again.'], 429);
+            $value = null;
+            $notChecked = false;
+            if ($r['release_id']) {
+                if (Cache::has('sod-release-value:' . $r['release_id']) || $lookups < self::LOOKUP_BUDGET) {
+                    $wasCached = Cache::has('sod-release-value:' . $r['release_id']);
+                    $value = $this->releaseValueFor($r['release_id']);
+                    if (!$wasCached) $lookups++;
+                    if (!empty($value['rate_limited'])) {
+                        if (count($cleanRecords) <= self::MAX_RECORDS) {
+                            return $this->json(['error' => 'Our record lookups are busy. Wait a minute and press Get my quote again.'], 429);
+                        }
+                        // Big import: don't fail the whole quote, price the rest by the piece.
+                        $lookups = self::LOOKUP_BUDGET;
+                        $value = null;
+                        $unchecked++;
+                        $notChecked = true;
+                    }
+                } else {
+                    $unchecked++;
+                    $notChecked = true;
+                }
             }
             $price = (!empty($value['found']) && !empty($value['price'])) ? (float) $value['price'] : 0.0;
             $individual = $price > 0 && ($tier === 'small' || $price >= self::CHERRY_MIN);
@@ -461,6 +690,11 @@ class SellQuoteController extends StoreOrDiscogsController
             } else {
                 $meta = $r['release_id'] ? $this->releaseMeta($r['release_id']) : ['genre' => [], 'style' => []];
                 $type = self::bulkVinylTypeFor($meta['genre'] ?? [], $meta['style'] ?? []);
+                if ($collapse) {
+                    $pk = $type . '|' . $this->capBulkGrade($r['grade']);
+                    $bulkPiles[$pk] = ($bulkPiles[$pk] ?? 0) + 1;
+                    continue;
+                }
                 $lines[] = [
                     'item_type' => $type,
                     'quantity' => 1,
@@ -472,9 +706,26 @@ class SellQuoteController extends StoreOrDiscogsController
                     'label' => $r['title'],
                     'quantity' => 1,
                     'grade' => $this->capBulkGrade($r['grade']),
-                    'how' => $price > 0 ? 'bulk_rate' : 'no_sales_data',
+                    'how' => $price > 0 ? 'bulk_rate' : ($notChecked ? 'not_checked' : 'no_sales_data'),
                 ];
             }
+        }
+        $typeLabels = $collapse ? $this->calculator->getItemTypesForDropdown(true, true) : [];
+        foreach ($bulkPiles as $pk => $qty) {
+            [$type, $grade] = explode('|', $pk, 2);
+            $lines[] = [
+                'item_type' => $type,
+                'quantity' => $qty,
+                'title' => null,
+                'condition_grade' => $grade,
+                'genre' => '',
+            ];
+            $display[] = [
+                'label' => 'Records from your list: ' . trim(preg_replace('/^10\+ Bulk (SEALED )?Vinyl: /', '', $typeLabels[$type] ?? $type)),
+                'quantity' => $qty,
+                'grade' => $grade,
+                'how' => 'per_piece',
+            ];
         }
         $inStoreCount = 0;
         foreach ($cleanGroups as $g) {
@@ -540,7 +791,7 @@ class SellQuoteController extends StoreOrDiscogsController
             'status' => 'quoted',
             'item_count' => $count,
             'input_json' => json_encode(['records' => $cleanRecords, 'groups' => $cleanGroups]),
-            'calculation_json' => json_encode(['lines' => $calculation['lines'], 'display' => $outLines, 'in_store_count' => $inStoreCount]),
+            'calculation_json' => json_encode(['lines' => $calculation['lines'], 'display' => $outLines, 'in_store_count' => $inStoreCount, 'unchecked' => $unchecked]),
             'cash_total' => $final,
             'credit_total' => $credit,
             'estimate_low_cash' => $estimateLow,
@@ -723,6 +974,7 @@ class SellQuoteController extends StoreOrDiscogsController
             'estimate_low_credit' => $q->estimate_low_cash !== null ? round((float) $q->estimate_low_cash * 1.5, 2) : null,
             'lines' => $calc['display'] ?? [],
             'in_store_count' => (int) ($calc['in_store_count'] ?? 0),
+            'unchecked' => (int) ($calc['unchecked'] ?? 0),
             'quoted_at' => $q->quoted_at,
             'expires_at' => $q->expires_at,
             'expired' => $q->expires_at && now()->greaterThan($q->expires_at),
