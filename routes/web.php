@@ -483,6 +483,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/genre-bible/artist', 'GenreBibleController@addArtist');
     // Website sell quotes (staff side).
     Route::get('/sell-quotes', 'SellQuoteController@index');
+    Route::get('/sell-quotes/lookup', 'SellQuoteController@lookup');
     Route::get('/sell-quotes/{id}', 'SellQuoteController@staffShow')->where('id', '[0-9]+');
     Route::post('/sell-quotes/{id}/start-buy', 'SellQuoteController@startBuy')->where('id', '[0-9]+');
     Route::get('/store-or-discogs', 'StoreOrDiscogsController@index');

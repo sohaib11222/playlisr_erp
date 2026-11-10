@@ -19,6 +19,24 @@
 @endphp
 
 @section('css')
+<style>
+    .bfc-quote-check { background:#f7f9fc; border:1px solid #dde3ea; border-radius:6px; padding:10px 12px; margin:0 0 14px; }
+    .bfc-quote-check label { font-weight:600; margin-bottom:6px; display:block; }
+    .bfc-quote-row { display:flex; gap:8px; max-width:420px; }
+    .bfc-quote-row .form-control { text-transform:uppercase; }
+    .bfc-quote-card { margin-top:10px; background:#fff; border:1px solid #cfe3d3; border-left:4px solid #2e9e4f; border-radius:4px; padding:10px 12px; }
+    .bfc-quote-card.is-expired { border-color:#f0c2c2; border-left-color:#c0392b; }
+    .bfc-quote-card .bfc-q-head { font-size:15px; font-weight:700; }
+    .bfc-quote-card .bfc-q-amt { font-size:20px; font-weight:700; margin:4px 0; }
+    .bfc-quote-card .bfc-q-flag { display:inline-block; padding:1px 7px; border-radius:10px; font-size:12px; font-weight:700; margin-left:6px; }
+    .bfc-quote-card .bfc-q-ok { background:#e3f4e8; color:#1e7a3c; }
+    .bfc-quote-card .bfc-q-bad { background:#fbe3e3; color:#a12a1f; }
+    .bfc-quote-card .bfc-q-info { background:#eef2f7; color:#44515f; }
+    .bfc-quote-card table { width:100%; font-size:13px; margin:8px 0; }
+    .bfc-quote-card td { padding:2px 6px 2px 0; border-top:1px solid #f0f0f0; }
+    .bfc-quote-card .bfc-q-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+    .bfc-quote-error { margin-top:8px; color:#a12a1f; font-weight:600; }
+</style>
     <style>
         /* Buy-from-customer create — Sarah 2026-04-28: tighter, easier to read.
            Scoped to .bfc-create so nothing else on the site is affected. */
@@ -568,6 +586,14 @@ HTML;
                              Calculates UPDATE that draft instead of creating a new BFC each click. --}}
                         <input type="hidden" name="offer_id" id="bfc_offer_id" value="{{ $saved_offer_id ?? session('saved_offer_id') ?? '' }}">
                         <h4 class="bfc-step"><span class="bfc-step-num">1</span> Who is selling?</h4>
+                    <div class="bfc-quote-check" id="bfc_quote_check">
+                        <label for="bfc_quote_number">Got a quote on nivessa.com? Ask for their quote number</label>
+                        <div class="bfc-quote-row">
+                            <input type="text" id="bfc_quote_number" class="form-control" placeholder="e.g. Q1234" autocomplete="off" inputmode="text">
+                            <button type="button" class="btn btn-default" id="bfc_quote_lookup_btn"><i class="fa fa-search"></i> Check quote</button>
+                        </div>
+                        <div id="bfc_quote_result" style="display:none;"></div>
+                    </div>
                     <div class="row">
                         <div class="col-md-3">
                             <div class="form-group">
@@ -1116,6 +1142,71 @@ HTML;
 
 @section('javascript')
 <script>
+    (function () {
+        // Website quote check: staff type the seller's quote number (Q1234)
+        // and see what nivessa.com quoted, its expiry, and the items.
+        var lookupUrl = @json(url('/sell-quotes/lookup'));
+        var csrf = @json(csrf_token());
+        var lastQuote = null;
+        function esc(s) { return $('<div>').text(s == null ? '' : String(s)).html(); }
+        function money(n) { return '$' + Number(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+        function render(q) {
+            var amt = q.large && q.estimate_low_cash != null
+                ? money(q.estimate_low_cash) + '–' + money(q.cash) + ' cash (estimate)'
+                : money(q.cash) + ' cash';
+            if (q.credit != null) amt += ' or ' + money(q.credit) + ' credit';
+            var flag = q.expired
+                ? '<span class="bfc-q-flag bfc-q-bad">Expired ' + esc(q.expires_at) + '</span>'
+                : '<span class="bfc-q-flag bfc-q-ok">Valid through ' + esc(q.expires_at || '—') + '</span>';
+            if (q.status === 'in_buy') flag += '<span class="bfc-q-flag bfc-q-info">Buy already started</span>';
+            var rows = q.lines.slice(0, 15).map(function (l) {
+                return '<tr><td>' + esc(l.label) + '</td><td>x' + esc(+l.qty) + '</td><td>' + esc(l.grade || '') + '</td><td>' + (l.cash != null ? money(l.cash) : '') + '</td></tr>';
+            }).join('');
+            if (q.lines.length > 15) rows += '<tr><td colspan="4" class="text-muted">+ ' + (q.lines.length - 15) + ' more lines (open full quote)</td></tr>';
+            var actions;
+            if (q.buy_url) {
+                actions = '<a class="btn btn-primary" href="' + esc(q.buy_url) + '">Open the buy already loaded from this quote</a>';
+            } else {
+                actions = '<button type="button" class="btn btn-success" id="bfc_quote_start"><i class="fa fa-download"></i> Load this quote into the form</button>';
+            }
+            actions += '<a class="btn btn-default" target="_blank" rel="noopener" href="' + esc(q.view_url) + '">Open full quote</a>';
+            $('#bfc_quote_result').html(
+                '<div class="bfc-quote-card' + (q.expired ? ' is-expired' : '') + '">'
+                + '<div class="bfc-q-head">Quote ' + esc(q.number) + flag + '</div>'
+                + '<div>' + esc(q.name) + ' · ' + esc(q.phone) + (q.email ? ' · ' + esc(q.email) : '') + (q.store ? ' · ' + esc(q.store) : '') + '</div>'
+                + '<div class="bfc-q-amt">' + amt + '</div>'
+                + '<div class="text-muted">' + esc(q.item_count) + ' item(s)' + (q.quoted_at ? ', quoted ' + esc(q.quoted_at) : '') + '. Loading fills in the seller and every quoted item. Then fix anything that doesn\'t match (grade, count, missing items) before paying.</div>'
+                + (rows ? '<table>' + rows + '</table>' : '')
+                + (q.notes ? '<div><strong>Seller notes:</strong> ' + esc(q.notes) + '</div>' : '')
+                + '<div class="bfc-q-actions">' + actions + '</div>'
+                + '</div>'
+            ).show();
+        }
+        function lookup() {
+            var num = $.trim($('#bfc_quote_number').val());
+            if (!num) { $('#bfc_quote_number').focus(); return; }
+            var $btn = $('#bfc_quote_lookup_btn').prop('disabled', true);
+            $.ajax({ url: lookupUrl, data: { number: num }, dataType: 'json' })
+                .done(function (q) { lastQuote = q; render(q); })
+                .fail(function (xhr) {
+                    lastQuote = null;
+                    var msg = (xhr.responseJSON && xhr.responseJSON.error) || 'Could not look up that quote.';
+                    $('#bfc_quote_result').html('<div class="bfc-quote-error">' + esc(msg) + '</div>').show();
+                })
+                .always(function () { $btn.prop('disabled', false); });
+        }
+        $(document).on('click', '#bfc_quote_lookup_btn', lookup);
+        $(document).on('keydown', '#bfc_quote_number', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); lookup(); }
+        });
+        $(document).on('click', '#bfc_quote_start', function () {
+            var q = lastQuote; if (!q) return;
+            if (q.expired && !confirm('Quote ' + q.number + ' expired ' + q.expires_at + '. Load it anyway?')) return;
+            $('<form method="POST">').attr('action', q.start_buy_url)
+                .append($('<input type="hidden" name="_token">').val(csrf))
+                .appendTo('body').trigger('submit');
+        });
+    })();
     (function () {
         function toggleSellerMode() {
             var mode = $('#seller_mode').val();
