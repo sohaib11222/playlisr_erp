@@ -341,6 +341,11 @@ class SellQuoteController extends StoreOrDiscogsController
         if (!empty($v['rate_limited'])) {
             return $this->json(['found' => false, 'busy' => true], 429);
         }
+        // Records under the bulk cutoff are priced by genre, so warm the genre
+        // too: the form's live prices only read cached Discogs data.
+        if ((float) ($v['price'] ?? 0) < self::CHERRY_MIN && (int) $request->input('id') > 0) {
+            $this->releaseMeta((int) $request->input('id'));
+        }
         return $this->json(['found' => !empty($v['found']) && !empty($v['price'])]);
     }
 
@@ -745,7 +750,17 @@ class SellQuoteController extends StoreOrDiscogsController
         foreach ($cleanRecords as $r) {
             $value = null;
             $notChecked = false;
-            if ($r['release_id']) {
+            if ($r['release_id'] && $live) {
+                // Live prices never call Discogs (it was 5-26s per keystroke and
+                // ate the rate limit Get my quote needs): cached values only.
+                // Picking a record warms its value via /sell-quote/release-value.
+                $value = Cache::get('sod-release-value:' . $r['release_id']);
+                if (!$value || !empty($value['rate_limited'])) {
+                    $value = null;
+                    $unchecked++;
+                    $notChecked = true;
+                }
+            } elseif ($r['release_id']) {
                 if (Cache::has('sod-release-value:' . $r['release_id']) || $lookups < self::LOOKUP_BUDGET) {
                     $wasCached = Cache::has('sod-release-value:' . $r['release_id']);
                     $value = $this->releaseValueFor($r['release_id']);
@@ -779,7 +794,8 @@ class SellQuoteController extends StoreOrDiscogsController
                 ];
                 $display[] = ['label' => $r['title'], 'quantity' => 1, 'grade' => $r['grade'], 'how' => 'record', 'ref' => $r['ref'] ?? null];
             } else {
-                $meta = $r['release_id'] ? $this->releaseMeta($r['release_id']) : ['genre' => [], 'style' => []];
+                $meta = !$r['release_id'] ? ['genre' => [], 'style' => []]
+                    : ($live ? (Cache::get('sellquote:rel:' . (int) $r['release_id']) ?: ['genre' => [], 'style' => []]) : $this->releaseMeta($r['release_id']));
                 $type = self::bulkVinylTypeFor($meta['genre'] ?? [], $meta['style'] ?? []);
                 if ($collapse) {
                     $pk = $type . '|' . $this->capBulkGrade($r['grade']);
@@ -828,7 +844,7 @@ class SellQuoteController extends StoreOrDiscogsController
                 // get an eBay estimate (same lookup as the buy form's
                 // "Look up eBay value"); no data = still priced in store.
                 $est = null;
-                if ($desc !== '' && array_key_exists($g['type'], SignedValueLookupService::FORMAT_WORDS) && $signedLookups < self::SIGNED_LOOKUP_BUDGET) {
+                if (!$live && $desc !== '' && array_key_exists($g['type'], SignedValueLookupService::FORMAT_WORDS) && $signedLookups < self::SIGNED_LOOKUP_BUDGET) {
                     $signedLookups++;
                     $est = app(SignedValueLookupService::class)->lookup($this->businessId(), $desc, $g['type']);
                 }
