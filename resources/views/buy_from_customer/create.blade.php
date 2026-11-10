@@ -1536,11 +1536,11 @@ HTML;
         });
         var BFC_RULES = @json($bfcRules);
         var BFC_VALUE_CAP = {{ (int) \App\Services\BuyOfferCalculatorService::VALUE_CAP }};
-        var BFC_SIGNED_PAY = {{ (float) \App\Services\BuyOfferCalculatorService::SIGNED_PAY }};
+        var BFC_SIGNED_PAY = {!! json_encode(array_map(function ($k) { return \App\Services\BuyOfferCalculatorService::signedPayFor($k); }, array_combine(array_keys(\App\Services\BuyOfferCalculatorService::SIGNED_TYPES), array_keys(\App\Services\BuyOfferCalculatorService::SIGNED_TYPES)))) !!};
         // Signed item line: priced by the signed copy's value, no speed /
         // last-sold adjustments.
         function bfcIsSigned($row) {
-            return $row.find('select[name$="[item_type]"]').val() === 'signed_item';
+            return BFC_SIGNED_PAY.hasOwnProperty($row.find('select[name$="[item_type]"]').val() || '');
         }
         var BFC_BETA = @json((bool) $bfcBeta);
         var BFC_GENRES = @json((object) $bfcGenres);
@@ -1723,7 +1723,7 @@ HTML;
             median = Math.min(median, BFC_VALUE_CAP);
             var line = 0;
             if (t.mode === 'signed_value') {
-                line = qty * median * BFC_SIGNED_PAY;
+                line = qty * median * (BFC_SIGNED_PAY[type] || 0.2);
             } else if (t.mode === 'individual_discogs') {
                 line = qty * median * gm * computeStdMult(median);
             } else if (t.mode === 'value_percent') {
@@ -1749,7 +1749,7 @@ HTML;
             var gm = bfcGradeMult(type, $row.find('select[name$="[condition_grade]"]').val());
             if (t.mode === 'signed_value') {
                 if (median <= 0) return '';
-                return qty + ' × ' + median + ' × ' + Math.round(BFC_SIGNED_PAY * 100) + '% (signed)';
+                return qty + ' × ' + median + ' × ' + Math.round((BFC_SIGNED_PAY[type] || 0.2) * 100) + '% (signed)';
             }
             if (t.mode === 'individual_discogs') {
                 if (median <= 0) return '';

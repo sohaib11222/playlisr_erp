@@ -1151,7 +1151,7 @@ class BuyFromCustomerController extends Controller
             // Signed items worth over $100: someone checks the signature.
             $signedBig = 0;
             foreach ((array) $request->input('lines', []) as $bl) {
-                if ((($bl['item_type'] ?? '') === 'signed_item' || (($bl['item_type'] ?? '') === 'individual_vinyl' && !empty($bl['signed'])))
+                if ((isset(BuyOfferCalculatorService::SIGNED_TYPES[$bl['item_type'] ?? '']) || (($bl['item_type'] ?? '') === 'individual_vinyl' && !empty($bl['signed'])))
                     && (float) ($bl['discogs_median_price'] ?? 0) > BuyOfferCalculatorService::SIGNED_SIGNOFF_VALUE) {
                     $signedBig++;
                 }
