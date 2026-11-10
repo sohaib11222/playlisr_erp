@@ -1,0 +1,73 @@
+# Create a product category + subcategories if missing (idempotent).
+# Runs `php artisan nivessa:ensure-category`. DRY RUN by default; tick commit to write.
+
+name: Ensure category
+
+on:
+  workflow_dispatch:
+    inputs:
+      parent:
+        description: 'Top-level category name'
+        default: 'Autographs'
+      subs:
+        description: 'Subcategories, comma-separated'
+        default: 'Posters,CD,Vinyl'
+      like:
+        description: 'Also list existing categories containing (comma-separated)'
+        default: 'autograph,signed'
+      commit:
+        description: 'Actually write? (leave unchecked for a dry run)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1 && exit 0
+            sleep 3
+          done
+          exit 0
+
+      - name: Run nivessa:ensure-category
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          PARENT: ${{ github.event.inputs.parent }}
+          SUBS: ${{ github.event.inputs.subs }}
+          LIKE: ${{ github.event.inputs.like }}
+          COMMIT: ${{ github.event.inputs.commit }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          envs: PARENT,SUBS,LIKE,COMMIT
+          script_stop: false
+          command_timeout: 5m
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app || { echo "cd failed"; exit 0; }
+            set -- "$PARENT"
+            IFS=','; for s in $SUBS; do set -- "$@" "--sub=$s"; done; for l in $LIKE; do set -- "$@" "--like=$l"; done; unset IFS
+            [ "$COMMIT" = "true" ] && set -- "$@" --commit
+            echo "=== php artisan nivessa:ensure-category $* ==="
+            php artisan nivessa:ensure-category "$@" 2>&1
+            echo "=== exit $? ==="
+            exit 0
