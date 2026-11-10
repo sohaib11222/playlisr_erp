@@ -33,7 +33,7 @@ class BugQueueController extends Controller
     const STATUS_LABELS = [
         'new' => 'Waiting for a fix',
         'rework' => 'Being reworked',
-        'needs_info' => 'Question for Sarah',
+        'needs_info' => 'Question for Sarah and Jon',
         'fix_ready' => 'Fix ready, waiting for approval',
         'merged' => 'Fixed and live',
         'wont_fix' => "Won't fix",
@@ -722,11 +722,11 @@ class BugQueueController extends Controller
         }
         DB::table('erp_bug_reports')->where('id', $row->id)->update($upd);
         self::clearFixNow((int) $row->id);
-        // Sarah 11/10/26: the fixer asks Sarah, never the employee who reported it.
+        // Sarah 11/10/26: the fixer asks Sarah and Jon, never the employee who reported it.
         if ($status === 'needs_info' && !empty($upd['question'])) {
             $sarah = [];
             foreach (self::taggableUsers((int) ($row->business_id ?: DB::table('business')->orderBy('id')->value('id'))) as $u) {
-                if (strtolower(strtok($u[1], ' ')) === 'sarah') {
+                if (in_array(strtolower(strtok($u[1], ' ')), ['sarah', 'jon', 'jonathan'], true)) {
                     $sarah[] = $u[0];
                 }
             }

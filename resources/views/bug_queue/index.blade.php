@@ -92,7 +92,7 @@
 			@endif
 
 			@if($r->status === 'needs_info' && $r->question)
-				<div class="bq-box bq-q"><span class="bq-label">Question for Sarah</span>{{ $r->question }}</div>
+				<div class="bq-box bq-q"><span class="bq-label">Question for Sarah and Jon</span>{{ $r->question }}</div>
 				@if($is_admin)
 				<form method="POST" action="/bug-fixes/{{ $r->id }}/answer" class="bq-actions" style="display:block;">
 					@csrf
