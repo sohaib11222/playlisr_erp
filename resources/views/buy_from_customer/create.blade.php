@@ -60,7 +60,7 @@
         .bfc-create #offer_lines_table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; color: #666; background: #f7f7f7; padding: 8px 10px; border-bottom: 1px solid #ddd; }
         .bfc-create #offer_lines_table td { padding: 6px; vertical-align: middle; }
         .bfc-create #offer_lines_table .form-control { height: 32px; font-size: 12px; padding: 4px 8px; }
-        .bfc-create #offer_lines_table td:first-child { width: 220px; }
+        .bfc-create #offer_lines_table td:first-child { width: 150px; max-width: 150px; }
         .bfc-create #offer_lines_table td:nth-child(3) { width: 110px; }
         .bfc-create #offer_lines_table td:nth-child(4) { width: 70px; }
         .bfc-create #offer_lines_table td:nth-child(5) { width: 230px; }
