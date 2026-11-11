@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\CashRegister;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 // Confirm screen for cashiers whose unclosed shift was auto-closed when
 // the next cashier took over the drawer. The prior cashier can't count
@@ -67,6 +68,18 @@ class HandoverConfirmController extends Controller
                 ->with('status', ['success' => 0, 'msg' => 'Please explain why your shift wasn\'t closed.']);
         }
 
+        // Sarah 2026-11-11: an auto-closed shift never records what the cashier
+        // did with the cash, so money moved to the safe shows up as a mystery
+        // drawer shortfall the next morning (Pico was losing ~$1,200/month this
+        // way). Ask for it here, where we already have the cashier's attention.
+        // Blank is rejected; "0" is a valid answer and means nothing was moved.
+        $dropRaw = trim((string) $request->input('safe_drop_amount', ''));
+        if ($dropRaw === '' || !is_numeric($dropRaw) || (float) $dropRaw < 0) {
+            return redirect('/cash-register/handover-confirm/' . $id)
+                ->with('status', ['success' => 0, 'msg' => 'Enter how much cash you moved to the safe. Put 0 if you left it all in the drawer.']);
+        }
+        $drop = round((float) $dropRaw, 2);
+
         $reg = CashRegister::where('id', $id)
             ->where('user_id', $user_id)
             ->where('status', 'close')
@@ -81,8 +94,15 @@ class HandoverConfirmController extends Controller
         $note = preg_replace('/^' . preg_quote(self::MARKER, '/') . '\s*/', '', $note);
         $nowLa = \Carbon::now()->setTimezone('America/Los_Angeles')->format('M j, Y g:i A');
         $note .= "\n\nConfirmed by cashier at {$nowLa}. Reason: " . $reason;
+        $note .= "\nCash moved to safe: $" . number_format($drop, 2) . " (entered on handover confirm).";
 
         $reg->closing_note = $note;
+        // Only touch safe_drop_amount if the column exists and the cashier
+        // actually moved cash; add to anything already recorded rather than
+        // overwriting a drop logged during the shift.
+        if ($drop > 0 && \Schema::hasColumn('cash_registers', 'safe_drop_amount')) {
+            $reg->safe_drop_amount = round((float) ($reg->safe_drop_amount ?? 0) + $drop, 2);
+        }
         $reg->save();
 
         return redirect()->action('SellPosController@create')

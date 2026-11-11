@@ -16,6 +16,11 @@
 .hc-field { margin: 18px 0 10px; }
 .hc-field label { font-size: 13px; font-weight: 700; color: #1F1B16; display: block; margin-bottom: 6px; }
 .hc-field textarea { width: 100%; min-height: 90px; padding: 10px 12px; border: 1.5px solid #DFD2B3; border-radius: 8px; font-family: inherit; font-size: 14px; }
+.hc-field .hint { font-size: 12px; color: #8E8273; margin: -2px 0 8px; }
+.hc-money { display: flex; align-items: center; gap: 10px; background: #fff; border: 2px solid #E8CF68; border-radius: 10px; padding: 8px 14px; max-width: 260px; }
+.hc-money .cur { font-size: 24px; font-weight: 800; color: #5A4410; line-height: 1; }
+.hc-money input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; font-family: inherit; font-size: 26px; font-weight: 800; color: #1F1B16; padding: 0; font-variant-numeric: tabular-nums; }
+.hc-money input::placeholder { color: #c9b670; }
 .hc-btn { display: inline-block; background: #1F1B16; color: #FAF6EE; padding: 12px 22px; border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; }
 .hc-btn:hover { background: #3a342c; }
 </style>
@@ -49,6 +54,14 @@
 
     <form method="POST" action="{{ url('/cash-register/handover-confirm/' . $register->id) }}">
         {!! csrf_field() !!}
+        <div class="hc-field">
+            <label for="safe_drop_amount">How much cash did you take out of the drawer and put in the safe?</label>
+            <div class="hint">Enter 0 if you left everything in the drawer. Without this the cash looks missing.</div>
+            <div class="hc-money">
+                <span class="cur">$</span>
+                <input type="number" step="0.01" min="0" name="safe_drop_amount" id="safe_drop_amount" required placeholder="0.00" inputmode="decimal">
+            </div>
+        </div>
         <div class="hc-field">
             <label for="reason">Why didn't you close your shift?</label>
             <textarea name="reason" id="reason" required placeholder="e.g. emergency, forgot, drawer was busy at handoff…"></textarea>
