@@ -69,6 +69,8 @@ class DistributorInvoiceImport
             'supplier_like' => ['deejay vinylfuture', 'Vinyl Future', 'Vinylfuture', 'deejay.de', 'deejay'],
             'accounts' => [],
             'catalog' => true,
+            // Sell price = landed cost (tariff, shipping, fees, other costs) x 1.5.
+            'markup' => 1.5,
         ],
     ];
 
@@ -186,11 +188,11 @@ class DistributorInvoiceImport
     // Sealed pricing convention, read off how the purchases desk prices new
     // sealed titles (median ~1.6-1.7x cost; CDs end in .49, LPs in .99):
     // 1.6x cost, rounded UP to the next .49 for CDs and .99 for everything else.
-    public static function suggestPrice($cost, $categoryName)
+    public static function suggestPrice($cost, $categoryName, $markup = 1.6)
     {
         $cost = (float) $cost;
         if ($cost <= 0) return null;
-        $raw = $cost * 1.6;
+        $raw = $cost * $markup;
         $ending = $categoryName === 'CD - Sealed' ? 0.49 : 0.99;
         $p = floor($raw) + $ending;
         if ($p < $raw - 0.0001) $p += 1;
@@ -307,7 +309,7 @@ class DistributorInvoiceImport
                     'category_id' => $catId,
                     'category_name' => $catName,
                     'sub_category_id' => $catno !== '' && $catId ? self::subCategoryId($business_id, $catId, 'Electronic/Dance') : null,
-                    'sell_price' => self::suggestPrice($unit, $catName),
+                    'sell_price' => self::suggestPrice($unit, $catName, (self::config($distributor) ?: [])['markup'] ?? 1.6),
                 ];
             }
             $out[] = $line;
