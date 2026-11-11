@@ -55,6 +55,21 @@ class DistributorInvoiceImport
             'supplier_like' => ['Redeye Worldwide'],
             'accounts' => ['54497' => 'hollywood'],
         ],
+        // deejay.de's dealer arm (vinylfuture.com). Invoices list a label
+        // catalog number ("SW10 - Chris Pascoe- Darkside"), not a barcode, and
+        // are in euros: lines are matched by catalog number (products this
+        // importer created carry it in their description) or artist + title,
+        // and costs are converted to dollars (+ postage/fees spread in).
+        'vinylfuture' => [
+            'label' => 'Vinyl Future',
+            'long' => 'Vinyl Future (deejay.de)',
+            'ref' => 'VF-',
+            'dir' => 'vinylfuture-imports',
+            'action' => 'vinylfuture-invoice-import',
+            'supplier_like' => ['deejay vinylfuture', 'Vinyl Future', 'Vinylfuture', 'deejay.de', 'deejay'],
+            'accounts' => [],
+            'catalog' => true,
+        ],
     ];
 
     // Category names new products can land in (top-level, product type).
@@ -71,6 +86,9 @@ class DistributorInvoiceImport
         $invoice = strtoupper(trim((string) $invoice));
         if ($distributor === 'ams') {
             return preg_replace('/[^0-9]/', '', $invoice);
+        }
+        if ($distributor === 'vinylfuture') {
+            return preg_replace('/[^0-9-]/', '', $invoice); // "0022-333274"
         }
         return preg_replace('/[^A-Z0-9]/', '', $invoice);
     }
@@ -245,8 +263,17 @@ class DistributorInvoiceImport
                 }
             }
 
+            $catno = trim((string) ($l['catno'] ?? ''));
+            if (!$best && $catno !== '') {
+                $catName = $catName ?: 'Vinyl - Sealed';
+                $catId = isset($catIds[$catName]) ? (int) $catIds[$catName] : null;
+                $best = self::matchCatalog($business_id, $catno, $l['artist'] ?? '', $l['title'] ?? '', $catId);
+                if ($best) $allVids[] = (int) $best->variation_id;
+            }
+
             $unit = round((float) ($l['unit_price'] ?? 0), 2);
             $line = [
+                'catno' => $catno,
                 'upc' => $upc,
                 'description' => $desc,
                 'format' => $format,
@@ -267,13 +294,17 @@ class DistributorInvoiceImport
                 'upc_variation_ids' => array_values(array_unique($allVids)),
             ];
             if (!$best) {
-                $nm = self::nameFromDescription($desc);
+                $nm = $catno !== ''
+                    ? self::nameFromDescription(trim(($l['artist'] ?? '') . ' / ' . ($l['title'] ?? ''), ' /'))
+                    : self::nameFromDescription($desc);
                 $line['new_product'] = [
                     'name' => $nm['name'],
                     'artist' => $nm['artist'],
-                    'sku' => self::skuForUpc($upc),
+                    // Catalog lines get an auto SKU (no barcode on the invoice).
+                    'sku' => $catno !== '' ? '' : self::skuForUpc($upc),
                     'category_id' => $catId,
                     'category_name' => $catName,
+                    'sub_category_id' => $catno !== '' && $catId ? self::subCategoryId($business_id, $catId, 'Electronic/Dance') : null,
                     'sell_price' => self::suggestPrice($unit, $catName),
                 ];
             }
@@ -367,8 +398,11 @@ class DistributorInvoiceImport
 
                 $np = $l['new_product'] ?? null;
                 if (!$np) continue;
+                $catno = !empty($cfg['catalog']) ? trim((string) ($l['catno'] ?? '')) : '';
                 $sku = preg_replace('/\D/', '', (string) ($np['sku'] ?? ''));
-                if (strlen($sku) < 11 || strlen($sku) > 14) {
+                if ($catno !== '') {
+                    $sku = ''; // auto SKU below
+                } elseif (strlen($sku) < 11 || strlen($sku) > 14) {
                     throw new \RuntimeException('Line ' . ($l['description'] ?? '') . ': SKU must be the 11-14 digit UPC.');
                 }
                 $catId = (int) ($np['category_id'] ?? 0);
@@ -387,23 +421,28 @@ class DistributorInvoiceImport
                 // Same UPC already created earlier in this invoice (a title on
                 // two lines) or by someone else a moment ago: reuse it.
                 $existing = DB::table('variations as v')->join('products as p', 'v.product_id', '=', 'p.id')
-                    ->where('p.business_id', $business_id)->whereNull('v.deleted_at')
-                    ->whereIn('v.sub_sku', self::upcCandidates($sku))
-                    ->orderBy('p.is_inactive')->orderByDesc('p.id')
-                    ->first(['v.id', 'v.product_id']);
+                    ->where('p.business_id', $business_id)->whereNull('v.deleted_at');
+                $existing = $catno !== ''
+                    ? $existing->where('p.product_description', 'like', '%: ' . self::likeEscape($catno) . ' - %')
+                    : $existing->whereIn('v.sub_sku', self::upcCandidates($sku));
+                $existing = $existing->orderBy('p.is_inactive')->orderByDesc('p.id')->first(['v.id', 'v.product_id']);
                 if ($existing) {
                     $clean[] = ['variation_id' => (int) $existing->id, 'product_id' => (int) $existing->product_id, 'qty' => $qty, 'unit_price' => $unit];
                     continue;
                 }
 
+                $subCat = (int) ($np['sub_category_id'] ?? 0);
+                if ($subCat && !DB::table('categories')->where('business_id', $business_id)->where('id', $subCat)->where('parent_id', $catId)->exists()) {
+                    $subCat = 0;
+                }
                 $product = Product::create([
                     'name' => $name,
                     'artist' => !empty($np['artist']) ? $np['artist'] : null,
-                    'sku' => $sku,
+                    'sku' => $sku !== '' ? $sku : 'tmp' . uniqid(),
                     'barcode_type' => 'C128',
                     'brand_id' => null,
                     'category_id' => $catId,
-                    'sub_category_id' => null,
+                    'sub_category_id' => $subCat ?: null,
                     'tax' => 1,
                     'tax_type' => 'exclusive',
                     'alert_quantity' => 0,
@@ -416,6 +455,11 @@ class DistributorInvoiceImport
                     'type' => 'single',
                     'not_for_selling' => 0,
                 ]);
+                if ($sku === '') {
+                    $sku = $productUtil->generateProductSku($product->id);
+                    $product->sku = $sku;
+                    $product->save();
+                }
                 $productUtil->createSingleProductVariation($product->id, $sku, $unit, $unit, 0, $sell, $sell);
                 $product->product_locations()->sync([$location_id]);
                 $variation = DB::table('variations')->where('product_id', $product->id)->first(['id']);
@@ -579,6 +623,83 @@ class DistributorInvoiceImport
             $msg .= "; removed {$removedProducts} product(s) the import created" . ($keptProducts ? ", kept {$keptProducts} that are in use" : '');
         }
         return [true, $msg . '.'];
+    }
+
+    private static function likeEscape($s)
+    {
+        return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], (string) $s);
+    }
+
+    public static function subCategoryId($business_id, $parentId, $name)
+    {
+        $id = DB::table('categories')->where('business_id', $business_id)->whereNull('deleted_at')
+            ->where('parent_id', $parentId)->where('name', $name)->value('id');
+        return $id ? (int) $id : null;
+    }
+
+    // Lowercase letters/digits only, minus format noise ("(2x12\")", "EP",
+    // "Vol." / "Vol") so "Vol 1 (2x12\")" and "Vol. 1" compare equal.
+    public static function titleKey($s)
+    {
+        $s = mb_strtolower(str_replace("\u{00AD}", '-', (string) $s));
+        $s = preg_replace('/\((?:\d+x)?(?:7|10|12)(?:"|\'\'|inch|in)?\)|\b(?:ep|lp|vol)\b\.?|\bvolume\b/u', ' ', $s);
+        $s = preg_replace('/[^\p{L}\p{N}]+/u', '', $s);
+        return $s;
+    }
+
+    /**
+     * Product for a catalog-number line (no barcode): first a product this
+     * importer created for the same catalog number ("...: SW10 - ..." in its
+     * description), then one whose artist matches and whose title (name minus
+     * an "Artist - " or "Genre - " prefix) matches. Prefers active, the
+     * invoice's category (sealed vinyl), then newest. Null when unsure.
+     */
+    public static function matchCatalog($business_id, $catno, $artist, $title, $catId)
+    {
+        $cols = ['v.id as variation_id', 'v.product_id', 'v.sub_sku', 'v.default_purchase_price',
+                 'v.sell_price_inc_tax', 'p.name as product_name', 'p.is_inactive', 'p.category_id', 'p.artist'];
+        $base = function () use ($business_id) {
+            return DB::table('variations as v')->join('products as p', 'v.product_id', '=', 'p.id')
+                ->where('p.business_id', $business_id)->whereNull('v.deleted_at');
+        };
+        $pick = function ($rows) use ($catId) {
+            $best = null; $bestScore = null;
+            foreach ($rows as $r) {
+                $score = [(int) !$r->is_inactive, (int) ($catId && (int) $r->category_id === $catId), (int) $r->product_id];
+                if ($bestScore === null || $score > $bestScore) { $best = $r; $bestScore = $score; }
+            }
+            return $best;
+        };
+
+        $catno = trim((string) $catno);
+        if ($catno !== '') {
+            $hit = $pick($base()->where('p.product_description', 'like', '%: ' . self::likeEscape($catno) . ' - %')->limit(20)->get($cols));
+            if ($hit) return $hit;
+        }
+
+        $artist = trim((string) $artist);
+        $tKey = self::titleKey($title);
+        if ($artist === '' || strlen($tKey) < 3) return null;
+        $aKey = self::titleKey($artist);
+        $like = '%' . self::likeEscape($artist) . '%';
+        $rows = $base()->where(function ($q) use ($like) {
+            $q->where('p.artist', 'like', $like)->orWhere('p.name', 'like', $like);
+        })->limit(300)->get($cols);
+        $hits = [];
+        foreach ($rows as $r) {
+            $name = (string) $r->product_name;
+            $artistOk = self::titleKey($r->artist) === $aKey || stripos($name, $artist) === 0;
+            if (!$artistOk) continue;
+            // Name forms in the catalog: "Artist - Title", "Genre - Title" (mass add).
+            $parts = preg_split('/\s+-\s+/u', $name, 2);
+            $nTitle = count($parts) === 2 ? $parts[1] : $name;
+            $nKey = self::titleKey($nTitle);
+            if ($nKey === $tKey || ($nKey !== '' && strlen($tKey) >= 8 && strlen($nKey) >= 8
+                && (strpos($nKey, $tKey) === 0 || strpos($tKey, $nKey) === 0))) {
+                $hits[] = $r;
+            }
+        }
+        return $pick($hits);
     }
 
     public static function normalizeDate($d)

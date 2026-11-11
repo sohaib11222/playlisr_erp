@@ -63,6 +63,47 @@ class AmsInvoiceImportController extends Controller
         return $this->runApply($request, 'alliance');
     }
 
+    public function vinylfutureIndex()
+    {
+        return $this->showPage('vinylfuture');
+    }
+
+    public function vinylfuturePreview(Request $request)
+    {
+        return $this->runPreview($request, 'vinylfuture');
+    }
+
+    public function vinylfutureApply(Request $request)
+    {
+        return $this->runApply($request, 'vinylfuture');
+    }
+
+    // EUR -> USD for the invoice date (ECB reference rate via frankfurter.app),
+    // falling back to the latest rate. Null when neither answers.
+    private function eurUsdRate($date)
+    {
+        $ctx = stream_context_create(['http' => ['timeout' => 6, 'ignore_errors' => true]]);
+        $tries = [];
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $date)) $tries[] = $date;
+        $tries[] = 'latest';
+        foreach ($tries as $d) {
+            $key = 'fx_eur_usd_' . $d;
+            $cached = \Cache::get($key);
+            if ($cached) return $cached;
+            try {
+                $j = json_decode((string) @file_get_contents('https://api.frankfurter.app/' . $d . '?from=EUR&to=USD', false, $ctx), true);
+            } catch (\Throwable $e) {
+                $j = null;
+            }
+            if (!empty($j['rates']['USD'])) {
+                $out = ['rate' => (float) $j['rates']['USD'], 'date' => $j['date'] ?? $d];
+                \Cache::put($key, $out, $d === 'latest' ? 60 * 60 : 60 * 60 * 24 * 30);
+                return $out;
+            }
+        }
+        return null;
+    }
+
     public function redeyePreview(Request $request)
     {
         return $this->runPreview($request, 'redeye');
@@ -108,8 +149,12 @@ class AmsInvoiceImportController extends Controller
             $account_locations[$acct] = DistributorInvoiceImport::locationForAccount($business_id, $distributor, $acct);
         }
 
+        // Ship-to store by name (Vinyl Future prints an address, no account #).
+        $store_locations = \DB::table('business_locations')->where('business_id', $business_id)
+            ->whereIn('name', ['pico', 'hollywood'])->pluck('id', 'name')->all();
+
         return view('admin.distributor_invoice_import')
-            ->with(compact('locations', 'suppliers', 'default_supplier_id', 'categories', 'distributor', 'cfg', 'base', 'account_locations'));
+            ->with(compact('locations', 'suppliers', 'default_supplier_id', 'categories', 'distributor', 'cfg', 'base', 'account_locations', 'store_locations'));
     }
 
     private function runPreview(Request $request, $distributor)
@@ -129,8 +174,40 @@ class AmsInvoiceImportController extends Controller
             ], 422);
         }
 
+        // Euro invoices (Vinyl Future): convert to dollars and, unless turned
+        // off, spread postage + fees over the lines by value so the unit cost
+        // is the landed cost.
+        $fx = null;
+        if (strtoupper((string) ($header['currency'] ?? 'USD')) === 'EUR') {
+            $manual = (float) $request->input('fx_rate', 0);
+            $auto = $manual > 0 ? null : $this->eurUsdRate($header['date'] ?? '');
+            $rate = $manual > 0 ? $manual : ($auto['rate'] ?? 0);
+            if ($rate <= 0) {
+                return response()->json(['success' => false, 'need_rate' => true,
+                    'msg' => 'Could not look up the euro rate. Type the EUR to USD rate in the box and read the invoice again.'], 422);
+            }
+            $goods = 0.0;
+            foreach ($items as $it) $goods += (float) ($it['lineTotal'] ?? 0);
+            $extra = (float) ($header['postage'] ?? 0) + (float) ($header['fees'] ?? 0);
+            $landed = filter_var($request->input('landed', true), FILTER_VALIDATE_BOOLEAN);
+            $factor = $rate * (($landed && $goods > 0) ? (1 + $extra / $goods) : 1);
+            foreach ($items as &$it) {
+                $it['unitPriceEur'] = (float) ($it['unitPrice'] ?? 0);
+                $it['unitPrice'] = round($it['unitPriceEur'] * $factor, 2);
+                $it['lineTotal'] = round($it['unitPrice'] * (float) ($it['qty'] ?? 0), 2);
+            }
+            unset($it);
+            $fx = ['rate' => round($rate, 4), 'rate_date' => $manual > 0 ? 'typed in' : ($auto['date'] ?? ''),
+                'landed' => $landed, 'extra_eur' => round($extra, 2), 'goods_eur' => round($goods, 2),
+                'factor' => round($factor, 4)];
+        }
+
         $lines = array_map(function ($it) {
             return [
+                'catno' => $it['catno'] ?? '',
+                'artist' => $it['artist'] ?? '',
+                'title' => $it['title'] ?? '',
+                'unit_price_eur' => $it['unitPriceEur'] ?? null,
                 'upc' => $it['upc'] ?? '',
                 'description' => $it['description'] ?? '',
                 'format' => $it['prodType'] ?? ($it['format'] ?? ''),
@@ -147,6 +224,10 @@ class AmsInvoiceImportController extends Controller
             DistributorInvoiceImport::invoiceKey($distributor, $header['invoice'] ?? ''), $distributor
         );
 
+        foreach ($out as $i => &$o) {
+            if (isset($lines[$i]['unit_price_eur'])) $o['unit_price_eur'] = round((float) $lines[$i]['unit_price_eur'], 2);
+        }
+        unset($o);
         $matched = count(array_filter($out, function ($l) { return $l['matched']; }));
 
         $invoice = DistributorInvoiceImport::invoiceKey($distributor, $header['invoice'] ?? '');
@@ -165,6 +246,7 @@ class AmsInvoiceImportController extends Controller
             'matched' => $matched,
             'unmatched' => count($out) - $matched,
             'already_imported' => $alreadyImported,
+            'fx' => $fx,
         ]);
     }
 
@@ -206,6 +288,8 @@ class AmsInvoiceImportController extends Controller
         }
 
         $notes = $cfg['label'] . ' invoice ' . $invoice . ($vendor_ref ? (($distributor === 'ams' ? ' / AMS REF ' : ' / PO ') . $vendor_ref) : '') . ', imported from PDF';
+        $fxNote = trim(preg_replace('/[^0-9A-Za-z.,:@%+()\/\- ]/', '', (string) $request->input('fx_note', '')));
+        if ($fxNote !== '') $notes .= '. ' . mb_substr($fxNote, 0, 200);
 
         try {
             $res = DistributorInvoiceImport::apply($distributor, $business_id, $user_id, $location_id, $contact_id, $invoice, $invoice_date, $notes, $lines);

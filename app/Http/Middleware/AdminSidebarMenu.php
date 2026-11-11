@@ -547,6 +547,11 @@ class AdminSidebarMenu
                                 ['icon' => 'fa fas fa-file-pdf-o', 'active' => request()->segment(2) == 'alliance-invoice-import']
                             );
                             $sub->url(
+                                action('AmsInvoiceImportController@vinylfutureIndex'),
+                                'Import Vinyl Future Invoice',
+                                ['icon' => 'fa fas fa-file-pdf-o', 'active' => request()->segment(2) == 'vinylfuture-invoice-import']
+                            );
+                            $sub->url(
                                 action('DistributorInvoiceAuditController@index'),
                                 'Distributor Invoice Audit',
                                 ['icon' => 'fa fas fa-check-square-o', 'active' => request()->segment(2) == 'distributor-invoice-audit']
