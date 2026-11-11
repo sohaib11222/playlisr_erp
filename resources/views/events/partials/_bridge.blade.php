@@ -561,7 +561,19 @@
               </td>
               <td class="ev-meta">{{ $r['email'] ?? '' }}@if(!empty($r['phone']))<div>{{ $r['phone'] }}</div>@endif</td>
               <td>
-                @php $vpills = $interestPills($r['interestedInPurchase'] ?? null); @endphp
+                @php
+                  // Events with specific versions on the RSVP form send the chosen
+                  // versions in purchaseVariants ("Black Vinyl | 2CD"); show those.
+                  $vpills = !empty($r['purchaseVariants'])
+                    ? array_values(array_filter(array_map('trim', explode('|', (string) $r['purchaseVariants']))))
+                    : $interestPills($r['interestedInPurchase'] ?? null);
+                  if (!empty($r['purchaseVariants'])) {
+                    foreach (explode(',', (string) ($r['interestedInPurchase'] ?? '')) as $tok) {
+                      $tok = trim($tok);
+                      if (in_array($tok, ['not_sure', 'no'], true)) { $vpills[] = $interestLabels[$tok]; }
+                    }
+                  }
+                @endphp
                 @forelse($vpills as $vp)
                   <span class="pill">{{ $vp }}</span>
                 @empty
