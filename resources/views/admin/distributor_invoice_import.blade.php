@@ -70,7 +70,7 @@
                 <label style="font-weight:normal;"><input type="checkbox" id="inv_landed" checked> Include the invoice's postage + fees</label>
             </div>
         </div>
-        <div id="inv_fx_info" style="margin:-6px 0 12px;color:#555;"></div>
+        <div id="inv_fx_info" style="clear:both;margin:-6px 0 12px;color:#555;"></div>
         @endif
 
         <div id="inv_drop" style="border:2px dashed #c7c7c7;border-radius:8px;padding:32px;text-align:center;cursor:pointer;background:#fbfbf7;">
