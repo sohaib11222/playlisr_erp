@@ -1,0 +1,62 @@
+name: Diag deejay invoice products
+on:
+  workflow_dispatch: {}
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3 4 5; do
+            ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            if grep -q . ~/.ssh/known_hosts 2>/dev/null; then exit 0; fi
+            sleep 5
+          done
+          exit 0
+      - name: How deejay products are stored (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 90s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $cids = \DB::table('contacts')->where(function($q){ $q->where(\DB::raw('LOWER(name)'),'like','%deejay%')->orWhere(\DB::raw('LOWER(name)'),'like','%dee jay%')->orWhere(\DB::raw('LOWER(name)'),'like','%vinylfuture%')->orWhere(\DB::raw('LOWER(supplier_business_name)'),'like','%deejay%'); })->get(['id','name','supplier_business_name','type']);
+            foreach ($cids as $c) echo "contact #{$c->id} {$c->name} / {$c->supplier_business_name} ({$c->type})\n";
+            $ids = $cids->pluck('id')->all();
+            $tx = \DB::table('transactions')->whereIn('contact_id',$ids)->where('type','purchase')->orderByDesc('id')->limit(8)->get(['id','ref_no','location_id','status','transaction_date','final_total','additional_notes']);
+            foreach ($tx as $t) echo "purchase #{$t->id} ref={$t->ref_no} loc={$t->location_id} {$t->status} {$t->transaction_date} \${$t->final_total} notes=".substr((string)$t->additional_notes,0,80)."\n";
+            echo "--- sample lines ---\n";
+            $rows = \DB::table('purchase_lines as pl')->join('transactions as t','t.id','=','pl.transaction_id')->join('products as p','p.id','=','pl.product_id')->join('variations as v','v.id','=','pl.variation_id')->leftJoin('categories as c','c.id','=','p.category_id')->leftJoin('categories as sc','sc.id','=','p.sub_category_id')->whereIn('t.contact_id',$ids)->where('t.type','purchase')->orderByDesc('pl.id')->limit(40)->get(['p.id','p.name','p.artist','p.sku','v.sub_sku','c.name as cat','sc.name as sub','pl.purchase_price','v.sell_price_inc_tax','p.product_description','p.added_via']);
+            foreach ($rows as $r) echo "#{$r->id} sku={$r->sku} sub_sku={$r->sub_sku} | {$r->name} | artist={$r->artist} | {$r->cat} / {$r->sub} | cost={$r->purchase_price} sell={$r->sell_price_inc_tax} via={$r->added_via} desc=".substr((string)$r->product_description,0,60)."\n";
+            echo "--- invoice catnos lookup ---\n";
+            foreach (['CEN014','HD1','HTRE021','MORPHEUS01D','NERO065','NT02','NT03','PRIM013','REPEAT05','RV-01','RXT-01','SW10','SW11','SW12','YUM003','SEA12013RE','STEP18'] as $cat) {
+              $m = \DB::table('variations as v')->join('products as p','p.id','=','v.product_id')->whereNull('v.deleted_at')->where(function($q) use ($cat){ $q->where('v.sub_sku',$cat)->orWhere('p.sku',$cat)->orWhere('p.name','like',"%$cat%")->orWhere('p.product_description','like',"%$cat%"); })->limit(3)->get(['p.id','p.name','v.sub_sku']);
+              echo $cat.': '.($m->isEmpty() ? 'none' : $m->map(function($x){return "#{$x->id} {$x->sub_sku} {$x->name}";})->implode(' || '))."\n";
+            }
+            foreach (['Chris Pascoe','Jay Tripwire','Housey Doingz','Alex Celler'] as $a) {
+              $m = \DB::table('products')->where('name','like',"%$a%")->limit(4)->get(['id','name','sku']);
+              echo "name~$a: ".$m->map(function($x){return "#{$x->id} {$x->sku} {$x->name}";})->implode(' || ')."\n";
+            }
+            echo "locations: ".\DB::table('business_locations')->pluck('name','id')->toJson()."\n";
+            echo "cats: ".\DB::table('categories')->where('parent_id',0)->whereNull('deleted_at')->where('name','like','%vinyl%')->pluck('name','id')->toJson()."\n";
+            PHP
+            echo "=== done ==="
