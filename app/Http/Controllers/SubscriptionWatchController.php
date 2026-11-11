@@ -76,12 +76,15 @@ class SubscriptionWatchController extends Controller
                 $d['cards'][$k] = $c;
             }
         }
-        // Purge anything personal that was ever loaded.
-        $personal = array_keys(array_filter($d['cards'], function ($c) { return ($c['owner'] ?? '') !== 'Business'; }));
-        if ($personal) {
-            $d['cards'] = array_diff_key($d['cards'], array_flip($personal));
-            $d['charges'] = array_values(array_filter($d['charges'], function ($c) use ($personal) { return !in_array($c['card'], $personal, true); }));
-            $d['imports'] = array_values(array_filter($d['imports'], function ($i) use ($personal) { return !in_array($i['card'], $personal, true); }));
+        // Purge anything personal that was ever loaded: drop personal cards, then
+        // any charge or import whose card is not a (business) card we know.
+        // Card keys come back from JSON as ints, so compare as strings.
+        $before = count($d['charges']) + count($d['imports']) + count($d['cards']);
+        $d['cards'] = array_filter($d['cards'], function ($c) { return ($c['owner'] ?? '') === 'Business'; });
+        $keep = array_map('strval', array_keys($d['cards']));
+        $d['charges'] = array_values(array_filter($d['charges'], function ($c) use ($keep) { return in_array((string) $c['card'], $keep, true); }));
+        $d['imports'] = array_values(array_filter($d['imports'], function ($i) use ($keep) { return in_array((string) $i['card'], $keep, true); }));
+        if (count($d['charges']) + count($d['imports']) + count($d['cards']) !== $before) {
             self::save($d);
         }
         return $d;
