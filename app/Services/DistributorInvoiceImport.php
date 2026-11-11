@@ -72,7 +72,7 @@ class DistributorInvoiceImport
             // Sell price = landed cost (tariff, shipping, fees, other costs) x 1.5.
             'markup' => 1.5,
             // Never suggest less than this (what the store charges for deejay 12"s).
-            'min_price' => 22.00,
+            'min_price' => 23.00,
         ],
     ];
 
