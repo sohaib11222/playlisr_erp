@@ -190,7 +190,14 @@ class AmsInvoiceImportController extends Controller
             foreach ($items as $it) $goods += (float) ($it['lineTotal'] ?? 0);
             $extra = (float) ($header['postage'] ?? 0) + (float) ($header['fees'] ?? 0);
             $landed = filter_var($request->input('landed', true), FILTER_VALIDATE_BOOLEAN);
-            $factor = $rate * (($landed && $goods > 0) ? (1 + $extra / $goods) : 1);
+            // Import tariff (% of the records' value) and other costs paid in
+            // dollars for this shipment (e.g. the $25 broker prep fee), both
+            // spread by value like the postage.
+            $tariffPct = max(0, min(100, (float) $request->input('tariff_pct', 10)));
+            $otherUsd = max(0, (float) $request->input('other_usd', 0));
+            $factor = $goods > 0
+                ? $rate * (1 + ($landed ? $extra / $goods : 0) + $tariffPct / 100) + $otherUsd / $goods
+                : $rate;
             foreach ($items as &$it) {
                 $it['unitPriceEur'] = (float) ($it['unitPrice'] ?? 0);
                 $it['unitPrice'] = round($it['unitPriceEur'] * $factor, 2);
@@ -199,6 +206,8 @@ class AmsInvoiceImportController extends Controller
             unset($it);
             $fx = ['rate' => round($rate, 4), 'rate_date' => $manual > 0 ? 'typed in' : ($auto['date'] ?? ''),
                 'landed' => $landed, 'extra_eur' => round($extra, 2), 'goods_eur' => round($goods, 2),
+                'tariff_pct' => $tariffPct, 'tariff_usd' => round($goods * $rate * $tariffPct / 100, 2), 'other_usd' => round($otherUsd, 2),
+                'landed_usd' => round($goods * $factor, 2),
                 'factor' => round($factor, 4)];
         }
 

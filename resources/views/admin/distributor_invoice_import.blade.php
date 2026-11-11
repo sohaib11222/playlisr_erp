@@ -58,11 +58,19 @@
                 <label>EUR to USD rate</label>
                 <input type="number" step="0.0001" min="0" id="inv_fx" class="form-control" placeholder="looked up from the invoice date">
             </div>
-            <div class="col-sm-9 form-group" style="padding-top:28px;">
-                <label style="font-weight:normal;"><input type="checkbox" id="inv_landed" checked> Spread postage + fees into each record's cost</label>
-                <span id="inv_fx_info" style="margin-left:10px;color:#666;"></span>
+            <div class="col-sm-2 form-group">
+                <label>Tariff %</label>
+                <input type="number" step="0.1" min="0" max="100" id="inv_tariff" class="form-control" value="10">
+            </div>
+            <div class="col-sm-3 form-group">
+                <label>Other costs paid ($)</label>
+                <input type="number" step="0.01" min="0" id="inv_other" class="form-control" placeholder="e.g. 25 for Clark's prep">
+            </div>
+            <div class="col-sm-4 form-group" style="padding-top:28px;">
+                <label style="font-weight:normal;"><input type="checkbox" id="inv_landed" checked> Include the invoice's postage + fees</label>
             </div>
         </div>
+        <div id="inv_fx_info" style="margin:-6px 0 12px;color:#555;"></div>
         @endif
 
         <div id="inv_drop" style="border:2px dashed #c7c7c7;border-radius:8px;padding:32px;text-align:center;cursor:pointer;background:#fbfbf7;">
@@ -341,15 +349,21 @@ async function runPreview() {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json'},
         body: JSON.stringify({header: parsed.header, items: parsed.items, supplier_id: $('inv_supplier').value, location_id: $('inv_location').value,
-            fx_rate: $('inv_fx') ? $('inv_fx').value : '', landed: $('inv_landed') ? $('inv_landed').checked : true}),
+            fx_rate: $('inv_fx') ? $('inv_fx').value : '', landed: $('inv_landed') ? $('inv_landed').checked : true,
+            tariff_pct: $('inv_tariff') ? $('inv_tariff').value : 0, other_usd: $('inv_other') ? $('inv_other').value : 0}),
     });
     const data = await res.json();
     if (!data.success) { status(esc(data.msg || 'Match failed.'), 'danger'); if (data.need_rate && $('inv_fx')) $('inv_fx').focus(); return; }
     fxInfo = data.fx || null;
     if (fxInfo && $('inv_fx')) {
         if (!$('inv_fx').value) $('inv_fx').placeholder = fxInfo.rate;
-        $('inv_fx_info').textContent = `€1 = $${fxInfo.rate} (${fxInfo.rate_date})` +
-            (fxInfo.landed && fxInfo.extra_eur ? `, + €${fxInfo.extra_eur.toFixed(2)} postage/fees spread in: each €1 of record = $${fxInfo.factor.toFixed(3)}` : '');
+        const usd = n => '$' + Number(n).toFixed(2);
+        const parts = [`records ${usd(fxInfo.goods_eur * fxInfo.rate)} (€${fxInfo.goods_eur.toFixed(2)} at $${fxInfo.rate}, ${fxInfo.rate_date})`];
+        if (fxInfo.landed && fxInfo.extra_eur) parts.push(`postage + fees ${usd(fxInfo.extra_eur * fxInfo.rate)} (${Math.round(fxInfo.extra_eur / fxInfo.goods_eur * 100)}%)`);
+        if (fxInfo.tariff_pct) parts.push(`tariff ${fxInfo.tariff_pct}% ${usd(fxInfo.tariff_usd)}`);
+        if (fxInfo.other_usd) parts.push(`other ${usd(fxInfo.other_usd)}`);
+        $('inv_fx_info').innerHTML = `<strong>Landed cost ${usd(fxInfo.landed_usd)}</strong> = ` + parts.join(' + ') +
+            `. Each €1 of record costs <strong>$${fxInfo.factor.toFixed(3)}</strong>.`;
     }
     previewLines = data.lines;
     renderReview(data);
@@ -418,7 +432,7 @@ $('inv_apply').addEventListener('click', async () => {
             location_id: location, supplier_id: supplier,
             invoice: parsed.header.invoice, ams_ref: parsed.header.amsRef, invoice_date: parsed.header.date,
             force: $('inv_force').checked, lines: picks,
-            fx_note: fxInfo ? `EUR invoice total ${(parsed.totals.amount || 0).toFixed(2)} at ${fxInfo.rate} USD/EUR${fxInfo.landed ? ', postage+fees in unit costs' : ''}` : '',
+            fx_note: fxInfo ? `EUR invoice total ${(parsed.totals.amount || 0).toFixed(2)} at ${fxInfo.rate} USD/EUR${fxInfo.landed ? ', postage+fees' : ''}${fxInfo.tariff_pct ? ', ' + fxInfo.tariff_pct + '% tariff' : ''}${fxInfo.other_usd ? ', other costs ' + fxInfo.other_usd.toFixed(2) + ' USD' : ''} in unit costs, landed ${fxInfo.landed_usd.toFixed(2)} USD` : '',
         }),
     });
     const data = await res.json();
@@ -430,7 +444,7 @@ $('inv_apply').addEventListener('click', async () => {
 
 // Store or supplier changed after reading: re-run the match so the
 // "already on a purchase" check uses the right store/supplier.
-['inv_location', 'inv_supplier', 'inv_fx', 'inv_landed'].forEach(id => $(id) && $(id).addEventListener('change', () => { if (parsed) runPreview(); }));
+['inv_location', 'inv_supplier', 'inv_fx', 'inv_landed', 'inv_tariff', 'inv_other'].forEach(id => $(id) && $(id).addEventListener('change', () => { if (parsed) runPreview(); }));
 
 $('inv_drop').addEventListener('click', () => $('inv_file').click());
 $('inv_file').addEventListener('change', e => handleFile(e.target.files[0]));
