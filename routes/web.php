@@ -2291,6 +2291,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/alliance-invoice-import', 'AmsInvoiceImportController@allianceIndex');
     Route::post('/admin/alliance-invoice-import/preview', 'AmsInvoiceImportController@alliancePreview');
     Route::post('/admin/alliance-invoice-import/apply', 'AmsInvoiceImportController@allianceApply');
+    Route::get('/admin/vinylfuture-invoice-import', 'AmsInvoiceImportController@vinylfutureIndex');
+    Route::post('/admin/vinylfuture-invoice-import/preview', 'AmsInvoiceImportController@vinylfuturePreview');
+    Route::post('/admin/vinylfuture-invoice-import/apply', 'AmsInvoiceImportController@vinylfutureApply');
     Route::post('/admin/redeye-invoice-import/preview', 'AmsInvoiceImportController@redeyePreview');
     Route::post('/admin/redeye-invoice-import/apply', 'AmsInvoiceImportController@redeyeApply');
     Route::post('/admin/redeye-invoice-import/auto', 'AmsInvoiceImportController@redeyeAuto');

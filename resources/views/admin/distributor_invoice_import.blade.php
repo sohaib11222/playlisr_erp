@@ -5,13 +5,22 @@
 <section class="content-header">
     <h1>Import {{ $cfg['label'] }} Invoice (PDF)</h1>
     <p style="max-width:900px;">
+        @if ($distributor === 'vinylfuture')
+        Drop a {{ $cfg['long'] }} invoice PDF below. It's read in your browser. Each line is matched to a product by
+        catalog number or artist + title (these invoices have no barcodes), and titles we don't carry yet get a new
+        product (name, category, cost and price filled in for you to check). Euro prices are converted to dollars at the
+        invoice date's rate, with postage and fees spread into each record's cost.
+        @else
         Drop an {{ $cfg['long'] }} invoice PDF below. It's read in your browser, each UPC is matched to a product,
         and titles we don't carry yet get a new product (name, barcode, category, cost and price filled in for you to check).
+        @endif
         Confirming logs one purchase on the <a href="/purchases">Purchases</a> list with every ticked line, so the store
         can receive the whole box. No stock or existing costs change until it's received.
         Every import is undoable at <a href="/admin/admin-action-history">admin-action-history</a>.
         @if ($distributor === 'ams')
             Alliance invoices go in at <a href="/admin/alliance-invoice-import">Import Alliance Invoice</a>.
+        @elseif ($distributor === 'vinylfuture')
+            AMS and Alliance invoices go in at <a href="/admin/ams-invoice-import">Import AMS Invoice</a> and <a href="/admin/alliance-invoice-import">Import Alliance Invoice</a>.
         @else
             AMS invoices go in at <a href="/admin/ams-invoice-import">Import AMS Invoice</a>.
         @endif
@@ -43,6 +52,18 @@
                 </select>
             </div>
         </div>
+        @if ($distributor === 'vinylfuture')
+        <div class="row">
+            <div class="col-sm-3 form-group">
+                <label>EUR to USD rate</label>
+                <input type="number" step="0.0001" min="0" id="inv_fx" class="form-control" placeholder="looked up from the invoice date">
+            </div>
+            <div class="col-sm-9 form-group" style="padding-top:28px;">
+                <label style="font-weight:normal;"><input type="checkbox" id="inv_landed" checked> Spread postage + fees into each record's cost</label>
+                <span id="inv_fx_info" style="margin-left:10px;color:#666;"></span>
+            </div>
+        </div>
+        @endif
 
         <div id="inv_drop" style="border:2px dashed #c7c7c7;border-radius:8px;padding:32px;text-align:center;cursor:pointer;background:#fbfbf7;">
             <p style="margin:0;font-size:15px;"><strong>Drop the {{ $cfg['label'] }} invoice PDF here</strong> or click to choose a file</p>
@@ -64,7 +85,7 @@
             <table class="table table-condensed table-bordered" style="font-size:12px;">
                 <thead>
                     <tr>
-                        <th></th><th>UPC</th><th>Invoice line</th><th>Product</th><th>Category</th>
+                        <th></th><th>{{ $distributor === 'vinylfuture' ? 'Cat #' : 'UPC' }}</th><th>Invoice line</th><th>Product</th><th>Category</th>
                         <th style="text-align:right;">Qty</th><th style="text-align:right;">Unit cost</th>
                         <th style="text-align:right;">Sell price</th><th style="text-align:right;">Line total</th><th>Note</th>
                     </tr>
@@ -90,6 +111,8 @@ const DISTRIBUTOR = {!! json_encode($distributor) !!};
 const BASE = {!! json_encode($base) !!};
 const CATEGORIES = {!! json_encode((object) $categories) !!}; // name => id
 const ACCOUNT_LOCATIONS = {!! json_encode((object) $account_locations) !!};
+const STORE_LOCATIONS = {!! json_encode((object) ($store_locations ?? [])) !!}; // store name => id
+const LABEL = {!! json_encode($cfg['label']) !!};
 
 const num = s => parseFloat(String(s).replace(/,/g, ''));
 const clean = s => String(s || '').replace(/­/g, '-');
@@ -200,16 +223,82 @@ function parseAlliance(rows) {
     return {header, items, totals};
 }
 
+// ---- Vinyl Future (deejay.de) parser ----
+// Lines: "SW10 - Chris Pascoe- Darkside 11,99 4 47,96" = catalog # - Artist-
+// Title, unit price, qty, sum. Euro amounts with a decimal comma. A title too
+// long for its cell wraps onto the next row, which is added to the line above.
+// The same record on two lines (deejay splits them) is merged.
+const eur = s => parseFloat(String(s).replace(/\./g, '').replace(',', '.'));
+function parseVinylFuture(rows) {
+    const header = {currency: 'EUR'}, items = [], totals = {};
+    const lines = rows.map(rowText);
+    const text = lines.join('\n');
+    let m;
+    if ((m = text.match(/Invoice No\.?:\s*([0-9][0-9-]+)/))) header.invoice = m[1];
+    if ((m = text.match(/Date:\s*(\d{1,2})\.(\d{1,2})\.(\d{4})/))) header.date = `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+    if ((m = text.match(/Currency:\s*([A-Z]{3})/))) header.currency = m[1];
+    // Footer: one row of labels ("Quantity Postage: Fees: Net: VAT. 7%: ...
+    // Total:"), the next row their values ("54 89,70 23,59 772,45 ...").
+    const foot = {};
+    const fi = lines.findIndex(l => /Postage:/.test(l) && /Total:/.test(l));
+    if (fi >= 0 && lines[fi + 1]) {
+        const labels = lines[fi].replace(/^Quantity\s+/, 'Quantity: ').split(':').map(x => x.trim()).filter(Boolean);
+        const vals = lines[fi + 1].trim().split(/\s+/);
+        if (labels.length === vals.length) labels.forEach((k, i) => { foot[k] = vals[i]; });
+    } else {
+        for (const k of ['Postage', 'Fees', 'Net', 'Total']) {
+            const r = text.match(new RegExp(k + ':\\s*([\\d.]*\\d,\\d{2})'));
+            if (r) foot[k] = r[1];
+        }
+    }
+    header.postage = foot.Postage ? eur(foot.Postage) : 0;
+    header.fees = foot.Fees ? eur(foot.Fees) : 0;
+    if (foot.Net) totals.net = eur(foot.Net);
+    if (foot.Total) totals.amount = eur(foot.Total);
+    if (foot.Quantity) totals.qty = +foot.Quantity;
+    if (totals.net) totals.goods = Math.round((totals.net - header.postage - header.fees) * 100) / 100;
+    const ri = text.indexOf('Recipient'), di = text.indexOf('Description', ri);
+    const rec = ri >= 0 ? text.slice(ri, di > ri ? di : ri + 400) : '';
+    if (/\bPico\b/i.test(rec)) header.store = 'pico';
+    else if (/Hollywood|Sunset|Cahuenga/i.test(rec)) header.store = 'hollywood';
+
+    const LINE = /^(.+?)\s+(\d{1,4}(?:\.\d{3})*,\d{2})\s+(\d{1,4})\s+(\d{1,3}(?:\.\d{3})*,\d{2})$/;
+    let inTable = false, last = null;
+    for (const line of lines) {
+        if (/^Description\b.*Unit Price.*Quantity.*Sum/.test(line)) { inTable = true; last = null; continue; }
+        if (!inTable) continue;
+        if (/^(Quantity|note next page|Invoice No|Date:|Page:)/i.test(line)) { inTable = false; last = null; continue; }
+        const lm = line.match(LINE);
+        if (!lm) { if (last) last.raw += ' ' + line; continue; }
+        last = {raw: lm[1], unitPrice: eur(lm[2]), qty: +lm[3], lineTotal: eur(lm[4])};
+        items.push(last);
+    }
+    const merged = [];
+    for (const it of items) {
+        const raw = it.raw.replace(/\s+/g, ' ').trim();
+        const cm = raw.match(/^(.+?)\s+-\s+(.+)$/);
+        const catno = cm ? cm[1].trim() : '';
+        const rest = cm ? cm[2] : raw;
+        const am = rest.match(/^(.+?)\s*-\s+(.+)$/);
+        const artist = am ? am[1].trim() : '', title = am ? am[2].trim() : rest.trim();
+        const dupe = merged.find(x => x.catno === catno && x.description === raw && x.unitPrice === it.unitPrice);
+        if (dupe) { dupe.qty += it.qty; dupe.lineTotal = Math.round((dupe.lineTotal + it.lineTotal) * 100) / 100; continue; }
+        merged.push({upc: '', catno, artist, title, description: raw, prodType: '', qty: it.qty, unitPrice: it.unitPrice, lineTotal: it.lineTotal});
+    }
+    return {header, items: merged, totals};
+}
+
 // ---- UI wiring ----
 const $ = id => document.getElementById(id);
 const csrf = $('inv_csrf').value;
-let parsed = null, previewLines = null;
+let parsed = null, previewLines = null, fxInfo = null;
 
 function status(html, kind) {
     $('inv_status').innerHTML = html ? `<div class="alert alert-${kind || 'info'}" style="margin:0;">${html}</div>` : '';
 }
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const money = n => n == null ? '' : '$' + Number(n).toFixed(2);
+const cost = l => money(l.unit_price) + (l.unit_price_eur != null ? `<br><small style="color:#888;">€${Number(l.unit_price_eur).toFixed(2)}</small>` : '');
 
 async function handleFile(file) {
     if (!file || file.type !== 'application/pdf') { status('Please choose a PDF file.', 'warning'); return; }
@@ -225,19 +314,22 @@ async function handleFile(file) {
                 allItems.push({str: it.str, x: it.transform[4], width: it.width, y: (p * 100000) - it.transform[5]});
         }
         const rows = rowsFromItems(allItems);
-        parsed = DISTRIBUTOR === 'alliance' ? parseAlliance(rows) : parseAms(rows);
-        if (!parsed.items.length) { status('No invoice line items found. Is this an ' + esc(DISTRIBUTOR.toUpperCase()) + ' invoice PDF?', 'danger'); return; }
+        parsed = DISTRIBUTOR === 'alliance' ? parseAlliance(rows) : (DISTRIBUTOR === 'vinylfuture' ? parseVinylFuture(rows) : parseAms(rows));
+        if (!parsed.items.length) { status('No invoice line items found. Is this a ' + esc(LABEL) + ' invoice PDF?', 'danger'); return; }
         parsed.sum = Math.round(parsed.items.reduce((a, b) => a + b.lineTotal, 0) * 100) / 100;
         const goods = parsed.totals.goods;
         parsed.goodsMatches = goods != null ? Math.abs(parsed.sum - goods) < 0.01 : null;
 
         const acctLoc = parsed.header.account ? ACCOUNT_LOCATIONS[parsed.header.account] : null;
         if (acctLoc) $('inv_location').value = String(acctLoc);
+        const storeLoc = parsed.header.store ? STORE_LOCATIONS[parsed.header.store] : null;
+        if (storeLoc) $('inv_location').value = String(storeLoc);
+        const cur = parsed.header.currency === 'EUR' ? '€' : '$';
 
         const chk = parsed.goodsMatches === false
-            ? ` <strong style="color:#c0392b;">The line totals DON'T match the invoice (read $${parsed.sum.toFixed(2)} vs $${goods.toFixed(2)}). Check the lines below.</strong>`
+            ? ` <strong style="color:#c0392b;">The line totals DON'T match the invoice (read ${cur}${parsed.sum.toFixed(2)} vs ${cur}${goods.toFixed(2)}). Check the lines below.</strong>`
             : (parsed.goodsMatches ? ' Line totals match the invoice.' : '');
-        status(`Read invoice <strong>${esc(parsed.header.invoice || '?')}</strong> (${parsed.header.date || '?'}${parsed.header.account ? ', account ' + esc(parsed.header.account) : ''}): ${parsed.items.length} lines, $${parsed.sum.toFixed(2)}.${chk} Matching to products…`, parsed.goodsMatches === false ? 'warning' : 'info');
+        status(`Read invoice <strong>${esc(parsed.header.invoice || '?')}</strong> (${parsed.header.date || '?'}${parsed.header.account ? ', account ' + esc(parsed.header.account) : ''}${parsed.header.store ? ', ship to ' + esc(parsed.header.store) : ''}): ${parsed.items.length} lines, ${cur}${parsed.sum.toFixed(2)}.${chk} Matching to products…`, parsed.goodsMatches === false ? 'warning' : 'info');
         await runPreview();
     } catch (e) {
         status('Could not read PDF: ' + esc(e.message), 'danger');
@@ -248,10 +340,17 @@ async function runPreview() {
     const res = await fetch(BASE + '/preview', {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json'},
-        body: JSON.stringify({header: parsed.header, items: parsed.items, supplier_id: $('inv_supplier').value, location_id: $('inv_location').value}),
+        body: JSON.stringify({header: parsed.header, items: parsed.items, supplier_id: $('inv_supplier').value, location_id: $('inv_location').value,
+            fx_rate: $('inv_fx') ? $('inv_fx').value : '', landed: $('inv_landed') ? $('inv_landed').checked : true}),
     });
     const data = await res.json();
-    if (!data.success) { status(esc(data.msg || 'Match failed.'), 'danger'); return; }
+    if (!data.success) { status(esc(data.msg || 'Match failed.'), 'danger'); if (data.need_rate && $('inv_fx')) $('inv_fx').focus(); return; }
+    fxInfo = data.fx || null;
+    if (fxInfo && $('inv_fx')) {
+        if (!$('inv_fx').value) $('inv_fx').placeholder = fxInfo.rate;
+        $('inv_fx_info').textContent = `€1 = $${fxInfo.rate} (${fxInfo.rate_date})` +
+            (fxInfo.landed && fxInfo.extra_eur ? `, + €${fxInfo.extra_eur.toFixed(2)} postage/fees spread in: each €1 of record = $${fxInfo.factor.toFixed(3)}` : '');
+    }
     previewLines = data.lines;
     renderReview(data);
 }
@@ -280,16 +379,16 @@ function renderReview(data) {
                 : (l.product_inactive ? 'Matched product is inactive' : ''));
         if (l.matched) {
             return `<tr${onOther ? ' style="background:#fff8e6;"' : ''}><td><input type="checkbox" class="inv-pick" data-i="${i}" ${onOther ? '' : 'checked'}></td>
-                <td>${esc(l.upc)}</td><td>${esc(l.description)}</td><td><a href="/products/view/${l.product_id}" target="_blank">${esc(l.product_name)}</a></td><td></td>
-                <td style="text-align:right;">${l.qty}</td><td style="text-align:right;">${money(l.unit_price)}</td>
+                <td>${esc(l.upc || l.catno)}</td><td>${esc(l.description)}</td><td><a href="/products/view/${l.product_id}" target="_blank">${esc(l.product_name)}</a></td><td></td>
+                <td style="text-align:right;">${l.qty}</td><td style="text-align:right;">${cost(l)}</td>
                 <td style="text-align:right;"></td><td style="text-align:right;">${money(l.line_total)}</td><td>${note}</td></tr>`;
         }
         const np = l.new_product;
         return `<tr style="background:#eef6ff;"><td><input type="checkbox" class="inv-pick" data-i="${i}" ${np.category_id ? 'checked' : ''}></td>
-            <td>${esc(np.sku)}</td><td>${esc(l.description)}</td>
+            <td>${esc(np.sku || l.catno)}</td><td>${esc(l.description)}</td>
             <td><span class="label label-primary">NEW</span> <input type="text" class="form-control input-sm inv-name" data-i="${i}" value="${esc(np.name)}" style="min-width:240px;"></td>
             <td>${catSelect(i, np.category_id)}</td>
-            <td style="text-align:right;">${l.qty}</td><td style="text-align:right;">${money(l.unit_price)}</td>
+            <td style="text-align:right;">${l.qty}</td><td style="text-align:right;">${cost(l)}</td>
             <td style="text-align:right;"><input type="number" step="0.01" min="0" class="form-control input-sm inv-sell" data-i="${i}" value="${np.sell_price != null ? np.sell_price.toFixed(2) : ''}" style="width:90px;display:inline-block;"></td>
             <td style="text-align:right;">${money(l.line_total)}</td><td>${np.category_id ? '' : 'Pick a category'}</td></tr>`;
     }).join('');
@@ -302,11 +401,11 @@ $('inv_apply').addEventListener('click', async () => {
     if (!supplier) { status('Pick a supplier first.', 'warning'); return; }
     const picks = [...document.querySelectorAll('.inv-pick:checked')].map(c => {
         const i = +c.dataset.i, l = previewLines[i];
-        const line = {variation_id: l.variation_id, qty: l.qty, unit_price: l.unit_price, upc: l.upc, description: l.description};
+        const line = {variation_id: l.variation_id, qty: l.qty, unit_price: l.unit_price, upc: l.upc, description: l.description, catno: l.catno || ''};
         if (!l.matched) {
             const q = sel => document.querySelector(`${sel}[data-i="${i}"]`);
             line.new_product = {name: q('.inv-name').value.trim(), artist: l.new_product.artist, sku: l.new_product.sku,
-                category_id: q('.inv-cat').value, sell_price: q('.inv-sell').value};
+                category_id: q('.inv-cat').value, sell_price: q('.inv-sell').value, sub_category_id: l.new_product.sub_category_id};
         }
         return line;
     });
@@ -319,6 +418,7 @@ $('inv_apply').addEventListener('click', async () => {
             location_id: location, supplier_id: supplier,
             invoice: parsed.header.invoice, ams_ref: parsed.header.amsRef, invoice_date: parsed.header.date,
             force: $('inv_force').checked, lines: picks,
+            fx_note: fxInfo ? `EUR invoice total ${(parsed.totals.amount || 0).toFixed(2)} at ${fxInfo.rate} USD/EUR${fxInfo.landed ? ', postage+fees in unit costs' : ''}` : '',
         }),
     });
     const data = await res.json();
@@ -330,7 +430,7 @@ $('inv_apply').addEventListener('click', async () => {
 
 // Store or supplier changed after reading: re-run the match so the
 // "already on a purchase" check uses the right store/supplier.
-['inv_location', 'inv_supplier'].forEach(id => $(id).addEventListener('change', () => { if (parsed) runPreview(); }));
+['inv_location', 'inv_supplier', 'inv_fx', 'inv_landed'].forEach(id => $(id) && $(id).addEventListener('change', () => { if (parsed) runPreview(); }));
 
 $('inv_drop').addEventListener('click', () => $('inv_file').click());
 $('inv_file').addEventListener('change', e => handleFile(e.target.files[0]));
