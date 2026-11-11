@@ -12334,10 +12334,19 @@ class ReportController extends Controller
         // so Whatnot livestream sales don't make a cashier's "matched
         // on Clover" check look like they pocketed money. Whatnot is
         // already surfaced separately in the day-totals card.
+        // Sarah 2026-11-11: website orders pushed in from nivessa.com land
+        // with channel 'in_store' (the connector API doesn't tag them), and
+        // because the API user is an admin they got re-attributed to whoever
+        // had a register open - Manolo's card showed $44 ERP when he rang
+        // $11. Same detection the feed's "website · paid online" label uses.
+        $webSql = "(LOWER(TRIM(COALESCE(t.additional_notes, ''))) LIKE 'website order%'"
+            . " OR LOWER(TRIM(COALESCE(t.staff_note, ''))) LIKE 'website order%'"
+            . " OR EXISTS (SELECT 1 FROM contacts wc WHERE wc.id = t.contact_id AND LOWER(TRIM(wc.name)) = 'website customer'))";
         $erpQ = \DB::table('transaction_payments as tp')
             ->join('transactions as t', 'tp.transaction_id', '=', 't.id')
             ->leftJoin('business_locations as bl', 't.location_id', '=', 'bl.id')
             ->leftJoin('users as u', 't.created_by', '=', 'u.id')
+            ->whereRaw("NOT {$webSql}")
             ->where('t.business_id', $business_id)
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
@@ -12384,6 +12393,7 @@ class ReportController extends Controller
             ->where('t.status', 'final')
             ->where(function ($q) { $q->where('t.is_whatnot', 0)->orWhereNull('t.is_whatnot'); })
             ->where('tp.method', 'cash')
+            ->whereRaw("NOT {$webSql}")
             ->whereDate('t.transaction_date', '>=', $start)
             ->whereDate('t.transaction_date', '<=', $end);
         // Same in-store-only guard: online orders never hit the cash drawer.
@@ -12589,6 +12599,7 @@ class ReportController extends Controller
                 t.id, t.location_id, t.final_total, t.total_before_tax,
                 COALESCE(t.tax_amount, 0) as tax_amount, t.transaction_date,
                 t.created_by as cashier_user_id,
+                {$webSql} as is_web,
                 COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, '') as cashier_name
             ")
             ->get();
@@ -12799,6 +12810,9 @@ class ReportController extends Controller
             $bestId = null; $bestTd = PHP_INT_MAX; $bestSignedDelta = 0;
             foreach ($txns as $t) {
                 if (isset($claimedTxns[$t->id])) continue;
+                // Website orders only pair on an exact-ish amount (pickup
+                // paid on Clover), never on time alone.
+                if (!empty($t->is_web)) continue;
                 // Sarah 2026-05-11: strict same-store. Allowing
                 // null-Clover-location to pair across stores was
                 // false-pairing Pico orphans to Hollywood cash tests.
@@ -12924,6 +12938,10 @@ class ReportController extends Controller
         foreach ($txns as $t) {
             $day = substr((string) $t->transaction_date, 0, 10);
             if ($day < $start || $day > $end) continue; // matching pool only
+            // Website orders are paid online - they only count toward a
+            // cashier when a Clover swipe at the store paired to them
+            // (customer picked up and paid in person).
+            if (!empty($t->is_web) && !isset($claimedTxns[$t->id])) continue;
             $rangBy = $t->cashier_name;
             $rangFn = $firstName($rangBy);
             if (isset($adminSet[$rangFn])) {
@@ -13246,6 +13264,7 @@ class ReportController extends Controller
         // were actually card-paid vs cash.
         foreach ($txns as $t) {
             if (isset($claimedTxns[$t->id])) continue;
+            if (!empty($t->is_web)) continue; // paid online, not a missed swipe
             $day = substr((string) $t->transaction_date, 0, 10);
             if ($day < $start || $day > $end) continue;
             $emp = $firstName($t->cashier_name);
