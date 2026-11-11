@@ -1250,10 +1250,6 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/inventory-check-assistant', 'InventoryCheckController@index');
     // Weekly Reorder (Jon's spreadsheet process as one page, Sarah 2026-10-08)
     Route::get('/reports/reorder', 'ReorderController@index');
-    // Subscription Watch: new subscriptions + price jumps on every card (Sarah 2026-11-11)
-    Route::get('/reports/subscriptions', 'SubscriptionWatchController@index');
-    Route::post('/reports/subscriptions/import', 'SubscriptionWatchController@import');
-    Route::post('/reports/subscriptions/ignore', 'SubscriptionWatchController@ignore');
     Route::get('/reports/shelf-count', 'ShelfCountController@index');
     Route::get('/reports/shelf-count/bin', 'ShelfCountController@bin');
     Route::get('/reports/shelf-count/lookup', 'ShelfCountController@lookup');

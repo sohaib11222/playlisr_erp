@@ -114,7 +114,6 @@ class ReportsHubController extends Controller
                 'title' => 'Operations',
                 'icon'  => 'fa-tools',
                 'reports' => [
-                    ['key' => 'subscription-watch',    'name' => 'Subscription Watch',    'icon' => 'fa-credit-card',        'action' => 'SubscriptionWatchController@index',           'desc' => 'New subscriptions and price jumps on the business cards. Jon and Sarah only.', 'admin_only' => true],
                     ['key' => 'cash-flow',             'name' => 'Cash Flow',             'icon' => 'fa-university',         'action' => 'ReportController@cashFlowReport',             'desc' => 'Live bank balances + QB cash flow statement.', 'admin_only' => true],
                     ['key' => 'expense-report',        'name' => 'Expense Report',        'icon' => 'fa-receipt',            'action' => 'ReportController@getExpenseReport',           'desc' => 'Expenses by category.'],
                     ['key' => 'purchase-payment',      'name' => 'Purchase Payment Report', 'icon' => 'fa-hand-holding-usd', 'action' => 'ReportController@purchasePaymentReport',      'desc' => 'Payments against purchases.'],
