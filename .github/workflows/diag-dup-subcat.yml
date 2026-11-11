@@ -1,0 +1,24 @@
+# READ-ONLY: why two "Rock" bins on shelf count (11/11)
+name: Diag dup subcat
+on:
+  push:
+    branches: ['diag-audit/dup-rock-subcat']
+jobs:
+  d:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          mkdir -p ~/.ssh && echo "$DEPLOY_SSH_KEY" > ~/.ssh/id && chmod 600 ~/.ssh/id
+          P=${DEPLOY_PORT:-22}
+          for i in 1 2 3 4 5; do ssh-keyscan -T 15 -p $P -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null && grep -q . ~/.ssh/known_hosts && break; sleep 10; done
+          for i in 1 2 3; do
+            scp -o ConnectTimeout=30 -i ~/.ssh/id -P $P scripts/diag/dup_subcat.php "$DEPLOY_USER@$DEPLOY_HOST:/www/playlist.nivessa.com/app/storage/dup_subcat.php" && \
+            ssh -o ConnectTimeout=30 -i ~/.ssh/id -p $P "$DEPLOY_USER@$DEPLOY_HOST" "cd /www/playlist.nivessa.com/app && php storage/dup_subcat.php; rm -f storage/dup_subcat.php" && break
+            sleep 15
+          done
