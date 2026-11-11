@@ -1,0 +1,67 @@
+# READ-ONLY: where are vinyl Rock products filed (category / sub-category) at each store, to explain shelf-count bin sizes.
+name: Diag shelf-count bin
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Add server to known_hosts (best-effort)
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${{ steps.flags.outputs.ssh_port }}" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          exit 0
+
+      - name: Shelf-count bin breakdown (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 120s
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            php artisan tinker --no-ansi <<'PHP'
+            $DB = \Illuminate\Support\Facades\DB::class;
+            echo "LOCATIONS: " . json_encode($DB::table('business_locations')->pluck('name','id')) . "\n";
+            echo "CAT98: " . json_encode($DB::table('categories')->where('id',98)->first(['id','name','parent_id','deleted_at'])) . "\n";
+            foreach ($DB::table('business_locations')->pluck('id') as $loc) {
+              $rows = $DB::table('products as p')
+                ->join('variation_location_details as v', function ($j) use ($loc) { $j->on('v.product_id','=','p.id')->where('v.location_id','=',$loc); })
+                ->leftJoin('categories as c','c.id','=','p.category_id')
+                ->leftJoin('categories as sc','sc.id','=','p.sub_category_id')
+                ->where('p.is_inactive',0)->where('v.qty_available','>',0)
+                ->whereRaw("LOWER(c.name) LIKE '%vinyl%'")
+                ->where(function ($q) { $q->whereRaw("LOWER(sc.name) LIKE '%rock%'")->orWhere('p.sub_category_id',98)->orWhereNull('p.sub_category_id')->orWhere('p.sub_category_id',0); })
+                ->selectRaw('p.category_id, c.name as cat, p.sub_category_id, sc.name as sub, sc.parent_id as sub_parent, COUNT(DISTINCT p.id) as titles, SUM(v.qty_available) as units')
+                ->groupBy('p.category_id','c.name','p.sub_category_id','sc.name','sc.parent_id')->get();
+              echo "LOC $loc: " . $rows->toJson() . "\n";
+            }
+            echo "VINYL_CATS: " . json_encode($DB::table('categories')->whereRaw("LOWER(name) LIKE '%vinyl%'")->whereNull('deleted_at')->get(['id','name','parent_id'])) . "\n";
+            echo "ROCK_SUBS: " . json_encode($DB::table('categories')->whereRaw("LOWER(name) LIKE '%rock%'")->whereNull('deleted_at')->get(['id','name','parent_id'])) . "\n";
+            PHP
+            echo "=== done ==="
