@@ -209,7 +209,7 @@
     // website's /admin/rsvps tally + suggested-order math so the numbers
     // match exactly: units to order = anyone who said vinyl/cd/both, with
     // the "not sure" crowd as an upper-bound buffer.
-    $interestLabels = ['vinyl' => 'Vinyl', 'cd' => 'CD', 'cassette' => 'Cassette', 'both' => 'Both', 'not_sure' => 'Not sure', 'no' => 'No'];
+    $interestLabels = ['vinyl' => 'Vinyl', 'cd' => 'CD', 'cassette' => 'Cassette', 'both' => 'Both', 'not_sure' => 'Not sure', 'no' => 'Not buying', 'elsewhere' => 'Buying elsewhere'];
     // interestedInPurchase is a comma-joined multi-select; split it into the
     // labels we know (legacy single values still work).
     $interestPills = function ($v) use ($interestLabels) {
@@ -570,7 +570,7 @@
                   if (!empty($r['purchaseVariants'])) {
                     foreach (explode(',', (string) ($r['interestedInPurchase'] ?? '')) as $tok) {
                       $tok = trim($tok);
-                      if (in_array($tok, ['not_sure', 'no'], true)) { $vpills[] = $interestLabels[$tok]; }
+                      if (in_array($tok, ['not_sure', 'no', 'elsewhere'], true)) { $vpills[] = $interestLabels[$tok]; }
                     }
                   }
                 @endphp
