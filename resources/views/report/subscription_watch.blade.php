@@ -43,7 +43,7 @@
 </style>
 
 <section class="content-header">
-    <h1>Subscription Watch <small style="color:#333;">new subscriptions and price jumps, every card</small></h1>
+    <h1>Subscription Watch <small style="color:#333;">new subscriptions and price jumps, business cards</small></h1>
 </section>
 
 <section class="content sw-wrap">
@@ -159,7 +159,7 @@
         </table>
 
         <h3 style="margin-top:16px;">Upload a CSV</h3>
-        <p class="sw-label">Download the card's activity as CSV from Chase, Citi or Barclays and upload it here. Re-uploading the same dates replaces them, so nothing doubles.</p>
+        <p class="sw-label">Business cards only. Download the card's activity as CSV from the bank and upload it here. Re-uploading the same dates replaces them, so nothing doubles.</p>
         <form method="post" action="{{ url('/reports/subscriptions/import') }}" enctype="multipart/form-data" class="form-inline">
             @csrf
             <select name="card" class="form-control input-sm" required>
@@ -169,12 +169,11 @@
             <button class="btn btn-primary btn-sm">Upload</button>
         </form>
         <details style="margin-top:10px;">
-            <summary>Add a new card</summary>
+            <summary>Add a new business card</summary>
             <form method="post" action="{{ url('/reports/subscriptions/import') }}" enctype="multipart/form-data" class="form-inline" style="margin-top:8px;">
                 @csrf
                 <input name="card" class="form-control input-sm" placeholder="Last 4" maxlength="4" required style="width:80px;">
                 <input name="label" class="form-control input-sm" placeholder="Name, e.g. Chase Ink 4321 (Nivessa One)" required style="width:300px;">
-                <select name="owner" class="form-control input-sm"><option>Business</option><option>Personal</option></select>
                 <input type="file" name="csv" accept=".csv,text/csv" class="form-control input-sm" required>
                 <button class="btn btn-primary btn-sm">Add and upload</button>
             </form>

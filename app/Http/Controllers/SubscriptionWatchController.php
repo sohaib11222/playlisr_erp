@@ -8,8 +8,8 @@ use Illuminate\Support\Facades\Storage;
 
 /**
  * Subscription Watch (Sarah 2026-11-11): the accounts payable bot's report.
- * Every month it answers two questions across ALL cards, business and
- * personal: which subscriptions did we sign up for, and which ones went up.
+ * Every month it answers two questions across the BUSINESS cards (personal
+ * cards are never stored here): which subscriptions did we sign up for, and which ones went up.
  *
  * Charges come in two ways:
  *   - the monthly bot (a scheduled Claude task) posts JSON here from Chrome
@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Storage;
  * An import for a card replaces that card's charges inside the imported date
  * range, so re-importing the same statement never doubles anything.
  *
- * Access: Jon and Sarah only (personal cards are in here).
+ * Access: Jon and Sarah only.
  * No migration: storage/app/card-charges.json.
  */
 class SubscriptionWatchController extends Controller
@@ -26,14 +26,10 @@ class SubscriptionWatchController extends Controller
     const STORE_PATH = 'card-charges.json';
 
     // Known cards. New cards can be added from the upload form.
+    // Business cards only. Personal cards never go in the ERP (Sarah 2026-11-11);
+    // they live in her private money tracker.
     const CARDS = [
         '1866' => ['label' => 'Chase Ink 1866 (Nivessa Two)', 'owner' => 'Business'],
-        '5705' => ['label' => 'Chase 5705 (Jon)', 'owner' => 'Personal'],
-        '9846' => ['label' => 'Chase Freedom Unlimited 9846 (Sarah)', 'owner' => 'Personal'],
-        '1241' => ['label' => 'Chase DoorDash 1241 (Sarah)', 'owner' => 'Personal'],
-        '9102' => ['label' => 'Barclays JetBlue 9102 (Sarah)', 'owner' => 'Personal'],
-        '1818' => ['label' => 'Citi Double Cash 1818 (Sarah, closed)', 'owner' => 'Personal'],
-        '2875' => ['label' => 'Citi 2875 (Sarah)', 'owner' => 'Personal'],
     ];
 
     // Merchants that are subscriptions even on their first charge.
@@ -79,6 +75,14 @@ class SubscriptionWatchController extends Controller
             if (!isset($d['cards'][$k])) {
                 $d['cards'][$k] = $c;
             }
+        }
+        // Purge anything personal that was ever loaded.
+        $personal = array_keys(array_filter($d['cards'], function ($c) { return ($c['owner'] ?? '') !== 'Business'; }));
+        if ($personal) {
+            $d['cards'] = array_diff_key($d['cards'], array_flip($personal));
+            $d['charges'] = array_values(array_filter($d['charges'], function ($c) use ($personal) { return !in_array($c['card'], $personal, true); }));
+            $d['imports'] = array_values(array_filter($d['imports'], function ($i) use ($personal) { return !in_array($i['card'], $personal, true); }));
+            self::save($d);
         }
         return $d;
     }
@@ -316,12 +320,9 @@ class SubscriptionWatchController extends Controller
             return $this->back($request, 0, 'Card must be the last 4 digits.');
         }
         if ($request->input('label')) {
-            $d['cards'][$card] = [
-                'label' => mb_substr(strip_tags($request->input('label')), 0, 80),
-                'owner' => $request->input('owner') === 'Business' ? 'Business' : 'Personal',
-            ];
+            $d['cards'][$card] = ['label' => mb_substr(strip_tags($request->input('label')), 0, 80), 'owner' => 'Business'];
         } elseif (!isset($d['cards'][$card])) {
-            $d['cards'][$card] = ['label' => 'Card ' . $card, 'owner' => 'Personal'];
+            return $this->back($request, 0, 'Unknown card. Business cards only; add it with a name first.');
         }
 
         if ($request->hasFile('csv')) {
