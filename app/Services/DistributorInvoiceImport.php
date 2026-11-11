@@ -244,6 +244,8 @@ class DistributorInvoiceImport
             foreach ($rows as $r) $rowsBySku[$r->sub_sku][] = $r;
         }
 
+        $catalogPool = self::catalogPool($business_id, $lines);
+
         $out = [];
         foreach ($lines as $l) {
             $upc = preg_replace('/\D/', '', (string) ($l['upc'] ?? ''));
@@ -267,7 +269,7 @@ class DistributorInvoiceImport
             if (!$best && $catno !== '') {
                 $catName = $catName ?: 'Vinyl - Sealed';
                 $catId = isset($catIds[$catName]) ? (int) $catIds[$catName] : null;
-                $best = self::matchCatalog($business_id, $catno, $l['artist'] ?? '', $l['title'] ?? '', $catId);
+                $best = self::matchCatalog($business_id, $catno, $l['artist'] ?? '', $l['title'] ?? '', $catId, $catalogPool);
                 if ($best) $allVids[] = (int) $best->variation_id;
             }
 
@@ -383,6 +385,10 @@ class DistributorInvoiceImport
 
         $created = [];
         $clean = [];
+        // Catalog-number invoices: products already made for these catalog
+        // numbers (one query), plus the ones this run creates.
+        $catPool = !empty($cfg['catalog']) ? self::catalogPool($business_id, $lines) : null;
+        $madeForCat = [];
         DB::beginTransaction();
         try {
             foreach ($lines as $l) {
@@ -420,12 +426,22 @@ class DistributorInvoiceImport
 
                 // Same UPC already created earlier in this invoice (a title on
                 // two lines) or by someone else a moment ago: reuse it.
-                $existing = DB::table('variations as v')->join('products as p', 'v.product_id', '=', 'p.id')
-                    ->where('p.business_id', $business_id)->whereNull('v.deleted_at');
-                $existing = $catno !== ''
-                    ? $existing->where('p.product_description', 'like', '%: ' . self::likeEscape($catno) . ' - %')
-                    : $existing->whereIn('v.sub_sku', self::upcCandidates($sku));
-                $existing = $existing->orderBy('p.is_inactive')->orderByDesc('p.id')->first(['v.id', 'v.product_id']);
+                if ($catno !== '') {
+                    $existing = $madeForCat[strtoupper($catno)] ?? null;
+                    if (!$existing && $catPool) {
+                        foreach ($catPool['cat'] as $r) {
+                            if (stripos((string) $r->product_description, ': ' . $catno . ' - ') !== false && !$r->is_inactive) {
+                                $existing = (object) ['id' => $r->variation_id, 'product_id' => $r->product_id];
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    $existing = DB::table('variations as v')->join('products as p', 'v.product_id', '=', 'p.id')
+                        ->where('p.business_id', $business_id)->whereNull('v.deleted_at')
+                        ->whereIn('v.sub_sku', self::upcCandidates($sku))
+                        ->orderBy('p.is_inactive')->orderByDesc('p.id')->first(['v.id', 'v.product_id']);
+                }
                 if ($existing) {
                     $clean[] = ['variation_id' => (int) $existing->id, 'product_id' => (int) $existing->product_id, 'qty' => $qty, 'unit_price' => $unit];
                     continue;
@@ -465,6 +481,7 @@ class DistributorInvoiceImport
                 $variation = DB::table('variations')->where('product_id', $product->id)->first(['id']);
 
                 $created[] = ['product_id' => $product->id, 'variation_id' => (int) $variation->id, 'sku' => $sku, 'name' => $name];
+                if ($catno !== '') $madeForCat[strtoupper($catno)] = (object) ['id' => (int) $variation->id, 'product_id' => $product->id];
                 $clean[] = ['variation_id' => (int) $variation->id, 'product_id' => $product->id, 'qty' => $qty, 'unit_price' => $unit];
             }
 
@@ -654,10 +671,43 @@ class DistributorInvoiceImport
      * an "Artist - " or "Genre - " prefix) matches. Prefers active, the
      * invoice's category (sealed vinyl), then newest. Null when unsure.
      */
-    public static function matchCatalog($business_id, $catno, $artist, $title, $catId)
+    const CATALOG_COLS = ['v.id as variation_id', 'v.product_id', 'v.sub_sku', 'v.default_purchase_price',
+        'v.sell_price_inc_tax', 'p.name as product_name', 'p.is_inactive', 'p.category_id', 'p.artist', 'p.product_description'];
+
+    /**
+     * Everything matchCatalog needs for a whole invoice in two queries (one
+     * per line was ~1s each: LIKE scans of products). Products this importer
+     * made for any of the catalog numbers, and products whose artist is (or
+     * whose name starts with) any of the invoice's artists.
+     */
+    public static function catalogPool($business_id, array $lines)
     {
-        $cols = ['v.id as variation_id', 'v.product_id', 'v.sub_sku', 'v.default_purchase_price',
-                 'v.sell_price_inc_tax', 'p.name as product_name', 'p.is_inactive', 'p.category_id', 'p.artist'];
+        $catnos = []; $artists = [];
+        foreach ($lines as $l) {
+            $c = trim((string) ($l['catno'] ?? ''));
+            if ($c === '') continue;
+            $catnos[$c] = true;
+            $a = trim((string) ($l['artist'] ?? ''));
+            if ($a !== '') $artists[$a] = true;
+        }
+        if (!$catnos) return null;
+        $base = function () use ($business_id) {
+            return DB::table('variations as v')->join('products as p', 'v.product_id', '=', 'p.id')
+                ->where('p.business_id', $business_id)->whereNull('v.deleted_at');
+        };
+        $byCat = $base()->where('p.added_via', 'vinylfuture_invoice')->where(function ($q) use ($catnos) {
+            foreach (array_keys($catnos) as $c) $q->orWhere('p.product_description', 'like', '%: ' . self::likeEscape($c) . ' - %');
+        })->limit(2000)->get(self::CATALOG_COLS);
+        $byArtist = $artists ? $base()->where(function ($q) use ($artists) {
+            $q->whereIn('p.artist', array_keys($artists));
+            foreach (array_keys($artists) as $a) $q->orWhere('p.name', 'like', self::likeEscape($a) . '%');
+        })->limit(5000)->get(self::CATALOG_COLS) : collect();
+        return ['cat' => $byCat, 'artist' => $byArtist];
+    }
+
+    public static function matchCatalog($business_id, $catno, $artist, $title, $catId, $pool = null)
+    {
+        $cols = self::CATALOG_COLS;
         $base = function () use ($business_id) {
             return DB::table('variations as v')->join('products as p', 'v.product_id', '=', 'p.id')
                 ->where('p.business_id', $business_id)->whereNull('v.deleted_at');
@@ -673,7 +723,10 @@ class DistributorInvoiceImport
 
         $catno = trim((string) $catno);
         if ($catno !== '') {
-            $hit = $pick($base()->where('p.product_description', 'like', '%: ' . self::likeEscape($catno) . ' - %')->limit(20)->get($cols));
+            $rows = $pool !== null
+                ? $pool['cat']->filter(function ($r) use ($catno) { return stripos((string) $r->product_description, ': ' . $catno . ' - ') !== false; })
+                : $base()->where('p.product_description', 'like', '%: ' . self::likeEscape($catno) . ' - %')->limit(20)->get($cols);
+            $hit = $pick($rows);
             if ($hit) return $hit;
         }
 
@@ -681,9 +734,8 @@ class DistributorInvoiceImport
         $tKey = self::titleKey($title);
         if ($artist === '' || strlen($tKey) < 3) return null;
         $aKey = self::titleKey($artist);
-        $like = '%' . self::likeEscape($artist) . '%';
-        $rows = $base()->where(function ($q) use ($like) {
-            $q->where('p.artist', 'like', $like)->orWhere('p.name', 'like', $like);
+        $rows = $pool !== null ? $pool['artist'] : $base()->where(function ($q) use ($artist) {
+            $q->where('p.artist', $artist)->orWhere('p.name', 'like', self::likeEscape($artist) . '%');
         })->limit(300)->get($cols);
         $hits = [];
         foreach ($rows as $r) {
