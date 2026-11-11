@@ -71,6 +71,8 @@ class DistributorInvoiceImport
             'catalog' => true,
             // Sell price = landed cost (tariff, shipping, fees, other costs) x 1.5.
             'markup' => 1.5,
+            // Never suggest less than this (what the store charges for deejay 12"s).
+            'min_price' => 22.00,
         ],
     ];
 
@@ -188,7 +190,7 @@ class DistributorInvoiceImport
     // Sealed pricing convention, read off how the purchases desk prices new
     // sealed titles (median ~1.6-1.7x cost; CDs end in .49, LPs in .99):
     // 1.6x cost, rounded UP to the next .49 for CDs and .99 for everything else.
-    public static function suggestPrice($cost, $categoryName, $markup = 1.6)
+    public static function suggestPrice($cost, $categoryName, $markup = 1.6, $minPrice = 0)
     {
         $cost = (float) $cost;
         if ($cost <= 0) return null;
@@ -196,6 +198,7 @@ class DistributorInvoiceImport
         $ending = $categoryName === 'CD - Sealed' ? 0.49 : 0.99;
         $p = floor($raw) + $ending;
         if ($p < $raw - 0.0001) $p += 1;
+        if ($minPrice > 0 && $p < $minPrice) $p = (float) $minPrice;
         return round($p, 2);
     }
 
@@ -309,7 +312,7 @@ class DistributorInvoiceImport
                     'category_id' => $catId,
                     'category_name' => $catName,
                     'sub_category_id' => $catno !== '' && $catId ? self::subCategoryId($business_id, $catId, 'Electronic/Dance') : null,
-                    'sell_price' => self::suggestPrice($unit, $catName, (self::config($distributor) ?: [])['markup'] ?? 1.6),
+                    'sell_price' => self::suggestPrice($unit, $catName, (self::config($distributor) ?: [])['markup'] ?? 1.6, (self::config($distributor) ?: [])['min_price'] ?? 0),
                 ];
             }
             $out[] = $line;
