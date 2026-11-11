@@ -19,7 +19,7 @@
     $nextMonth = date('Y-m', strtotime($month . '-01 +1 month'));
     $missing = [];
     foreach ($cards as $k => $c) {
-        if (empty($cov[$k][$month])) { $missing[] = $c['label']; }
+        if (empty($cov[$k][$month]) && stripos($c['label'], 'closed') === false) { $missing[] = $c['label']; }
     }
 @endphp
 <style>
