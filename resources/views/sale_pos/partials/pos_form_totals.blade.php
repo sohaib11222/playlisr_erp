@@ -214,7 +214,11 @@
     .pos-pretax-bar .clover-split { display: none; flex-direction: column; align-items: flex-end; gap: 2px; }
     .pos-pretax-bar .clover-split-row { display: flex; align-items: baseline; gap: 8px; color: #5A4410; white-space: nowrap; }
     .pos-pretax-bar .clover-split-key { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
-    .pos-pretax-bar .clover-split-amt { font-size: 22px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .pos-pretax-bar .clover-split-amt { font-size: 15px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
+    .pos-pretax-bar .clover-split-main { display: flex; align-items: baseline; gap: 8px; color: #5A4410; white-space: nowrap; }
+    .pos-pretax-bar .clover-split-step { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+    .pos-pretax-bar .clover-split-big { font-size: 26px; font-weight: 800; line-height: 1.1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+    .pos-pretax-bar .clover-split-total { border-top: 1px dashed #D9C46A; padding-top: 3px; margin-top: 2px; }
     .pos-pretax-bar.has-credit .pretax-cur,
     .pos-pretax-bar.has-credit #pre_tax_amount {
         color: #7A5A00;
@@ -663,8 +667,9 @@
                     <span class="pretax-cur">$</span><span id="pre_tax_amount">0.00</span>
                 </div>
                 <div class="clover-split" id="clover_split">
-                    <div class="clover-split-row"><span class="clover-split-key">Type in Clover</span><span class="clover-split-amt">$<span id="clover_split_taxed">0.00</span></span></div>
-                    <div class="clover-split-row"><span class="clover-split-key">+ No Tax item</span><span class="clover-split-amt">$<span id="clover_split_notax">0.00</span></span></div>
+                    <div class="clover-split-main"><span class="clover-split-step">1. Type</span><span class="clover-split-big">$<span id="clover_split_taxed">0.00</span></span></div>
+                    <div class="clover-split-row"><span class="clover-split-key">2. Then No Tax key</span><span class="clover-split-amt">$<span id="clover_split_notax">0.00</span></span></div>
+                    <div class="clover-split-row clover-split-total"><span class="clover-split-key">Clover total should read</span><span class="clover-split-amt">$<span id="clover_split_total">0.00</span></span></div>
                 </div>
             </div>
 

@@ -4129,8 +4129,17 @@ function update_clover_split() {
     var taxed = Math.round((shown - notax) * 100) / 100;
     $('#clover_split_taxed').text(taxed.toFixed(2));
     $('#clover_split_notax').text(notax.toFixed(2));
+    // What Clover's screen should read after it adds tax (= ERP total due).
+    var due = 0;
+    try {
+        due = __number_uf($('span#total_payable').text(), false) || 0;
+    } catch (e) {}
+    $('#clover_split_total').text(due.toFixed(2));
+    $('#clover_split_total').closest('.clover-split-row').toggle(due >= 0.01);
     // Nothing taxable (only bag / drinks): show just the No Tax key.
-    $('#clover_split_taxed').closest('.clover-split-row').toggle(taxed >= 0.01);
+    $('#clover_split_taxed').closest('.clover-split-main').toggle(taxed >= 0.01);
+    $('#clover_split_notax').closest('.clover-split-row').find('.clover-split-key')
+        .text(taxed >= 0.01 ? '2. Then No Tax key' : 'Type on No Tax key');
     $bar.addClass('has-split');
     $split.css('display', 'flex');
 }
