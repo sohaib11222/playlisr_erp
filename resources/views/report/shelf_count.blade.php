@@ -48,7 +48,7 @@
             <li>Scan every record in it, or tap it in the list.</li>
             <li><b>If a title shows in a bin in the ERP but it is not physically there, please tap None to mark it 0.</b></li>
             <li><b class="sc-red">If the record is in the wrong bin in the ERP, please fix it!</b> Tap <b>Genre</b> and pick the right one, so we know exactly where to find things.</li>
-            <li>Need an edit to this page? Tap <b>Report a bug</b> at the bottom right.</li>
+            <li>If you need an edit to this page to make your inventory count easier, please tap <b>Report a bug</b> at the bottom right and we will fix it.</li>
         </ul>
     </div>
     <form class="sc-row" method="get">
