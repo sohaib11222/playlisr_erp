@@ -4109,9 +4109,16 @@ function apply_store_credit_to_order_totals_display() {
  * pre-tax amount that, after Clover adds tax, lands exactly on the ERP total.
  * Display only; never touches totals or payments.
  */
+// Clover rounds tax UP to the next cent (4.010002 -> 4.02). Integer cents in,
+// integer cents out; tiny epsilon so float noise never adds a phantom cent.
+function clover_after_tax_cents(key_cents, rate) {
+    return key_cents + Math.ceil(key_cents * rate / 100 - 1e-6);
+}
+
 function update_clover_split() {
     var $bar = $('.pos-pretax-bar');
     var $split = $('#clover_split');
+    window.__clover_after_tax = null;
     if (!$bar.length || !$split.length) {
         return;
     }
@@ -4124,25 +4131,39 @@ function update_clover_split() {
     try {
         due = __number_uf($('span#total_payable').text(), false) || 0;
     } catch (e) {}
-    if (notax < 0.01 || rate <= 0 || due <= 0) {
+    var orderTax = 0;
+    try {
+        orderTax = __number_uf($('span#order_tax_display').text(), false) || 0;
+    } catch (e) {}
+    var shown = 0;
+    try {
+        shown = __number_uf($('span#pre_tax_amount').text(), false) || 0;
+    } catch (e) {}
+    var taxed = rate > 0 && orderTax > 0;
+
+    if (notax < 0.01 || !taxed || due <= 0) {
         $bar.removeClass('has-split');
         $split.hide();
+        // Normal sale: after-tax = what Clover shows for the pre-tax amount.
+        if (taxed && shown > 0) {
+            window.__clover_after_tax = clover_after_tax_cents(Math.round(shown * 100), rate) / 100;
+        }
         return;
     }
-    // Clover total = key + round(key * rate%). Search around due / (1+rate).
-    var r = rate / 100;
+    // Tax-free lines: one pre-tax number whose Clover total lands on (or just
+    // nearest) the ERP total. Search around due / (1+rate).
     var cents = Math.round(due * 100);
-    var guess = Math.round((due / (1 + r)) * 100);
+    var guess = Math.round((due / (1 + rate / 100)) * 100);
     var key = guess, best = null;
     for (var d = -3; d <= 3; d++) {
         var k = guess + d;
-        var got = k + Math.round(k * r);
-        var diff = Math.abs(got - cents);
+        var diff = Math.abs(clover_after_tax_cents(k, rate) - cents);
         if (best === null || diff < best || (diff === best && k < key)) {
             best = diff;
             key = k;
         }
     }
+    window.__clover_after_tax = clover_after_tax_cents(key, rate) / 100;
     $('#clover_split_taxed').text((key / 100).toFixed(2));
     $bar.addClass('has-split');
     $split.css('display', 'flex');
