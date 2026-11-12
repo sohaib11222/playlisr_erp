@@ -19,7 +19,7 @@
 .sc-bin.sc-done .sc-small, .sc-bin.sc-done .sc-ok { color: #fff; }
 .sc-bin.sc-done .sc-check { background: #fff; color: #2E6B2E; }
 .sc-done-tag { position: absolute; top: 8px; right: 10px; background: #fff; color: #2E6B2E; font-weight: 800; font-size: 13px; letter-spacing: .06em; padding: 2px 8px; border-radius: 6px; }
-.sc-bin.sc-done b { padding-right: 64px; }
+.sc-bin.sc-done b { padding-right: 64px; color: #fff !important; }
 .sc-check { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: #2E6B2E; color: #fff; font-size: 14px; font-weight: 800; margin-right: 6px; vertical-align: -3px; }
 .sc-ok { color: #2E6B2E; font-weight: 700; font-size: 13px; }
 .sc-fixnote { background: #FFF2B3; border: 2px solid #C9A400; border-radius: 10px; padding: 10px 12px; margin: 0 0 10px; font-size: 15px; color: #1F1B16; }
