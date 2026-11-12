@@ -162,6 +162,8 @@ class SearchInsightsController extends Controller
         }
         $s = strtolower($s);
         $s = str_replace(["'", '’'], '', $s);
+        // Doubled letters count once, so "chilli" finds "Chili" (Sarah 2026-11-12).
+        $s = preg_replace('/([a-z])\1+/', '$1', $s);
         return preg_split('/[^a-z0-9]+/', $s, -1, PREG_SPLIT_NO_EMPTY);
     }
 
