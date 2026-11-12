@@ -31,7 +31,7 @@ class ManagerBonusController extends Controller
     const PLANS = [
         // Sarah 2026-11-12: HW runs $78-94k/month since April, Dec is ~flat for
         // HW; Pico's Dec is ~1.7x its Aug-Oct average (Clover 2024 + 2025).
-        '2026-12' => [2 => 80000, 1 => 25000],
+        '2026-12' => [2 => 84000, 1 => 25000],
     ];
     const PLANS_FILE = 'manager-bonus-plans.json';
     // Clover net sales per month, pulled from the Clover API 2026-11-12 across
