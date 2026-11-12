@@ -1046,7 +1046,9 @@
                         $('#card_prompt_pretax').text('$' + $('#clover_split_taxed').text());
                     }
                     $('#card_prompt_notax').hide();
-                    $('#card_prompt_total').text(fmtMoney(total));
+                    // Clover rounds tax up a cent; tell the customer Clover's number.
+                    try { if (typeof update_clover_split === 'function') { update_clover_split(); } } catch (e) {}
+                    $('#card_prompt_total').text(fmtMoney(window.__clover_after_tax || total));
                     $('#card_prompt_confirm').off('click.cashier').on('click.cashier', function () {
                         // Tell the show.bs.modal hook to suppress
                         // pos.js's #card_details_modal and submit directly
