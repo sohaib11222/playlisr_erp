@@ -1893,6 +1893,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/admin/discogs-import-inventory/set-pos-access', 'DiscogsInventoryImportController@setPosAccess');
     Route::post('/admin/discogs-import-inventory/backfill-categories', 'DiscogsInventoryImportController@backfillCategories');
     Route::post('/admin/discogs-import-inventory/warehouse-sealed-cost', 'DiscogsInventoryImportController@warehouseSealedCost');
+    Route::get('/admin/inventory-value-by-location', 'DiscogsInventoryImportController@inventoryValueByLocation');
     Route::post('/admin/discogs-import-inventory/warehouse-sealed-cost-restore', 'DiscogsInventoryImportController@warehouseSealedCostRestoreEntered');
 
     // Flat-rate cost price rules (accountant punch list). Backfills missing

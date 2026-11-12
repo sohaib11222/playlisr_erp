@@ -409,6 +409,31 @@ class DiscogsInventoryImportController extends Controller
     }
 
     /**
+     * Read-only: inventory value by location = on-hand qty x variation cost
+     * (the same cost the valuation-by-category report uses), plus how many
+     * units have no cost at all.
+     */
+    public function inventoryValueByLocation(Request $request)
+    {
+        $business_id = (int) $request->session()->get('user.business_id');
+        $rows = DB::table('variation_location_details as vld')
+            ->join('variations as v', function ($j) { $j->on('v.id', '=', 'vld.variation_id')->whereNull('v.deleted_at'); })
+            ->join('products as p', 'p.id', '=', 'v.product_id')
+            ->join('business_locations as bl', 'bl.id', '=', 'vld.location_id')
+            ->where('p.business_id', $business_id)
+            ->where('p.enable_stock', 1)
+            ->where('vld.qty_available', '>', 0)
+            ->groupBy('bl.id', 'bl.name')
+            ->select('bl.name as location',
+                DB::raw('SUM(vld.qty_available) as units'),
+                DB::raw('SUM(vld.qty_available * COALESCE(NULLIF(v.dpp_inc_tax, 0), v.default_purchase_price, 0)) as cost_value'),
+                DB::raw('SUM(CASE WHEN COALESCE(NULLIF(v.dpp_inc_tax, 0), v.default_purchase_price, 0) = 0 THEN vld.qty_available ELSE 0 END) as units_no_cost'),
+                DB::raw('SUM(vld.qty_available * COALESCE(v.sell_price_inc_tax, 0)) as retail_value'))
+            ->orderBy('bl.name')->get();
+        return response()->json(['ok' => true, 'rows' => $rows]);
+    }
+
+    /**
      * Quick format detector — looks at the "Format: ..." line we wrote
      * to product_description during import and returns a stable key
      * matching the formatToCategoryName map.
