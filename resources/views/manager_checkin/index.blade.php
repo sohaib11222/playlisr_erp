@@ -131,6 +131,32 @@
 .open-shell .jon-notes textarea { min-height: 340px; font-size: 14px; line-height: 1.5; }
 .open-shell .jon-notes .jn-actions { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
 .open-shell .jon-notes .jn-actions .btn-save { margin-top: 0; }
+.open-shell .upd-card h2 { font-size: 18px; font-weight: 800; margin: 0 0 4px; }
+.open-shell .upd-card .sub { font-size: 13px; color: var(--d-ink-2); margin: 0 0 12px; }
+.open-shell .upd-person { border-top: 1px solid var(--d-line); padding: 10px 0; }
+.open-shell .upd-person:first-of-type { border-top: 0; }
+.open-shell .upd-person .who { font-weight: 800; font-size: 14.5px; margin-bottom: 4px; }
+.open-shell .upd-item { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.5; padding: 3px 0; }
+.open-shell .upd-item .mark { flex: 0 0 20px; height: 20px; border-radius: 6px; border: 2px solid var(--d-line-2); background: #fff; margin-top: 1px; display: flex; align-items: center; justify-content: center; }
+.open-shell .upd-item.done .mark { background: var(--d-good); border-color: var(--d-good); }
+.open-shell .upd-item .txt { flex: 1; }
+.open-shell .upd-item .when { font-size: 12.5px; color: var(--d-ink-2); font-weight: 600; }
+.open-shell .upd-item.done .txt > span:first-child { color: var(--d-ink-2); }
+.open-shell .upd-item a { color: var(--d-accent-text); font-weight: 700; word-break: break-word; }
+.open-shell .upd-del { background: none; border: 0; color: var(--d-ink-2); font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; text-decoration: underline; padding: 0; }
+.open-shell .upd-add { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--d-line); }
+.open-shell .upd-add select { flex: 0 1 200px; }
+.open-shell .upd-add input[type=text] { flex: 1 1 260px; font: inherit; font-size: 14.5px; border: 1px solid var(--d-line-2); border-radius: var(--d-radius-sm); padding: 9px 11px; }
+.open-shell .upd-add .btn-save { margin-top: 0; padding: 9px 18px; font-size: 14px; }
+.open-shell .share-box { margin-top: 14px; border: 2px solid var(--d-accent-deep); background: var(--d-accent-soft); border-radius: var(--d-radius-sm); padding: 12px 14px; display: none; }
+.open-shell .share-box.show { display: block; }
+.open-shell .share-box h4 { font-size: 12.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--d-accent-text); margin: 0 0 4px; }
+.open-shell .share-box .hint2 { font-size: 13px; color: var(--d-ink-2); margin: 0 0 8px; }
+.open-shell .share-box label { display: flex; gap: 10px; align-items: flex-start; font-size: 14.5px; line-height: 1.45; font-weight: 500; margin: 6px 0; cursor: pointer; }
+.open-shell .share-box input[type=checkbox] { width: 18px; height: 18px; margin-top: 2px; flex: 0 0 18px; }
+.open-shell .share-box a { color: var(--d-accent-text); font-weight: 700; }
+.open-shell .shared-list { margin-top: 10px; font-size: 14px; }
+.open-shell .shared-list b { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--d-ink-2); }
 </style>
 
 <div class="open-shell">
@@ -230,6 +256,59 @@
         </div>
     @endif
 
+    @php
+        $linkifyUpd = function ($t) {
+            return preg_replace('~(https?://[^\s<]+)~', '<a href="$1" target="_blank" rel="noopener">$1</a>', e($t));
+        };
+        $updByPerson = [];
+        foreach ($updates as $u) { $updByPerson[$u['employee_name']][] = $u; }
+        ksort($updByPerson);
+    @endphp
+    @if($isAdmin || !empty($updates))
+    <div class="card upd-card" id="ci-updates">
+        <h2>Updates to share with each person</h2>
+        <p class="sub">At each person's next check-in, tell them their updates and tick them off in the form below. A green check means it was shared.</p>
+        @forelse($updByPerson as $name => $list)
+            <div class="upd-person">
+                <div class="who">{{ $name }}</div>
+                @foreach($list as $u)
+                    <div class="upd-item {{ !empty($u['shared_at']) ? 'done' : '' }}">
+                        <span class="mark">@if(!empty($u['shared_at']))<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>@endif</span>
+                        <span class="txt">
+                            <span>{!! $linkifyUpd($u['text']) !!}</span>
+                            <br><span class="when">@if(!empty($u['shared_at']))Shared {{ date('m/d/y', strtotime($u['shared_at'])) }} by {{ $u['shared_by'] }}@else Not shared yet @endif</span>
+                            @if($isAdmin)
+                                <form method="POST" action="{{ url('/manager-checkins/updates/delete') }}" style="display:inline;margin-left:8px;">
+                                    {{ csrf_field() }}
+                                    <input type="hidden" name="store" value="{{ $store }}">
+                                    <input type="hidden" name="id" value="{{ $u['id'] }}">
+                                    <button type="submit" class="upd-del">Remove</button>
+                                </form>
+                            @endif
+                        </span>
+                    </div>
+                @endforeach
+            </div>
+        @empty
+            <p class="empty">No updates yet.</p>
+        @endforelse
+        @if($isAdmin)
+            <form method="POST" action="{{ url('/manager-checkins/updates') }}" class="upd-add">
+                {{ csrf_field() }}
+                <input type="hidden" name="store" value="{{ $store }}">
+                <select name="employee_id" required>
+                    <option value="">Pick someone</option>
+                    @foreach($employees as $e)
+                        <option value="{{ $e->id }}">{{ trim($e->first_name . ' ' . $e->last_name) }}</option>
+                    @endforeach
+                </select>
+                <input type="text" name="text" maxlength="1000" placeholder="Update to share, for example: The bag fee glitch is fixed" required>
+                <button type="submit" class="btn-save">Add</button>
+            </form>
+        @endif
+    </div>
+    @endif
+
     <form method="POST" action="{{ url('/manager-checkins') }}" class="card">
         {{ csrf_field() }}
         <input type="hidden" name="store" value="{{ $store }}">
@@ -250,6 +329,12 @@
         </div>
 
         <div class="work" id="ci-work"></div>
+
+        <div class="share-box" id="ci-share">
+            <h4>Updates to share</h4>
+            <p class="hint2">Tell them these, then tick each one you shared.</p>
+            <div id="ci-share-list"></div>
+        </div>
 
         <label class="q">How is their week going?</label>
         <div class="pills">
@@ -294,6 +379,13 @@
                 <div class="entry-meta">{{ \Carbon\Carbon::parse($r['date'])->format('D M j, Y') }} - by {{ $r['manager_name'] }}</div>
             </div>
             {{-- 'notes' was dropped from the form 2026-09-28; still shown on older entries. --}}
+            @if(!empty($sharedByCheckin[$r['id']]))
+                <div class="shared-list"><b>Updates shared</b>
+                    @foreach($sharedByCheckin[$r['id']] as $t)
+                        <div class="upd-item done"><span class="mark"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3.5" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="txt">{!! $linkifyUpd($t) !!}</span></div>
+                    @endforeach
+                </div>
+            @endif
             @foreach($questions + ['notes' => ['Anything else for Jon', '']] as $key => $q)
                 @if(!empty($r[$key]))
                     <div class="ans"><b>{{ $q[0] }} @if(in_array($key, $taskable, true))<a class="mk-task" href="{{ $taskLink($r, $key, $q[0]) }}" target="_blank" rel="noopener">Make a task</a>@endif</b>{{ $r[$key] }}</div>
@@ -327,6 +419,22 @@
     }
     sel.addEventListener('change', render);
     render();
+
+    // Updates to share with the picked person, as checkboxes (told[]).
+    var openUpdates = @json($openUpdates);
+    var shareBox = document.getElementById('ci-share');
+    var shareList = document.getElementById('ci-share-list');
+    function linkify(s) { return esc(s).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>'); }
+    function renderShare() {
+        var list = openUpdates[sel.value] || [];
+        if (!list.length) { shareBox.className = 'share-box'; shareList.innerHTML = ''; return; }
+        shareList.innerHTML = list.map(function (u) {
+            return '<label><input type="checkbox" name="told[]" value="' + esc(u.id) + '"><span>' + linkify(u.text) + '</span></label>';
+        }).join('');
+        shareBox.className = 'share-box show';
+    }
+    sel.addEventListener('change', renderShare);
+    renderShare();
 
     // "Make a task" on the form: open a new task pre-filled from what's typed.
     var erpOwner = @json($erpOwnerId);

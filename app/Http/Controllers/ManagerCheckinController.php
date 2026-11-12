@@ -32,6 +32,12 @@ class ManagerCheckinController extends Controller
     // store's manager reads it at the top of this page.
     const NOTES_PATH = 'manager_jon_notes.json';
 
+    // Updates for one employee that the manager should pass on at that
+    // person's next check-in (Sarah 2026-11-12). Admins add them; the manager
+    // ticks each one off in the check-in form, which records when and in
+    // which check-in it was shared.
+    const UPDATES_PATH = 'manager_checkin_updates.json';
+
     const STORES = ['hw' => 'Hollywood', 'pico' => 'Pico'];
 
     // Not floor staff, never in the employee dropdown (Sarah 2026-09-25): gone
@@ -93,6 +99,75 @@ class ManagerCheckinController extends Controller
         }
         $data = json_decode(Storage::get(self::NOTES_PATH), true);
         return is_array($data) ? $data : [];
+    }
+
+    private static function loadUpdates()
+    {
+        if (!Storage::exists(self::UPDATES_PATH)) {
+            return [];
+        }
+        $data = json_decode(Storage::get(self::UPDATES_PATH), true);
+        return is_array($data) ? $data : [];
+    }
+
+    private static function saveUpdates(array $items)
+    {
+        Storage::put(self::UPDATES_PATH, json_encode(array_values($items), JSON_PRETTY_PRINT));
+    }
+
+    /** Admins add an update for one employee. */
+    public function addUpdate(Request $request)
+    {
+        if (!$this->isAdmin()) {
+            abort(403, 'Only Jon and Sarah can add updates.');
+        }
+        $businessId = $request->session()->get('user.business_id') ?: auth()->user()->business_id;
+        $store      = $this->currentStore($request);
+        $employeeId = (int) $request->input('employee_id');
+        $employee   = $this->employees($businessId, $store)->first(function ($u) use ($employeeId) {
+            return (int) $u->id === $employeeId;
+        });
+        $text = mb_substr(trim((string) $request->input('text')), 0, 1000);
+        if (!$employee || $text === '') {
+            return redirect()->action('ManagerCheckinController@index', ['store' => $store])
+                ->with('status', ['success' => 0, 'msg' => 'Pick the employee and type the update.']);
+        }
+        $me    = auth()->user();
+        $items = self::loadUpdates();
+        $items[] = [
+            'id'            => uniqid('up_'),
+            'business_id'   => (int) $businessId,
+            'store'         => $store,
+            'employee_id'   => $employeeId,
+            'employee_name' => trim($employee->first_name . ' ' . $employee->last_name),
+            'text'          => $text,
+            'created_at'    => date('Y-m-d H:i:s'),
+            'created_by'    => trim($me->first_name . ' ' . $me->last_name),
+            'shared_at'     => null,
+            'shared_by'     => null,
+            'checkin_id'    => null,
+        ];
+        self::saveUpdates($items);
+
+        return redirect()->to(url('/manager-checkins') . '?store=' . $store . '#ci-updates')
+            ->with('status', ['success' => 1, 'msg' => 'Added an update for ' . trim($employee->first_name . ' ' . $employee->last_name) . '.']);
+    }
+
+    /** Admins remove an update (added by mistake or no longer needed). */
+    public function deleteUpdate(Request $request)
+    {
+        if (!$this->isAdmin()) {
+            abort(403);
+        }
+        $store = $this->currentStore($request);
+        $id    = (string) $request->input('id');
+        $items = array_filter(self::loadUpdates(), function ($u) use ($id) {
+            return ($u['id'] ?? '') !== $id;
+        });
+        self::saveUpdates($items);
+
+        return redirect()->to(url('/manager-checkins') . '?store=' . $store . '#ci-updates')
+            ->with('status', ['success' => 1, 'msg' => 'Removed the update.']);
     }
 
     /** Manager's home store (hw / pico) or null for admins and everyone else. */
@@ -281,6 +356,24 @@ class ManagerCheckinController extends Controller
 
         $employees = $this->employees($businessId, $store);
 
+        // Per-employee updates for this store: open ones by employee id (shown
+        // in the form when that person is picked) and the full list for the card.
+        $updates = array_values(array_filter(self::loadUpdates(), function ($u) use ($businessId, $store) {
+            return (int) ($u['business_id'] ?? 0) === (int) $businessId && ($u['store'] ?? '') === $store;
+        }));
+        $openUpdates = [];
+        foreach ($updates as $u) {
+            if (empty($u['shared_at'])) {
+                $openUpdates[$u['employee_id']][] = ['id' => $u['id'], 'text' => $u['text']];
+            }
+        }
+        $sharedByCheckin = [];
+        foreach ($updates as $u) {
+            if (!empty($u['checkin_id'])) {
+                $sharedByCheckin[$u['checkin_id']][] = $u['text'];
+            }
+        }
+
         // A manager only sees the notes for his own store.
         $showNotes = $isAdmin || self::managerHomeStore() === $store;
         $jonNotes  = $showNotes ? (self::loadNotes()[$businessId . ':' . $store] ?? null) : null;
@@ -299,6 +392,9 @@ class ManagerCheckinController extends Controller
             'showNotes'      => $showNotes,
             'jonNotes'       => $jonNotes,
             'notesManager'   => $store === 'pico' ? 'Zak' : 'Luis',
+            'updates'        => $updates,
+            'openUpdates'    => $openUpdates,
+            'sharedByCheckin' => $sharedByCheckin,
         ]);
     }
 
@@ -341,6 +437,21 @@ class ManagerCheckinController extends Controller
         $items = self::load();
         array_unshift($items, $entry);
         self::save($items);
+
+        // Updates the manager ticked as shared with this person.
+        $told = array_map('strval', (array) $request->input('told', []));
+        if ($told) {
+            $updates = self::loadUpdates();
+            foreach ($updates as &$u) {
+                if (in_array($u['id'] ?? '', $told, true) && (int) ($u['employee_id'] ?? 0) === $employeeId && empty($u['shared_at'])) {
+                    $u['shared_at']  = date('Y-m-d H:i:s');
+                    $u['shared_by']  = $entry['manager_name'];
+                    $u['checkin_id'] = $entry['id'];
+                }
+            }
+            unset($u);
+            self::saveUpdates($updates);
+        }
 
         return redirect()->action('ManagerCheckinController@index', ['store' => $store])
             ->with('status', ['success' => 1, 'msg' => 'Saved check-in for ' . $entry['employee_name'] . '.']);
