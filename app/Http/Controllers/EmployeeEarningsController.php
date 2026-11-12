@@ -214,7 +214,12 @@ class EmployeeEarningsController extends Controller
             $wk = []; // 'Y-m-d'(Monday) => ['listing'=>, 'sales'=>, 'paid'=>, 'dates'=>[]]
             $init = function () { return ['listing' => 0.0, 'sales' => 0.0, 'paid' => 0.0, 'dates' => []]; };
             $stmt = app(\App\Http\Controllers\ReportController::class)
-                ->buildDailyEarnings($businessId, $start, $end, $userId);
+                ->buildDailyEarningsAllCached($businessId, $start, $end);
+            // Someone not in the shared run (rare) still gets their own rows.
+            if (!isset($stmt['employees'][$userId])) {
+                $stmt = app(\App\Http\Controllers\ReportController::class)
+                    ->buildDailyEarnings($businessId, $start, $end, $userId);
+            }
             foreach ($stmt['days'] as $date => $list) {
                 foreach ($list as $r) {
                     if ((int) $r['user_id'] !== (int) $userId) { continue; }

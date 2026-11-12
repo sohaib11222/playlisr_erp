@@ -15588,6 +15588,17 @@ class ReportController extends Controller
      *    'live' => bool]  where each row has user_id, employee, register_sales,
      *   listed_sales, listing_comm, sales_target, sales_bonus, total_comm.
      */
+    // Everyone's daily earnings for a window, cached 10 minutes (warmed every
+    // 5). Each person's rows are identical to a single-person call: the
+    // leaderboard run is always for everyone and only filtered afterwards.
+    public function buildDailyEarningsAllCached($business_id, $start, $end, $fresh = false)
+    {
+        $key = 'daily_earnings_all_v1_' . $business_id . '_' . \Carbon::parse($start)->toDateString() . '_' . \Carbon::parse($end)->toDateString();
+        $build = function () use ($business_id, $start, $end) { return $this->buildDailyEarnings($business_id, $start, $end, null, false); };
+        if ($fresh) { $v = $build(); \Cache::put($key, $v, 600); return $v; }
+        return \Cache::remember($key, 600, $build); // seconds (Laravel 5.8)
+    }
+
     public function buildDailyEarnings($business_id, $start, $end, $only_user_id = null, $exclude_owners = false)
     {
         $live = \Carbon::now()->gte(\Carbon::parse(self::SALES_BONUS_LIVE_DATE));
