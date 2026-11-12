@@ -68,7 +68,7 @@
 <div class="sc-wrap">
     <a class="sc-small" href="/reports/shelf-count?location_id={{ $loc }}&kind={{ $kind }}">Back to bins</a>
     <h1>{{ $kindLabel }} / {{ $name }}</h1>
-    <div class="sc-fixnote"><b>If the record is in the wrong bin in the ERP, please fix it!</b> When you count a bin, tap <b>Genre</b> on any record that belongs somewhere else and pick the right one.</div>
+    <div class="sc-fixnote"><b>If the record is in the wrong bin in the ERP, please fix it!</b> When you count a bin, tap <b>Genre</b> on any record that belongs somewhere else and pick the right one. This way we know exactly where to find things.</div>
     <div class="sc-how">
         <b>How to count ({{ count($items) }} titles)</b>
         <ol>
