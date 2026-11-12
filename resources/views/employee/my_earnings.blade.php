@@ -187,12 +187,13 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
                     $vsAvg = $avg3 > 0 ? round(($mb['plan'] / $avg3 - 1) * 100) : null;
                 @endphp
                 <h4 style="margin:6px 0 4px;">How your {{ $mName }} plan was set: ${{ number_format($mb['plan'], 0) }}</h4>
-                <p style="color:#222; margin:0 0 8px;">We looked at what {{ $mb['store'] }} sold in {{ $mName }} the last two years and how the last 3 months compare to the same months a year earlier. The plan is set so 100% is reachable if the store keeps its current pace; 110% and 120% take extra push.</p>
+                <p style="color:#222; margin:0 0 8px;">Start with what {{ $mb['store'] }} sold last {{ $mName }}, then grow it by how much the store is up over the last 3 months compared to the same months last year. That is what {{ $mName }} should do if the store just keeps its current pace. The plan is set at or a little below that, so 100% is reachable; 110% and 120% take extra push.@if($mName === 'December') December is always a big month: holiday shopping makes it well above the fall months.@endif</p>
                 <table class="table">
                     <thead><tr><th>Like-for-like ({{ $mName }})</th><th style="text-align:right;">Store sales</th></tr></thead>
                     <tbody>
                         @if($mb['ly2_full'] > 0)<tr><td>{{ \Carbon::parse($mb['ly2_month'] . '-01')->format('F Y') }}</td><td style="text-align:right;">${{ number_format($mb['ly2_full'], 0) }}</td></tr>@endif
                         <tr><td>{{ \Carbon::parse($mb['ly_month'] . '-01')->format('F Y') }}</td><td style="text-align:right;">${{ number_format($mb['ly_full'], 0) }}</td></tr>
+                        <tr><td>{{ \Carbon::parse($mb['ly_month'] . '-01')->format('F Y') }} grown by the last 3 months' pace ({{ $mb['pace'] >= 0 ? '+' : '' }}{{ round($mb['pace']) }}%)</td><td style="text-align:right;">${{ number_format($mb['ly_full'] * (1 + $mb['pace'] / 100), 0) }}</td></tr>
                         <tr><td><b>{{ \Carbon::parse($mb['month'] . '-01')->format('F Y') }} plan</b></td><td style="text-align:right;"><b>${{ number_format($mb['plan'], 0) }}</b>@if($vsLy !== null) ({{ $vsLy >= 0 ? '+' : '' }}{{ $vsLy }}% vs last year)@endif</td></tr>
                     </tbody>
                 </table>
