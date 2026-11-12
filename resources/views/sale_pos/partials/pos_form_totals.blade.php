@@ -1204,9 +1204,9 @@
                             <div class="card-amt-tag">bag fee and other tax-free items</div>
                         </div>
                         <div class="card-verify-row">
-                            <div class="card-verify-instr">After tax, Clover should show this amount</div>
+                            <div class="card-verify-instr">Tell the customer it will be</div>
                             <div class="card-verify-amt" id="card_prompt_total">$0.00</div>
-                            <div class="card-amt-tag">post-tax</div>
+                            <div class="card-amt-tag">after tax</div>
                         </div>
                         <div class="card-reminder">Wait for Clover approval before tapping <strong>Approved</strong>.</div>
                     </div>
