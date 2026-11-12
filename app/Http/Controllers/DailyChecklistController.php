@@ -513,10 +513,9 @@ class DailyChecklistController extends Controller
                 \Cache::forget($k);
             }
         }
-        list($sections, $sarah, $done) = \App\Utils\OpenItemsUtil::applyActions(\App\Utils\OpenItemsUtil::sections($business_id));
+        list($sections, $done) = \App\Utils\OpenItemsUtil::applyActions(\App\Utils\OpenItemsUtil::sections($business_id));
         return view('open_items.index', [
             'sections' => $sections,
-            'sarah'    => $sarah,
             'done'     => $done,
             'isOwner'  => \App\Utils\FatteenGoalsUtil::isOwner() || self::isJon(),
             'total'    => \App\Utils\OpenItemsUtil::total($sections),
@@ -524,32 +523,53 @@ class DailyChecklistController extends Controller
         ]);
     }
 
-    /** "Fixed it" (what you did) or "Needs Sarah" (your recommendation) on one Open Items row. */
+    /** "Fixed it" (what you did) or "ERP bug" (what's broken, goes to Bug Fixes) on one Open Items row. */
     public function openItemsAct(Request $request)
     {
         $this->guard();
         $key = mb_substr(trim((string) $request->input('key', '')), 0, 120);
-        $action = $request->input('action') === 'sarah' ? 'sarah' : 'fixed';
-        $note = mb_substr(trim((string) $request->input('note', '')), 0, 1000);
+        $action = $request->input('action') === 'bug' ? 'bug' : 'fixed';
+        $note = mb_substr(trim((string) $request->input('note', '')), 0, 2000);
         $label = mb_substr(trim((string) $request->input('label', '')), 0, 200);
+        $link = mb_substr(trim((string) $request->input('link', '')), 0, 1000);
         $back = url('/open-items') . '#oi-' . preg_replace('/[^a-z]/', '', (string) $request->input('section', ''));
         if ($key === '' || mb_strlen($note) < 8) {
-            return redirect($back)->with('oi_msg', $action === 'sarah'
-                ? 'Write what you recommend Sarah do (at least a few words).'
+            return redirect($back)->with('oi_msg', $action === 'bug'
+                ? 'Write what in the ERP is broken or missing (at least a few words).'
                 : 'Write what you did to fix it (at least a few words).');
         }
         $who = trim((string) auth()->user()->first_name);
-        \App\Utils\OpenItemsUtil::saveAction($key, $action, $note, $who, $label);
+        $business_id = (int) $request->session()->get('user.business_id');
 
+        if ($action === 'bug') {
+            $id = \DB::table('erp_bug_reports')->insertGetId([
+                'business_id'   => $business_id ?: null,
+                'reported_by'   => auth()->id(),
+                'reporter_name' => trim(auth()->user()->first_name . ' ' . auth()->user()->last_name),
+                'client_context' => 'From Open Items: ' . $label,
+                'source'        => 'erp',
+                'kind'          => 'bug',
+                'page_url'      => $link !== '' ? $link : url('/open-items'),
+                'description'   => $note . ' (Open Items: ' . $label . ')',
+                'status'        => 'new',
+                'created_at'    => now(),
+                'updated_at'    => now(),
+            ]);
+            \App\Utils\OpenItemsUtil::saveAction($key, 'bug', $note . ' (bug #' . $id . ')', $who, $label);
+            return redirect($back)->with('oi_msg', 'Filed as ERP bug #' . $id . ' in Bug Fixes. It comes back here in 48 hours if it is still open.');
+        }
+
+        \App\Utils\OpenItemsUtil::saveAction($key, 'fixed', $note, $who, $label);
         // A fixed customer text or call is closed in the Communications Hub too.
-        if ($action === 'fixed' && preg_match('/^comm:(\d+)$/', $key, $m)) {
+        if (preg_match('/^comm:(\d+)$/', $key, $m)) {
             \DB::table('communications')
-                ->where('business_id', (int) $request->session()->get('user.business_id'))
+                ->where('business_id', $business_id)
                 ->where('id', (int) $m[1])
                 ->update(['status' => 'resolved', 'resolved_by' => auth()->id(), 'resolved_at' => now(), 'resolution_notes' => $note, 'updated_at' => now()]);
         }
-        return redirect($back)->with('oi_msg', $action === 'sarah' ? 'Sent to Sarah\'s list with your recommendation.' : 'Nice. Logged as fixed.');
+        return redirect($back)->with('oi_msg', 'Nice. Logged as fixed.');
     }
 }
+
 
 

@@ -54,7 +54,7 @@
     <div class="oi-top">
         <div>
             <h1>Open Items</h1>
-            <p>Everything still waiting on someone. Work it top to bottom and solve each one the same day. "Fixed it" means the problem is gone, not that someone was told. If it is still open 48 hours later, it comes back. Only send something to Sarah with your recommendation. Updated {{ $asOf }}.</p>
+            <p>Everything still waiting on someone. Work it top to bottom and solve each one the same day. "Fixed it" means the problem is gone, not that someone was told. If it is still open 48 hours later, it comes back. If the ERP is what's stopping you, report it as an ERP bug. Updated {{ $asOf }}.</p>
             <div class="oi-total {{ $total === 0 ? 'zero' : '' }}">{{ $total === 0 ? 'Nothing open. Nice work.' : $total . ' open' }}</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -96,15 +96,16 @@
                                     <button type="submit">Save</button>
                                 </form>
                             </details>
-                            <details class="ask"><summary>Needs Sarah</summary>
+                            <details class="ask"><summary>ERP bug</summary>
                                 <form method="POST" action="{{ route('open-items.act') }}">
                                     {{ csrf_field() }}
                                     <input type="hidden" name="key" value="{{ $r['key'] }}">
-                                    <input type="hidden" name="action" value="sarah">
+                                    <input type="hidden" name="action" value="bug">
                                     <input type="hidden" name="section" value="{{ $key }}">
+                                    <input type="hidden" name="link" value="{{ $r['link'] }}">
                                     <input type="hidden" name="label" value="{{ $s['title'] }}: {{ $r['who'] }}">
-                                    <textarea name="note" required minlength="8" placeholder="What do you recommend? e.g. Refund $40 and send a 10% code, OK?"></textarea>
-                                    <button type="submit">Send to Sarah</button>
+                                    <textarea name="note" required minlength="8" placeholder="What in the ERP is broken or missing? e.g. Refund button errors on this order"></textarea>
+                                    <button type="submit">Report bug</button>
                                 </form>
                             </details>
                             @endif
@@ -116,37 +117,8 @@
         </div>
     @endforeach
 
-    <div class="oi-card" id="oi-sarah">
-        <div class="oi-head"><h2>Waiting on Sarah <span class="oi-count {{ count($sarah) === 0 ? 'zero' : '' }}">{{ count($sarah) }}</span></h2></div>
-        <p class="oi-how">Each one comes with a recommendation. When it is decided, Fatteen does it and marks it fixed.</p>
-        @forelse($sarah as $r)
-            <div class="oi-row">
-                <div class="oi-who" title="{{ $r['who'] }}">{{ $r['who'] }}</div>
-                <div class="oi-what">{{ $r['section'] }}: {{ $r['what'] }}</div>
-                <div class="oi-age">{{ $r['age'] }}</div>
-                <div class="oi-open"><a href="{{ $r['link'] }}">Open</a></div>
-                <div class="oi-acts">
-                    <details class="fix"><summary>Fixed it</summary>
-                        <form method="POST" action="{{ route('open-items.act') }}">
-                            {{ csrf_field() }}
-                            <input type="hidden" name="key" value="{{ $r['key'] }}">
-                            <input type="hidden" name="action" value="fixed">
-                            <input type="hidden" name="section" value="sarah">
-                            <input type="hidden" name="label" value="{{ $r['section'] }}: {{ $r['who'] }}">
-                            <textarea name="note" required minlength="8" placeholder="What was done?"></textarea>
-                            <button type="submit">Save</button>
-                        </form>
-                    </details>
-                </div>
-                <div class="oi-rec">Recommendation from {{ $r['rec_by'] }}: {{ $r['rec'] }}</div>
-            </div>
-        @empty
-            <div class="oi-empty">Nothing waiting on Sarah.</div>
-        @endforelse
-    </div>
-
     <div class="oi-card" id="oi-done">
-        <div class="oi-head"><h2>Fixed today <span class="oi-count zero">{{ count($done) }}</span></h2></div>
+        <div class="oi-head"><h2>Fixed or reported today <span class="oi-count zero">{{ count($done) }}</span></h2></div>
         @forelse($done as $a)
             <div class="oi-done"><strong>{{ $a['label'] ?? '' }}</strong> ({{ $a['by'] ?? '' }}, {{ \Carbon\Carbon::parse($a['at'])->setTimezone('America/Los_Angeles')->format('g:i A') }}): {{ $a['note'] ?? '' }}</div>
         @empty

@@ -443,7 +443,7 @@ class OpenItemsUtil
         return self::section('Staff not set up', 'Every new hire needs an ERP login and a time clock PIN before their first shift. Finish the onboarding checklist the day they are hired.', url('/employee-checklist'), $out);
     }
 
-    /* ---------- Fixed it / Needs Sarah ---------- */
+    /* ---------- Fixed it / ERP bug ---------- */
 
     const ACTIONS_FILE = 'open_items_actions.json';
     const RECHECK_HOURS = 48;
@@ -484,34 +484,25 @@ class OpenItemsUtil
     /**
      * Applies what he already did. "Fixed it" hides a row for 48 hours; if the
      * problem is still open after that, it comes back showing his note, so a
-     * fix only counts when the problem is actually gone. "Needs Sarah" moves it
-     * to the Sarah list with his recommendation.
-     * Returns [sections, sarahRows, doneToday].
+     * fix only counts when the problem is actually gone. "ERP bug" files it in
+     * the Bug Fixes queue and gets the same 48-hour recheck.
+     * Returns [sections, doneToday].
      */
     public static function applyActions(array $sections): array
     {
         $acts = self::readActions();
         $now = Carbon::now(self::TZ);
-        $sarah = [];
         foreach ($sections as $sk => $s) {
             $keep = [];
             foreach ($s['rows'] as $r) {
                 $a = ($r['key'] ?? '') !== '' ? ($acts[$r['key']] ?? null) : null;
                 if ($a) {
                     $at = Carbon::parse($a['at'])->setTimezone(self::TZ);
-                    if ($a['action'] === 'sarah') {
-                        $r['section'] = $s['title'];
-                        $r['rec'] = $a['note'];
-                        $r['rec_by'] = $a['by'] . ', ' . $at->format('m/d/y g:i A');
-                        $sarah[] = $r;
+                    if ($at->diffInHours($now) < self::RECHECK_HOURS) {
                         continue;
                     }
-                    if ($a['action'] === 'fixed' && $at->diffInHours($now) < self::RECHECK_HOURS) {
-                        continue;
-                    }
-                    if ($a['action'] === 'fixed') {
-                        $r['reopened'] = 'Marked fixed ' . $at->format('m/d/y') . ' ("' . $a['note'] . '") but it is still open.';
-                    }
+                    $r['reopened'] = ($a['action'] === 'bug' ? 'Reported as an ERP bug ' : 'Marked fixed ')
+                        . $at->format('m/d/y') . ' ("' . $a['note'] . '") but it is still open.';
                 }
                 $keep[] = $r;
             }
@@ -519,12 +510,12 @@ class OpenItemsUtil
         }
         $done = [];
         foreach ($acts as $k => $a) {
-            if (($a['action'] ?? '') === 'fixed' && Carbon::parse($a['at'])->setTimezone(self::TZ)->isSameDay($now)) {
+            if (in_array($a['action'] ?? '', ['fixed', 'bug'], true) && Carbon::parse($a['at'])->setTimezone(self::TZ)->isSameDay($now)) {
                 $done[] = $a;
             }
         }
         usort($done, fn ($x, $y) => strcmp($y['at'], $x['at']));
-        return [$sections, $sarah, $done];
+        return [$sections, $done];
     }
 }
 
