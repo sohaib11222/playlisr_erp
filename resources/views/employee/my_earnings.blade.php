@@ -187,7 +187,7 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
                     $vsAvg = $avg3 > 0 ? round(($mb['plan'] / $avg3 - 1) * 100) : null;
                 @endphp
                 <h4 style="margin:6px 0 4px;">How your {{ $mName }} plan was set: ${{ number_format($mb['plan'], 0) }}</h4>
-                <p style="color:#222; margin:0 0 8px;">Start with what {{ $mb['store'] }} sold last {{ $mName }}, then grow it by how much the store is up over the last 3 months compared to the same months last year. That is what {{ $mName }} should do if the store just keeps its current pace. The plan is set at or a little below that, so 100% is reachable; 110% and 120% take extra push.@if($mName === 'December') December is always a big month: holiday shopping makes it well above the fall months.@endif</p>
+                <p style="color:#222; margin:0 0 8px;">Start with what {{ $mb['store'] }} sold last {{ $mName }}, then grow it by how much the store is up over the last 3 months compared to the same months last year. That is what {{ $mName }} should do if the store just keeps its current pace. The plan is set at or a little below that, so 100% is reachable; 110% and 120% take extra push.</p>
                 <table class="table">
                     <thead><tr><th>Like-for-like ({{ $mName }})</th><th style="text-align:right;">Store sales</th></tr></thead>
                     <tbody>
