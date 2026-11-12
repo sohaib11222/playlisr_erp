@@ -186,7 +186,7 @@
             // Render the plain text: ALL CAPS lines = section headings,
             // "- " lines = bullets, bare links clickable. Escaped first.
             $linkify = function ($t) {
-                return preg_replace('~(https?://[^\s<]+)~', '<a href="$1" target="_blank" rel="noopener">$1</a>', e($t));
+                return preg_replace('~(https?://[^\s<]*[^\s<.,;:)!?])~', '<a href="$1" target="_blank" rel="noopener">$1</a>', e($t));
             };
             $notesHtml = '';
             $inList = false;
@@ -258,7 +258,7 @@
 
     @php
         $linkifyUpd = function ($t) {
-            return preg_replace('~(https?://[^\s<]+)~', '<a href="$1" target="_blank" rel="noopener">$1</a>', e($t));
+            return preg_replace('~(https?://[^\s<]*[^\s<.,;:)!?])~', '<a href="$1" target="_blank" rel="noopener">$1</a>', e($t));
         };
         $updByPerson = [];
         foreach ($updates as $u) { $updByPerson[$u['employee_name']][] = $u; }
@@ -424,7 +424,7 @@
     var openUpdates = @json($openUpdates);
     var shareBox = document.getElementById('ci-share');
     var shareList = document.getElementById('ci-share-list');
-    function linkify(s) { return esc(s).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>'); }
+    function linkify(s) { return esc(s).replace(/(https?:\/\/[^\s<]*[^\s<.,;:)!?])/g, '<a href="$1" target="_blank" rel="noopener">$1</a>'); }
     function renderShare() {
         var list = openUpdates[sel.value] || [];
         if (!list.length) { shareBox.className = 'share-box'; shareList.innerHTML = ''; return; }
