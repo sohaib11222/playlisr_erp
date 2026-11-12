@@ -435,7 +435,13 @@ class ListingCommissionController extends Controller
             'total_pay_now'      => $people->sum('pay_now'),
             'credit_people'      => $people->filter(function ($p) { return ($p->credit_total ?? 0) < -0.004; })->sortBy('credit_total')->values(),
         ];
-        try { \Cache::put($pageKey, $pageData, 900); } catch (\Throwable $ce) { \Log::warning('commissions page cache put failed: ' . $ce->getMessage()); }
+        $cacheErr = null;
+        try { \Cache::put($pageKey, $pageData, 900); } catch (\Throwable $ce) { $cacheErr = $ce->getMessage(); \Log::warning('commissions page cache put failed: ' . $cacheErr); }
+        if ($request->input('cachetest') && in_array((int) auth()->id(), [1, 8], true)) {
+            $probe = [];
+            foreach ($pageData as $k => $v) { try { serialize($v); } catch (\Throwable $se) { $probe[$k] = $se->getMessage(); } }
+            return response()->json(['key' => $pageKey, 'put_error' => $cacheErr, 'has' => \Cache::has($pageKey), 'unserializable' => $probe]);
+        }
         return response()->view('admin.listing_commissions', $pageData)->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
           ->header('Pragma', 'no-cache');
     }
