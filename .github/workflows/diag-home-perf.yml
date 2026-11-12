@@ -58,5 +58,9 @@ jobs:
             tail -c 3000000 "$L" | grep -E "production\.(ERROR|CRITICAL)" | grep -iE "home|memory|maximum execution" | tail -8 | cut -c1-800
             echo "=== profile ==="
             [ "${{ github.event.inputs.user_id }}" = "skip" ] || timeout 300 php scripts/diag_home_profile.php "${{ github.event.inputs.user_id }}" 2>&1 | tail -70
+            echo "=== warm cache cmd ==="
+            php artisan home:warm-cache 2>&1 | tail -5
+            php artisan schedule:list 2>/dev/null | grep -i warm
+            crontab -l 2>/dev/null | grep -i schedule
             echo "=== load ==="
             uptime; nproc; free -m
