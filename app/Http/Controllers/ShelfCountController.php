@@ -200,7 +200,22 @@ class ShelfCountController extends Controller
         $since = $isSealed ? self::YEAR_END_FROM : $cut;
         $overall = ['name' => $kindsAll[$kind] ?? $kind, 'sealed' => $isSealed, 'titles' => $rows->count(),
             'counted' => $rows->filter(function ($r) use ($counted, $since) { $c = $counted[$r->id] ?? null; return $c && $c['at'] >= $since; })->count()];
-        return view('report.shelf_count', ['overall' => $overall, 'locations' => $locations, 'loc' => $loc, 'kind' => $kind, 'kinds' => $this->kinds($business_id), 'bins' => $bins, 'total' => $rows->count(), 'sorts' => self::SORTS, 'sort' => (string) $request->input('sort', 'priority')]);
+        // Game bits (Sarah 11/12 "make it friendlier, gamify it"): who counted most this
+        // week at this store, titles counted today, sections done, daily pace to 12/31.
+        $weekAgo = now()->subDays(7)->startOfDay()->toDateTimeString();
+        $today = now()->startOfDay()->toDateTimeString();
+        $board = []; $todayN = 0;
+        foreach ($counted as $c) {
+            if (($c['at'] ?? '') >= $today) $todayN++;
+            if (($c['at'] ?? '') < $weekAgo) continue;
+            $who = trim((string) ($c['by'] ?? '')) ?: 'Someone';
+            $board[$who] = ($board[$who] ?? 0) + 1;
+        }
+        arsort($board);
+        $game = ['board' => array_slice($board, 0, 5, true), 'today' => $todayN,
+            'done' => count(array_filter($bins, function ($b) use ($cut) { return !empty($b['last']) && $b['last'] >= $cut && ($b['recent'] ?? 0) >= 0.8 * $b['titles']; })),
+            'sections' => count($bins), 'daysLeft' => max(1, (int) ceil(now()->diffInHours(\Carbon\Carbon::parse('2026-12-31 23:59:59'), false) / 24))];
+        return view('report.shelf_count', ['game' => $game, 'overall' => $overall, 'locations' => $locations, 'loc' => $loc, 'kind' => $kind, 'kinds' => $this->kinds($business_id), 'bins' => $bins, 'total' => $rows->count(), 'sorts' => self::SORTS, 'sort' => (string) $request->input('sort', 'priority')]);
     }
 
     /**
