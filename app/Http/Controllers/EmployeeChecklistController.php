@@ -65,6 +65,7 @@ class EmployeeChecklistController extends Controller
             ],
             'ERP (playlist.nivessa.com)' => [
                 'erp_create'   => 'Create their ERP user (status Active, login enabled) with the correct role.',
+                'clock_pin'    => 'Give them a time clock PIN on Time Clock Settings and send it to them before their first shift.',
             ],
             'Slack' => [
                 'slack_invite' => 'Invite them to the Nivessa workspace by email.',

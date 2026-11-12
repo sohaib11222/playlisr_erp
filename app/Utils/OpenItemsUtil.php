@@ -23,6 +23,7 @@ class OpenItemsUtil
     {
         $out = [];
         foreach ([
+            'staff'     => fn () => self::staffNotReady($business_id),
             'customers' => fn () => self::customersWaiting($business_id),
             'unhappy'   => fn () => self::unhappyCustomers($business_id),
             'orders'    => fn () => self::stuckOrders(),
@@ -35,7 +36,7 @@ class OpenItemsUtil
                 $out[$key] = $fn();
             } catch (\Throwable $e) {
                 \Log::warning('open-items ' . $key . ' failed: ' . $e->getMessage());
-                $names = ['customers' => 'Customers waiting', 'unhappy' => 'Unhappy customers', 'orders' => 'Website orders stuck', 'contact' => 'Contact form messages', 'bookings' => 'Venue booking requests', 'buys' => 'Buys left as drafts', 'events' => 'Listening party prep'];
+                $names = ['staff' => 'Staff not set up', 'customers' => 'Customers waiting', 'unhappy' => 'Unhappy customers', 'orders' => 'Website orders stuck', 'contact' => 'Contact form messages', 'bookings' => 'Venue booking requests', 'buys' => 'Buys left as drafts', 'events' => 'Listening party prep'];
                 $out[$key] = self::section($names[$key] ?? $key, '', '', [], 'Could not load this right now.');
             }
         }
@@ -299,4 +300,81 @@ class OpenItemsUtil
         }
         return self::section('Listening party prep steps due', 'Tick each step on the event page when it is done.', url('/events'), self::oldestFirst($out));
     }
+
+    /**
+     * Anyone on the Sling schedule in the next 14 days who can't work their
+     * shift yet: no ERP login, or no time clock PIN. Plus onboarding runs
+     * logged in the last 60 days with steps still unticked.
+     */
+    public static function staffNotReady(int $business_id): array
+    {
+        $tz = self::TZ;
+        $now = Carbon::now($tz);
+        $shifts = \DB::table('sling_shifts')
+            ->where('event_type', 'shift')
+            ->whereBetween('dtstart', [$now->copy()->startOfDay()->format('Y-m-d H:i:s'), $now->copy()->addDays(14)->format('Y-m-d H:i:s')])
+            ->orderBy('dtstart')
+            ->get(['erp_user_id', 'user_email', 'user_name', 'dtstart', 'location_name']);
+        $users = \DB::table('users')->where('business_id', $business_id)->whereNull('deleted_at')
+            ->get(['id', 'email', 'first_name', 'last_name', 'allow_login']);
+        $byId = [];
+        $byEmail = [];
+        foreach ($users as $u) {
+            $byId[(int) $u->id] = $u;
+            if ($u->email) {
+                $byEmail[strtolower(trim($u->email))] = $u;
+            }
+        }
+        $pins = array_flip(array_map('intval', \DB::table('time_clock_pins')->where('business_id', $business_id)->pluck('user_id')->all()));
+
+        $seen = [];
+        $out = [];
+        foreach ($shifts as $s) {
+            $key = $s->erp_user_id ?: strtolower(trim((string) ($s->user_email ?: $s->user_name)));
+            if ($key === '' || isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $u = $s->erp_user_id ? ($byId[(int) $s->erp_user_id] ?? null) : null;
+            if (!$u && $s->user_email) {
+                $u = $byEmail[strtolower(trim($s->user_email))] ?? null;
+            }
+            $start = Carbon::parse($s->dtstart)->setTimezone($tz);
+            $when = 'next shift ' . $start->format('m/d/y g:i A') . ($s->location_name ? ' at ' . $s->location_name : '');
+            $missing = [];
+            if (!$u || !(int) $u->allow_login) {
+                $missing[] = 'no ERP login';
+            }
+            if (!$u || !isset($pins[(int) $u->id])) {
+                $missing[] = 'no time clock PIN';
+            }
+            if (!$missing) {
+                continue;
+            }
+            $name = $u ? trim($u->first_name . ' ' . $u->last_name) : (string) ($s->user_name ?: $s->user_email);
+            $r = self::row($name, ucfirst(implode(', ', $missing)) . ', ' . $when, null, url('/time-clock/settings'));
+            $hrs = $now->diffInHours($start, false);
+            $r['since'] = $start->format('m/d/y');
+            $r['age'] = $hrs <= 24 ? 'within 24h' : 'in ' . (int) ceil($hrs / 24) . ' days';
+            $r['hours'] = 1000 - $hrs; // soonest shift first, flagged red inside 24h
+            $r['late'] = $hrs <= 24;
+            $out[] = $r;
+        }
+
+        // Onboarding runs with steps left (last 60 days).
+        $cut = $now->copy()->subDays(60)->format('Y-m-d');
+        $labels = \App\Http\Controllers\EmployeeChecklistController::allItems('onboarding');
+        foreach (\App\Http\Controllers\EmployeeChecklistController::readAll() as $run) {
+            if (($run['type'] ?? '') !== 'onboarding' || ($run['date'] ?? '') < $cut || empty($run['missed'])) {
+                continue;
+            }
+            $steps = array_map(fn ($k) => mb_strimwidth((string) ($labels[$k] ?? $k), 0, 50, '...'), (array) $run['missed']);
+            $r = self::row((string) ($run['employee_name'] ?? ''), 'Onboarding not finished: ' . implode(' / ', $steps), $run['date'], url('/employee-checklist?type=onboarding'));
+            $out[] = $r;
+        }
+
+        usort($out, fn ($a, $b) => $b['hours'] <=> $a['hours']);
+        return self::section('Staff not set up', 'Every new hire needs an ERP login and a time clock PIN before their first shift. Finish the onboarding checklist the day they are hired.', url('/employee-checklist'), $out);
+    }
 }
+

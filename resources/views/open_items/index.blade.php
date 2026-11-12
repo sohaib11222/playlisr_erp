@@ -63,7 +63,7 @@
                     <div class="oi-row">
                         <div class="oi-who" title="{{ $r['who'] }}">{{ $r['who'] }}</div>
                         <div class="oi-what">{{ $r['what'] }}</div>
-                        <div class="oi-age {{ $r['hours'] >= 72 ? 'late' : '' }}" title="{{ $r['since'] }}">{{ $r['age'] }}</div>
+                        <div class="oi-age {{ ($r['late'] ?? ($r['hours'] >= 72)) ? 'late' : '' }}" title="{{ $r['since'] }}">{{ $r['age'] }}</div>
                         <div class="oi-open"><a href="{{ $r['link'] }}">Open</a></div>
                     </div>
                 @endforeach
