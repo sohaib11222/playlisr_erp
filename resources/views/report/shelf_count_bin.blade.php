@@ -74,7 +74,7 @@
         <ol>
             <li>Go down the list as you flip through the bin.</li>
             <li>Tap <b>All here</b>, or type how many you see.</li>
-            <li><b>If a title shows in this bin in the ERP but it is not there, please tap None to mark it 0.</b></li>
+            <li><b>If a title shows in a bin in the ERP but it is not physically there, please tap None to mark it 0.</b></li>
             <li>Record not on the list? Scan it.</li>
             <li>If a record was already counted in another bin this week, or you have more than the ERP says, it asks you first so nothing gets counted twice.</li>
             @if(count((array) $genres))<li>Wrong genre? Tap <b>Genre</b> on that record and pick the right one. It saves right away.</li>@endif
