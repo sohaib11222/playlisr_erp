@@ -110,7 +110,7 @@ class OpenItemsUtil
         $out = [];
         foreach ($rows as $r) {
             // Toll-free 833/844/855 numbers calling us are robocalls.
-            if (self::isNoise((string) $r->message) || preg_match('/^\+?1?8(33|44|55|66|77|88)/', (string) $r->contact_info)) {
+            if (self::isNoise((string) $r->message) || preg_match('/^\+?1?8(33|44|55|66|77|88)/', (string) $r->contact_info) || stripos((string) $r->contact_info, 'anonymous') !== false || stripos((string) $r->customer_name, 'anonymous') !== false) {
                 continue;
             }
             $out[] = self::row($r->customer_name ?: $r->contact_info, (string) $r->message, $r->created_at, url('/communications'));
@@ -166,7 +166,7 @@ class OpenItemsUtil
                 $out[] = self::row($name, $how . ' after ' . intdiv(time() - $created, 86400) . ' days', $o['createdAt'] ?? null, url('/website-orders?order=' . $id));
             }
         }
-        return self::section('Website orders stuck', 'Text the person on shift with the order link. No answer in 2 hours, call them, then the manager.', url('/website-orders?tab=needs_action'), self::oldestFirst($out));
+        return self::section('Website orders stuck (last 60 days)', 'Text the person on shift with the order link. No answer in 2 hours, call them, then the manager.', url('/website-orders?tab=needs_action'), self::oldestFirst($out));
     }
 
     /** Website contact form messages nobody has replied to. */
@@ -227,7 +227,21 @@ class OpenItemsUtil
             ->where('b.business_id', $business_id)
             ->where('b.status', 'draft')
             ->where('b.created_at', '<', now()->subDay())
-            ->where('b.created_at', '>=', now()->subDays(30))
+            ->where('b.created_at', '>=', now()->subDays(7))
+            // Skip drafts for a seller who was bought from (or turned down) later.
+            ->whereNotExists(function ($q) {
+                $q->select(\DB::raw(1))->from('buy_customer_offers as d')
+                    ->whereColumn('d.business_id', 'b.business_id')
+                    ->whereIn('d.status', ['accepted', 'rejected'])
+                    ->whereColumn('d.created_at', '>=', 'b.created_at')
+                    ->where(function ($w) {
+                        $w->where(function ($x) {
+                            $x->whereNotNull('b.seller_phone')->where('b.seller_phone', '!=', '')->whereColumn('d.seller_phone', 'b.seller_phone');
+                        })->orWhere(function ($x) {
+                            $x->whereNotNull('b.contact_id')->whereColumn('d.contact_id', 'b.contact_id');
+                        });
+                    });
+            })
             ->orderBy('b.created_at')
             ->limit(100)
             ->get(['b.id', 'b.seller_name', 'b.seller_phone', 'b.final_offer_cash', 'b.created_at', 'u.first_name', 'l.name as store']);
@@ -240,7 +254,7 @@ class OpenItemsUtil
             }
             $out[] = self::row($r->seller_name ?: $r->seller_phone, $what, $r->created_at, url('/buy-from-customer/' . $r->id . '/edit'));
         }
-        return self::section('Buys left as drafts', 'Ask the cashier: did we buy it? Then Accept or Reject so the drawer and stock are right.', url('/buy-from-customer/history'), self::oldestFirst($out));
+        return self::section('Buys left as drafts (last 7 days)', 'Ask the cashier: did we buy it? Then Accept or Reject so the drawer and stock are right.', url('/buy-from-customer/history'), self::oldestFirst($out));
     }
 
     /** Event prep steps past their due day for events in the next 2 weeks. */
