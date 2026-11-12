@@ -36,7 +36,7 @@
     <div class="open-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
         <div>
             <h1>Daily Checklist</h1>
-            <p>Your tasks for the day. Tick each one as you finish — it saves automatically, and the list starts fresh tomorrow.</p>
+            <p>Your tasks for the day. Tick each one as you finish — it saves automatically, and the list starts fresh tomorrow. <a href="{{ url('/open-items') }}" style="color:var(--d-accent-text);font-weight:700">Open Items &rarr;</a></p>
         </div>
         <button type="button" class="pin-btn {{ $pinAlready ? 'is-on' : '' }}"
                 data-pin-url="{{ $pinUrl }}" data-pin-label="{{ $pinLabel }}"

@@ -93,6 +93,7 @@ class DailyChecklistController extends Controller
         'ams_orders'     => '/purchases/create',
         'onboarding'     => '/employee-checklist',
         'seller_leads'   => '/buy-from-customer',
+        'close_loops'    => '/open-items',
         'venue_leads'    => 'https://nivessa.com/venues',
         // External tools
         'sling_week'     => 'https://app.getsling.com',
@@ -501,4 +502,23 @@ class DailyChecklistController extends Controller
 
         return response()->json(['ok' => true, 'period' => self::quarterLabel($period)]);
     }
+
+    /** Open Items: everything still waiting on someone, in one place. */
+    public function openItems(Request $request)
+    {
+        $this->guard();
+        $business_id = (int) $request->session()->get('user.business_id');
+        if ($request->query('refresh')) {
+            foreach (['open_items_web_orders', 'open_items_contact', 'open_items_bookings'] as $k) {
+                \Cache::forget($k);
+            }
+        }
+        $sections = \App\Utils\OpenItemsUtil::sections($business_id);
+        return view('open_items.index', [
+            'sections' => $sections,
+            'total'    => \App\Utils\OpenItemsUtil::total($sections),
+            'asOf'     => \Carbon\Carbon::now('America/Los_Angeles')->format('m/d/y g:i A'),
+        ]);
+    }
 }
+
