@@ -2026,6 +2026,12 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Listening Party Bonus: pick date + time window + store + %, pull that
     // window's sales, split the % among the staff who worked the party, and log
     // each person's share to the (undoable) sales payout ledger.
+    // Store manager bonus (Sarah 2026-11-12, starts 12/1): Luis/Zak, 2% of
+    // store growth vs last year if within labor budget. Owners + Fatteen see
+    // all; each manager sees only his own store.
+    Route::get('/admin/manager-bonus', 'ManagerBonusController@index');
+    Route::post('/admin/manager-bonus/mark-paid', 'ManagerBonusController@markPaid');
+    Route::post('/admin/manager-bonus/undo', 'ManagerBonusController@undo');
     Route::get('/admin/party-bonus', 'ListingCommissionController@partyBonus');
     Route::post('/admin/party-bonus/pay', 'ListingCommissionController@partyBonusPay');
     // Shift Commission: per-shift commission for a date + store. 2% of sales
