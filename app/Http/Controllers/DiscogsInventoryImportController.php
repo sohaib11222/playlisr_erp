@@ -462,6 +462,14 @@ class DiscogsInventoryImportController extends Controller
                     DB::raw("{$costSql} as unit_cost"), 'v.sell_price_inc_tax as price',
                     DB::raw("vld.qty_available * {$costSql} as cost_value"))
                 ->orderByDesc('cost_value')->limit(25)->get();
+            if ($request->filled('cost')) {
+                $c = (float) $request->input('cost');
+                $out['cost_origin'] = $base()->whereRaw("ROUND({$costSql}, 2) = ?", [$c])
+                    ->groupBy('p.added_via', DB::raw('DATE(v.updated_at)'))
+                    ->select('p.added_via', DB::raw('DATE(v.updated_at) as variation_updated'),
+                        DB::raw('COUNT(*) as n'), DB::raw('MIN(p.created_at) as first_created'), DB::raw('MAX(p.created_at) as last_created'))
+                    ->orderByDesc('n')->limit(20)->get();
+            }
         }
         return response()->json($out);
     }
