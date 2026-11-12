@@ -433,6 +433,10 @@ class DiscogsInventoryImportController extends Controller
         $loc = trim((string) $request->input('location', ''));
         if ($loc !== '') {
             $costSql = 'COALESCE(NULLIF(v.dpp_inc_tax, 0), v.default_purchase_price, 0)';
+            // "Entered" = a recorded buy with a price, or a typed cost that
+            // isn't blank or one of the automatic rule amounts.
+            $enteredSql = "(EXISTS (SELECT 1 FROM purchase_lines plx WHERE plx.variation_id = v.id AND plx.purchase_price_inc_tax > 0)"
+                . " OR ROUND({$costSql}, 2) NOT IN (" . self::AUTO_RULE_COSTS . "))";
             $base = function () use ($business_id, $loc) {
                 return DB::table('variation_location_details as vld')
                     ->join('variations as v', function ($j) { $j->on('v.id', '=', 'vld.variation_id')->whereNull('v.deleted_at'); })
@@ -447,7 +451,10 @@ class DiscogsInventoryImportController extends Controller
             $out['by_category'] = $base()->groupBy('c.name')
                 ->select(DB::raw("COALESCE(c.name, '(none)') as category"),
                     DB::raw('SUM(vld.qty_available) as units'),
-                    DB::raw("SUM(vld.qty_available * {$costSql}) as cost_value"))
+                    DB::raw("SUM(vld.qty_available * {$costSql}) as cost_value"),
+                    DB::raw("SUM(CASE WHEN {$enteredSql} THEN vld.qty_available ELSE 0 END) as entered_units"),
+                    DB::raw("SUM(CASE WHEN {$enteredSql} THEN vld.qty_available * {$costSql} ELSE 0 END) as entered_value"),
+                    DB::raw("SUM(CASE WHEN {$costSql} = 0 THEN vld.qty_available ELSE 0 END) as no_cost_units"))
                 ->orderByDesc('cost_value')->get();
             $out['by_unit_cost'] = $base()->groupBy(DB::raw("ROUND({$costSql}, 2)"))
                 ->select(DB::raw("ROUND({$costSql}, 2) as unit_cost"),
