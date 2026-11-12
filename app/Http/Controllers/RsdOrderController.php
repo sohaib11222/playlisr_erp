@@ -165,6 +165,8 @@ class RsdOrderController extends Controller
 
     public function index(Request $request)
     {
+        @ini_set('memory_limit', '512M');
+        @set_time_limit(120);
         $biz = (int) $request->session()->get('user.business_id');
         $store = $this->store($request);
         $state = $this->loadState($biz);
@@ -228,6 +230,9 @@ class RsdOrderController extends Controller
                     $rsdListings = [];
                     foreach ($ica->allFeedListings($biz) as $e) {
                         $e['_rsd'] = preg_match('/\(RSD\)|\bRSD\b|record store day|\(R$/i', (string) ($e['title'] ?? '')) === 1;
+                        // Only RSD-tagged listings are ever matched below; indexing the
+                        // whole ~170k-row catalog ran the page out of memory (500, 11/12).
+                        if (!$e['_rsd']) continue;
                         $e['_tok'] = self::titleTokens((string) ($e['title'] ?? ''));
                         if (!$e['_tok']) continue;
                         $n = count($rsdListings);
