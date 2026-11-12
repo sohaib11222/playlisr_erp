@@ -63,10 +63,12 @@
 .sc-moved { color: #2E6B2E; font-weight: 700; }
 .sc-prev { color: #8A4B00; font-weight: 700; }
 .sc-all { height: 44px; border-radius: 10px; border: 1px solid #2E6B2E; background: #fff; color: #2E6B2E; font-size: 14px; font-weight: 700; padding: 0 10px; cursor: pointer; margin-right: 6px; }
+.sc-fixnote { background: #FFF2B3; border: 2px solid #C9A400; border-radius: 10px; padding: 10px 12px; margin: 0 0 10px; font-size: 15px; color: #1F1B16; }
 </style>
 <div class="sc-wrap">
     <a class="sc-small" href="/reports/shelf-count?location_id={{ $loc }}&kind={{ $kind }}">Back to bins</a>
     <h1>{{ $kindLabel }} / {{ $name }}</h1>
+    <div class="sc-fixnote"><b>Record in the wrong bin in the ERP? Please fix it.</b> If a record belongs in a different genre than this bin, tap <b>Genre</b> on it and pick the right one so the ERP matches the shelf.</div>
     <div class="sc-how">
         <b>How to count ({{ count($items) }} titles)</b>
         <ol>
