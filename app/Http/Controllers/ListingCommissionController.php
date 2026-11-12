@@ -102,10 +102,23 @@ class ListingCommissionController extends Controller
         // the moment any payout/freeze/party ledger changes (file times are in
         // the key), otherwise refreshes every 15 minutes. ?fresh=1 forces a rebuild.
         $pageKey = $this->commissionsPageKey($businessId, $request);
-        if (!$request->input('timing') && !$request->input('fresh') && ($cachedPage = \Cache::get($pageKey))) {
-            return response()->view('admin.listing_commissions', $cachedPage)
-                ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
-                ->header('Pragma', 'no-cache');
+        $lastGoodKey = $this->commissionsPageKey($businessId, $request, false);
+        if (!$request->input('timing') && !$request->input('fresh') && !$request->input('cachetest')) {
+            $cachedPage = \Cache::get($pageKey);
+            if (!$cachedPage && ($cachedPage = \Cache::get($lastGoodKey))) {
+                // Same ledgers, just older than 15 min: show it now and rebuild
+                // after the response is sent, so nobody waits ~30s.
+                $rebuild = $request->duplicate(array_merge($request->query(), ['fresh' => 1]));
+                $rebuild->setLaravelSession($request->session());
+                app()->terminating(function () use ($rebuild) {
+                    try { $this->index($rebuild); } catch (\Throwable $e) { \Log::warning('commissions rebuild failed: ' . $e->getMessage()); }
+                });
+            }
+            if ($cachedPage) {
+                return response()->view('admin.listing_commissions', $cachedPage)
+                    ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+                    ->header('Pragma', 'no-cache');
+            }
         }
 
         $paid = $this->loadPayouts();
@@ -436,7 +449,7 @@ class ListingCommissionController extends Controller
             'credit_people'      => $people->filter(function ($p) { return ($p->credit_total ?? 0) < -0.004; })->sortBy('credit_total')->values(),
         ];
         $cacheErr = null;
-        try { \Cache::put($pageKey, $pageData, 900); } catch (\Throwable $ce) { $cacheErr = $ce->getMessage(); \Log::warning('commissions page cache put failed: ' . $cacheErr); }
+        try { \Cache::put($pageKey, $pageData, 900); \Cache::put($lastGoodKey, $pageData, 86400); } catch (\Throwable $ce) { $cacheErr = $ce->getMessage(); \Log::warning('commissions page cache put failed: ' . $cacheErr); }
         if ($request->input('cachetest') && in_array((int) auth()->id(), [1, 8], true)) {
             $probe = [];
             foreach ($pageData as $k => $v) { try { serialize($v); } catch (\Throwable $se) { $probe[$k] = $se->getMessage(); } }
@@ -1194,14 +1207,14 @@ class ListingCommissionController extends Controller
     // place, so the two pages can't disagree about what's still unpaid.
     private $partyMemo = [];
 
-    public function commissionsPageKey($businessId, $request = null)
+    public function commissionsPageKey($businessId, $request = null, $withBucket = true)
     {
         $mt = [];
         foreach ([self::PAYOUTS_FILE, self::SALES_PAYOUTS_FILE, self::FREEZE_FILE, self::PARTY_SPLIT_FILE] as $f) {
             $mt[] = Storage::disk('local')->exists($f) ? Storage::disk('local')->lastModified($f) : 0;
         }
         $params = $request ? [$request->input('day'), $request->input('person')] : [null, null];
-        return 'commissions_page_v1_' . $businessId . '_' . md5(json_encode([$mt, $params, (int) floor(time() / 900)]));
+        return 'commissions_page_v1_' . $businessId . '_' . md5(json_encode([$mt, $params, $withBucket ? (int) floor(time() / 900) : 'last']));
     }
 
     // $withEstimates=false skips the payout math (Sling/time clock/sales per
