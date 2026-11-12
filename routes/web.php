@@ -1982,6 +1982,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/manager-checkins/one-on-one', 'ManagerCheckinController@saveOneOnOne')->name('manager-checkins.one-on-one');
     Route::post('/manager-checkins/updates', 'ManagerCheckinController@addUpdate')->name('manager-checkins.updates.add');
     Route::post('/manager-checkins/updates/delete', 'ManagerCheckinController@deleteUpdate')->name('manager-checkins.updates.delete');
+    Route::post('/manager-checkins/delete', 'ManagerCheckinController@deleteCheckin')->name('manager-checkins.delete');
 
     // EOS: V/TO, Accountability Chart, Rocks, Scorecard, Issues, To-dos and
     // the weekly L10 for the leadership team. JSON sidecar storage/app/eos.json.

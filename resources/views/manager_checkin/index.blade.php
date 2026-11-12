@@ -440,7 +440,16 @@
                     <span class="entry-name">{{ $r['employee_name'] }}</span>
                     <span class="rating {{ $r['rating'] }}">{{ $ratings[$r['rating']] ?? $r['rating'] }}</span>
                 </div>
-                <div class="entry-meta">{{ \Carbon\Carbon::parse($r['date'])->format('D M j, Y') }} - by {{ $r['manager_name'] }}</div>
+                <div class="entry-meta">{{ \Carbon\Carbon::parse($r['date'])->format('m/d/y') }} - by {{ $r['manager_name'] }}
+                    @if($isAdmin)
+                        <form method="POST" action="{{ url('/manager-checkins/delete') }}" style="display:inline;" onsubmit="return window.confirm('Delete this check-in?');">
+                            {{ csrf_field() }}
+                            <input type="hidden" name="store" value="{{ $store }}">
+                            <input type="hidden" name="id" value="{{ $r['id'] }}">
+                            <button type="submit" class="upd-del">Delete</button>
+                        </form>
+                    @endif
+                </div>
             </div>
             {{-- 'notes' was dropped from the form 2026-09-28; still shown on older entries. --}}
             @if(!empty($sharedByCheckin[$r['id']]))

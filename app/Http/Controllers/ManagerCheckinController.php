@@ -199,6 +199,32 @@ class ManagerCheckinController extends Controller
             ->with('status', ['success' => 1, 'msg' => 'Saved the 1:1 from ' . date('m/d/y', strtotime($date)) . '.']);
     }
 
+    /** Admins delete a check-in (a test or a mistake); its shared updates go back to "To share". */
+    public function deleteCheckin(Request $request)
+    {
+        if (!$this->isAdmin()) {
+            abort(403);
+        }
+        $store = $this->currentStore($request);
+        $id    = (string) $request->input('id');
+        self::save(array_filter(self::load(), function ($r) use ($id) {
+            return ($r['id'] ?? '') !== $id;
+        }));
+        $updates = self::loadUpdates();
+        foreach ($updates as &$u) {
+            if (($u['checkin_id'] ?? '') === $id) {
+                $u['shared_at'] = null;
+                $u['shared_by'] = null;
+                $u['checkin_id'] = null;
+            }
+        }
+        unset($u);
+        self::saveUpdates($updates);
+
+        return redirect()->to(url('/manager-checkins') . '?store=' . $store)
+            ->with('status', ['success' => 1, 'msg' => 'Deleted the check-in.']);
+    }
+
     /** Admins remove an update (added by mistake or no longer needed). */
     public function deleteUpdate(Request $request)
     {
