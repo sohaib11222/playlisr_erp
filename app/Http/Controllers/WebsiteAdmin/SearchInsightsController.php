@@ -67,32 +67,31 @@ class SearchInsightsController extends Controller
         $business_id = (int) session('business.id');
         $names = \DB::table('business_locations')->where('business_id', $business_id)->pluck('name', 'id')->all();
 
-        $words = [];   // word => [product index, ...]
+        $words = [];   // word => [product index => true]
         $qty = [];     // product index => [location_id => units]
         $pidx = [];
         $stockLocs = [];
-        \DB::table('variation_location_details as vld')
+        $rows = \DB::table('variation_location_details as vld')
             ->join('products as p', 'p.id', '=', 'vld.product_id')
             ->where('p.business_id', $business_id)
             ->where('p.is_inactive', 0)
             ->where('vld.qty_available', '>', 0)
-            ->select('p.id', 'p.artist', 'p.name', 'vld.location_id', 'vld.qty_available')
-            ->orderBy('vld.id')
-            ->chunk(20000, function ($rows) use (&$words, &$qty, &$pidx, &$stockLocs) {
-                foreach ($rows as $r) {
-                    if (!isset($pidx[$r->id])) {
-                        $i = count($pidx);
-                        $pidx[$r->id] = $i;
-                        foreach (array_unique($this->stockWords($r->artist . ' ' . $r->name)) as $w) {
-                            $words[$w][] = $i;
-                        }
-                    }
-                    $i = $pidx[$r->id];
-                    $loc = (int) $r->location_id;
-                    $qty[$i][$loc] = ($qty[$i][$loc] ?? 0) + (float) $r->qty_available;
-                    $stockLocs[$loc] = true;
+            ->groupBy('p.id', 'vld.location_id')
+            ->selectRaw('p.id, MAX(p.artist) as artist, MAX(p.name) as name, vld.location_id, SUM(vld.qty_available) as qty')
+            ->cursor();
+        foreach ($rows as $r) {
+            if (!isset($pidx[$r->id])) {
+                $i = count($pidx);
+                $pidx[$r->id] = $i;
+                foreach ($this->stockWords($r->artist . ' ' . $r->name) as $w) {
+                    $words[$w][$i] = true;
                 }
-            });
+            }
+            $i = $pidx[$r->id];
+            $loc = (int) $r->location_id;
+            $qty[$i][$loc] = ($qty[$i][$loc] ?? 0) + (float) $r->qty;
+            $stockLocs[$loc] = true;
+        }
 
         // Pico, Hollywood, then the rest (Discogs etc.) by name.
         $locations = [];
@@ -127,12 +126,18 @@ class SearchInsightsController extends Controller
             usort($lists, function ($a, $b) {
                 return count($a) <=> count($b);
             });
-            $hits = array_flip(array_shift($lists));
-            foreach ($lists as $l) {
-                $hits = array_intersect_key($hits, array_flip($l));
-                if (!$hits) {
-                    break;
+            $hits = array_shift($lists);
+            if ($lists) {
+                $keep = [];
+                foreach ($hits as $i => $_) {
+                    foreach ($lists as $l) {
+                        if (!isset($l[$i])) {
+                            continue 2;
+                        }
+                    }
+                    $keep[$i] = true;
                 }
+                $hits = $keep;
             }
             $out = array_fill_keys(array_keys($locations), 0);
             foreach ($hits as $i => $_) {
@@ -150,7 +155,11 @@ class SearchInsightsController extends Controller
     /** Lowercase ASCII words of a string. */
     protected function stockWords($s)
     {
-        $s = mb_strtolower(\Illuminate\Support\Str::ascii((string) $s));
+        $s = (string) $s;
+        if (preg_match('/[^\x00-\x7F]/', $s)) {
+            $s = \Illuminate\Support\Str::ascii($s);
+        }
+        $s = strtolower($s);
         $s = str_replace(["'", '’'], '', $s);
         return preg_split('/[^a-z0-9]+/', $s, -1, PREG_SPLIT_NO_EMPTY);
     }
