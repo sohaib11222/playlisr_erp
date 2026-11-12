@@ -63,6 +63,10 @@
                 <tr><th>Setting the plan</th><th>Clover net sales</th></tr>
                 <tr><td>Same month last year ({{ \Carbon::parse($r['ly_month'] . '-01')->format('M Y') }})</td><td>${{ number_format($r['ly_full'], 2) }}</td></tr>
                 <tr><td>Recent pace (last 3 finished months vs a year earlier)</td><td>{{ $r['pace'] > 0 ? '+' : '' }}{{ $r['pace'] }}%</td></tr>
+@if($r['season_ratio'])
+                <tr><td>Last year, {{ \Carbon::parse($r['ly_month'] . '-01')->format('F') }} was {{ number_format($r['season_ratio'], 2) }}x the {{ $r['prev_label'] }} average</td><td></td></tr>
+                <tr><td>This year's {{ $r['prev_label'] }} average x {{ number_format($r['season_ratio'], 2) }}</td><td>${{ number_format($r['season_projection'], 0) }}</td></tr>
+                @endif
                 @if (!$r['plan_set'])<tr><td>Suggested plan (last year + half the recent growth)</td><td>${{ number_format($r['suggested'], 0) }}</td></tr>@endif
                 <tr><td><b>Plan for {{ \Carbon::parse($month . '-01')->format('F') }}</b></td><td><b>@if($r['plan_set'])${{ number_format($r['plan'], 0) }}@else<span class="mb-no">not set yet, no bonus until it is</span>@endif</b></td></tr>
             </table>

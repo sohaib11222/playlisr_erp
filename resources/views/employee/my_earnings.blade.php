@@ -194,6 +194,10 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
                         @if($mb['ly2_full'] > 0)<tr><td>{{ \Carbon::parse($mb['ly2_month'] . '-01')->format('F Y') }}</td><td style="text-align:right;">${{ number_format($mb['ly2_full'], 0) }}</td></tr>@endif
                         <tr><td>{{ \Carbon::parse($mb['ly_month'] . '-01')->format('F Y') }}</td><td style="text-align:right;">${{ number_format($mb['ly_full'], 0) }}</td></tr>
                         <tr><td>{{ \Carbon::parse($mb['ly_month'] . '-01')->format('F Y') }} grown by the last 3 months' pace ({{ $mb['pace'] >= 0 ? '+' : '' }}{{ round($mb['pace']) }}%)</td><td style="text-align:right;">${{ number_format($mb['ly_full'] * (1 + $mb['pace'] / 100), 0) }}</td></tr>
+@if($mb['season_ratio'])
+                <tr><td>Last year, {{ \Carbon::parse($mb['ly_month'] . '-01')->format('F') }} was {{ number_format($mb['season_ratio'], 2) }}x the {{ $mb['prev_label'] }} average</td><td style="text-align:right;"></td></tr>
+                <tr><td>This year's {{ $mb['prev_label'] }} average x {{ number_format($mb['season_ratio'], 2) }}</td><td style="text-align:right;">${{ number_format($mb['season_projection'], 0) }}</td></tr>
+                @endif
                         <tr><td><b>{{ \Carbon::parse($mb['month'] . '-01')->format('F Y') }} plan</b></td><td style="text-align:right;"><b>${{ number_format($mb['plan'], 0) }}</b>@if($vsLy !== null) ({{ $vsLy >= 0 ? '+' : '' }}{{ $vsLy }}% vs last year)@endif</td></tr>
                     </tbody>
                 </table>

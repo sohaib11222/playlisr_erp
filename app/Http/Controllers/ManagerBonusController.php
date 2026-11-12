@@ -227,6 +227,12 @@ class ManagerBonusController extends Controller
             'prev' => $prev,
             'prev_ly' => $prevLy,
             'hist' => $hist,
+            // Seasonality: how this month compared to the 3 months before it a
+            // year ago, applied to this year's same 3 months (Sarah 2026-11-12:
+            // Pico's December spike wasn't visible, so the plan looked unfair).
+            'season_ratio' => (count($prevLy) && array_sum($prevLy) > 0) ? round($lyFull / (array_sum($prevLy) / count($prevLy)), 2) : null,
+            'season_projection' => (count($prevLy) && array_sum($prevLy) > 0 && count($prev)) ? round((array_sum($prev) / count($prev)) * ($lyFull / (array_sum($prevLy) / count($prevLy))), 0) : null,
+            'prev_label' => count($prev) ? (\Carbon::parse(min(array_keys($prev)) . '-01')->format('M') . '-' . \Carbon::parse(max(array_keys($prev)) . '-01')->format('M')) : '',
             'pace' => round($pace * 100, 1),
             'suggested' => $suggested,
             'plan' => $planFull,
