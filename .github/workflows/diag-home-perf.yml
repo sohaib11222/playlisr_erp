@@ -35,8 +35,14 @@ jobs:
           script: |
             set +e
             cd /www/playlist.nivessa.com/app
-            echo "=== nginx errors mentioning /home ==="
-            for f in /var/log/nginx/*error*.log; do sudo -n tail -n 3000 "$f" 2>/dev/null || tail -n 3000 "$f" 2>/dev/null; done | grep -E "GET /home " | tail -8 | cut -c1-600
+            echo "=== nginx error logs ==="
+            ls -la /var/log/nginx/ 2>&1 | head -20
+            for f in /var/log/nginx/*error*.log; do echo "--- $f"; tail -n 4000 "$f" 2>&1 | grep -E "upstream|playlist" | tail -15 | cut -c1-500; done
+            echo "=== php-fpm log tail ==="
+            tail -n 40 /var/log/php7.4-fpm.log 2>&1 | cut -c1-300
+            echo "=== fpm status ==="
+            curl -s http://127.0.0.1/fpm-status 2>&1 | head -20
+            grep -rn "fpm-status\|fastcgi_read_timeout\|proxy_read_timeout" /etc/nginx/ 2>/dev/null | head
             echo "=== nginx/php-fpm timeouts ==="
             grep -rhE "fastcgi_read_timeout|fastcgi_pass" /etc/nginx/sites-enabled/ 2>/dev/null | sort -u | head
             grep -rhE "^(pm|pm\.max_children|request_terminate_timeout|pm\.max_requests)\b" /etc/php/*/fpm/pool.d/*.conf 2>/dev/null | sort -u
@@ -46,6 +52,6 @@ jobs:
             L=storage/logs/$(ls -t storage/logs | head -1); echo $L
             tail -c 3000000 "$L" | grep -E "production\.(ERROR|CRITICAL)" | grep -iE "home|memory|maximum execution" | tail -8 | cut -c1-800
             echo "=== profile ==="
-            timeout 300 php scripts/diag_home_profile.php "${{ github.event.inputs.user_id }}" 2>&1 | tail -70
+            [ "${{ github.event.inputs.user_id }}" = "skip" ] || timeout 300 php scripts/diag_home_profile.php "${{ github.event.inputs.user_id }}" 2>&1 | tail -70
             echo "=== load ==="
             uptime; nproc; free -m
