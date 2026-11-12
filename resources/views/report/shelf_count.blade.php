@@ -26,6 +26,10 @@
 .sc-bin.sc-done .sc-bar span { background: #fff; }
 .sc-done-tag { position: absolute; top: 10px; right: 12px; background: #fff; color: #2E6B2E; font-weight: 800; font-size: 13px; letter-spacing: .06em; padding: 2px 8px; border-radius: 6px; }
 .sc-bin.sc-done b { padding-right: 70px; }
+.sc-overall { position: relative; background: #fff; border: 2px solid #1F1B16; border-radius: 12px; padding: 14px 16px; margin: 0 0 12px; }
+.sc-overall b { font-size: 18px; display: block; padding-right: 80px; }
+.sc-ov-pct { position: absolute; top: 12px; right: 16px; font-size: 24px; font-weight: 800; }
+.sc-ov-bar { height: 14px; border-radius: 7px; }
 .sc-fixnote { background: #FFF2B3; border: 2px solid #C9A400; border-radius: 10px; padding: 10px 12px; margin: 0 0 10px; font-size: 15px; color: #1F1B16; }
 </style>
 <div class="sc-wrap">
@@ -38,6 +42,15 @@
         <select name="kind" onchange="this.form.submit()">@foreach (($kind === 'all' ? $kinds : ['all' => 'All shelves'] + $kinds) as $k => $l)<option value="{{ $k }}" {{ $kind === $k ? 'selected' : '' }}>{{ $l }}</option>@endforeach</select>
         <select name="sort" onchange="this.form.submit()">@foreach (($sorts ?? []) as $k => $l)<option value="{{ $k }}" {{ ($sort ?? 'priority') === $k ? 'selected' : '' }}>Sort: {{ $l }}</option>@endforeach</select>
     </form>
+    @if (!empty($overall))
+    @php $ovPct = $overall['titles'] ? min(100, (int) round(100 * $overall['counted'] / $overall['titles'])) : 0; @endphp
+    <div class="sc-overall">
+        <span class="sc-ov-pct">{{ $ovPct }}%</span>
+        <b>All {{ $overall['name'] }}{{ $overall['sealed'] ? ': year-end count' : '' }}</b>
+        <div class="sc-bar sc-ov-bar"><span style="width:{{ $ovPct }}%"></span></div>
+        <div class="sc-line">{{ number_format($overall['counted']) }} of {{ number_format($overall['titles']) }} titles counted{{ $overall['sealed'] ? ' (must be done by 12/31/26)' : ' in the last ' . \App\Http\Controllers\ShelfCountController::DUE_DAYS . ' days' }}</div>
+    </div>
+    @endif
     <div class="sc-grid">
     @php $scCut = now()->subDays(\App\Http\Controllers\ShelfCountController::DUE_DAYS)->toDateTimeString(); @endphp
     @foreach ($bins as $b)

@@ -193,7 +193,14 @@ class ShelfCountController extends Controller
         }
         $bins = self::markPriority(array_values($bins));
         $bins = self::sortBins($bins, (string) $request->input('sort', 'priority'));
-        return view('report.shelf_count', ['locations' => $locations, 'loc' => $loc, 'kind' => $kind, 'kinds' => $this->kinds($business_id), 'bins' => $bins, 'total' => $rows->count(), 'sorts' => self::SORTS, 'sort' => (string) $request->input('sort', 'priority')]);
+        // Whole-type progress at the top (Sarah 11/12 "wheres the full sealed progress"):
+        // sealed types count toward year-end (since YEAR_END_FROM), others the last DUE_DAYS.
+        $kindsAll = $this->kinds($business_id);
+        $isSealed = in_array($kind, ['vinyl-new', 'cd-new'], true) || stripos($kindsAll[$kind] ?? '', 'sealed') !== false;
+        $since = $isSealed ? self::YEAR_END_FROM : $cut;
+        $overall = ['name' => $kindsAll[$kind] ?? $kind, 'sealed' => $isSealed, 'titles' => $rows->count(),
+            'counted' => $rows->filter(function ($r) use ($counted, $since) { $c = $counted[$r->id] ?? null; return $c && $c['at'] >= $since; })->count()];
+        return view('report.shelf_count', ['overall' => $overall, 'locations' => $locations, 'loc' => $loc, 'kind' => $kind, 'kinds' => $this->kinds($business_id), 'bins' => $bins, 'total' => $rows->count(), 'sorts' => self::SORTS, 'sort' => (string) $request->input('sort', 'priority')]);
     }
 
     /**
