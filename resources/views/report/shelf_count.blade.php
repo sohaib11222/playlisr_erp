@@ -47,7 +47,7 @@
             <li>Pick the bin you're standing at.</li>
             <li>Scan every record in it, or tap it in the list.</li>
             <li><b>If a title shows in a bin in the ERP but it is not physically there, please tap None to mark it 0.</b></li>
-            <li><b class="sc-red">Record in the wrong bin in the ERP? Please fix it!</b> Tap <b>Genre</b> on it and pick the right one, so we know exactly where to find things.</li>
+            <li><b class="sc-red">If the record is in the wrong bin in the ERP, please fix it!</b> Tap <b>Genre</b> and pick the right one, so we know exactly where to find things.</li>
             <li>When the bin is done, the page shows what the ERP thought was there but wasn't.</li>
             <li>Need an edit to this page? Tap <b>Report a bug</b> at the bottom right.</li>
         </ul>
