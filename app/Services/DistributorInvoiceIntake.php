@@ -342,7 +342,8 @@ class DistributorInvoiceIntake
             // needs its one-time re-check.
             $pendingResync = false;
             foreach (Storage::disk('local')->files(DistributorInvoiceImport::config('alliance')['dir']) as $f) {
-                if ($this->needsResync('alliance', basename($f, '.json'))) { $pendingResync = true; break; }
+                $k = basename($f, '.json');
+                if ($this->needsResync('alliance', $k) || $this->needsCassetteCatchUp('alliance', $k)) { $pendingResync = true; break; }
             }
             foreach ($uids as $uid) {
                 $uidKey = 'mail:' . $user . ':' . $uid;
@@ -365,11 +366,22 @@ class DistributorInvoiceIntake
                     $inv = $invFromSubject;
                     if ($inv && $this->alreadyHandled('alliance', $inv)) {
                         if ($this->needsResync('alliance', $inv)) $this->resync('alliance', $inv, $pdf, 'Alliance e-invoice email');
+                        if ($this->needsCassetteCatchUp('alliance', $inv)) $this->vinylCatchUp('alliance', $inv, $pdf, 'Alliance e-invoice email', ['04'], 'cass_catch_up', 'cassette(s)', '-C');
                         continue;
                     }
                     $this->importPdf('alliance', $pdf, 'Alliance e-invoice email', $inv, null);
                 }
                 $this->markSeen($uidKey);
+            }
+            // Invoices older than the mailbox window can't be re-read; stop
+            // re-opening every email for them.
+            if (!$this->dry) {
+                foreach (Storage::disk('local')->files(DistributorInvoiceImport::config('alliance')['dir']) as $f) {
+                    if (!$this->needsCassetteCatchUp('alliance', basename($f, '.json'))) continue;
+                    $sc = json_decode(Storage::disk('local')->get($f), true) ?: [];
+                    $sc['cass_catch_up_at'] = 'skipped: email outside the ' . $days . '-day window';
+                    Storage::disk('local')->put($f, json_encode($sc, JSON_PRETTY_PRINT));
+                }
             }
         } finally {
             $imap->logout();
@@ -558,17 +570,32 @@ class DistributorInvoiceIntake
         return !empty($sc['catch_up_at']) && empty($sc['vinyl_catch_up_at']);
     }
 
-    private function vinylCatchUp($distributor, $invoice, $pdf, $source)
+    // 11/12: Alliance CF 04 (cassette) had no category, so new cassette
+    // titles were left off silently (PLS98413106: MCR, Elliott Smith, Mitski,
+    // Washed Out, Mac DeMarco). One pass per imported Alliance invoice adds
+    // those not in the catalog as new products on "<ref>-C".
+    private function needsCassetteCatchUp($distributor, $invoice)
+    {
+        $path = DistributorInvoiceImport::sidecarPath($distributor, DistributorInvoiceImport::invoiceKey($distributor, $invoice));
+        if (!Storage::disk('local')->exists($path)) return false;
+        $sc = json_decode(Storage::disk('local')->get($path), true) ?: [];
+        return !empty($sc['transaction_id']) && empty($sc['cass_catch_up_at']);
+    }
+
+    private function vinylCatchUp($distributor, $invoice, $pdf, $source, array $codes = ['TIN', 'TEN'], $flag = 'vinyl_catch_up', $what = '10/12-inch record(s)', $suffix = '-C')
     {
         $inv = DistributorInvoiceImport::invoiceKey($distributor, $invoice);
         $path = DistributorInvoiceImport::sidecarPath($distributor, $inv);
         $sc = json_decode(Storage::disk('local')->get($path), true) ?: [];
         $own = DB::table('transactions')->where('id', (int) ($sc['transaction_id'] ?? 0))->first(['id', 'location_id', 'contact_id', 'transaction_date']);
         $p = DistributorInvoiceParser::parse($distributor, $pdf);
-        if (!$own || !$p['items'] || $p['goods_matches'] === false) return;
+        if (!$own || !$p['items'] || $p['goods_matches'] === false) {
+            if (!$this->dry) { $sc[$flag . '_at'] = 'skipped: unreadable or purchase gone'; Storage::disk('local')->put($path, json_encode($sc, JSON_PRETTY_PRINT)); }
+            return;
+        }
         $lines = [];
         foreach ($p['items'] as $it) {
-            if (!in_array(strtoupper($it['prodType'] ?? ''), ['TIN', 'TEN'], true)) continue;
+            if (!in_array(strtoupper(trim($it['prodType'] ?? '')), $codes, true)) continue;
             $lines[] = ['upc' => $it['upc'], 'description' => $it['description'], 'format' => $it['prodType'],
                         'qty' => $it['qty'], 'unit_price' => $it['unitPrice'], 'line_total' => $it['lineTotal']];
         }
@@ -587,21 +614,21 @@ class DistributorInvoiceIntake
         $txId = null;
         if ($take) {
             $ownStatus = DB::table('transactions')->where('id', $own->id)->value('status');
-            $notes = DistributorInvoiceImport::config($distributor)['label'] . ' invoice ' . $inv . ': 10-inch / 12-inch records left off purchase #' . $own->id . ', added automatically'
+            $notes = DistributorInvoiceImport::config($distributor)['label'] . ' invoice ' . $inv . ': ' . $what . ' left off purchase #' . $own->id . ', added automatically'
                 . ($ownStatus === 'received' ? '. That box was already received with #' . $own->id . ', so count these before receiving.' : '');
             try {
                 $res = DistributorInvoiceImport::apply($distributor, $this->business_id, $this->user_id, $own->location_id, $own->contact_id, $inv,
-                    substr($own->transaction_date, 0, 10), $notes, $take, ['ref_suffix' => '-C', 'sidecar' => false]);
+                    substr($own->transaction_date, 0, 10), $notes, $take, ['ref_suffix' => $suffix, 'sidecar' => false]);
                 $txId = $res['transaction']->id;
                 $this->addLog(['distributor' => $distributor, 'invoice' => $inv, 'status' => 'imported', 'source' => $source, 'transaction_id' => $txId,
-                    'msg' => sprintf('Purchase #%d: %d 10/12-inch record(s) missing from #%d, %d new products.', $txId, $res['lines'], $own->id, count($res['created_products']))]);
+                    'msg' => sprintf('Purchase #%d: %d %s missing from #%d, %d new products.', $txId, $res['lines'], $what, $own->id, count($res['created_products']))]);
             } catch (\Throwable $e) {
-                $this->addLog(['distributor' => $distributor, 'invoice' => $inv, 'status' => 'failed', 'source' => $source, 'msg' => '10/12-inch catch-up failed: ' . $e->getMessage()]);
+                $this->addLog(['distributor' => $distributor, 'invoice' => $inv, 'status' => 'failed', 'source' => $source, 'msg' => $what . ' catch-up failed: ' . $e->getMessage()]);
                 return;
             }
         }
-        $sc['vinyl_catch_up_at'] = now()->toDateTimeString();
-        $sc['vinyl_catch_up_tx'] = $txId;
+        $sc[$flag . '_at'] = now()->toDateTimeString();
+        $sc[$flag . '_tx'] = $txId;
         Storage::disk('local')->put($path, json_encode($sc, JSON_PRETTY_PRINT));
     }
 
