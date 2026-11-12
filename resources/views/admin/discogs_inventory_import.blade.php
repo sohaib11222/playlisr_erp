@@ -28,11 +28,21 @@
 
     <div class="callout" style="margin-top:8px; background:#fff8e1;">
         <strong>Categorize + set purchase prices</strong>
-        — Re-evaluates every Discogs product's format & Mint(M) condition, assigns the right ERP category (Sealed Vinyl / Used Vinyl / 7"/45 / CD / Cassette / 8-track / VHS), and stamps the matching cost ($17 / $0.35 / $0.15 / etc.) onto its variation. Skips variations with non-zero cost so manual edits survive.
+        — Re-evaluates every Discogs product's format & Mint(M) condition, assigns the right ERP category (Sealed Vinyl / Used Vinyl / 7"/45 / CD / Cassette / 8-track / VHS), and stamps the matching cost (sealed $0.10 / $0.35 / $0.15 / etc.) onto its variation. Skips variations with non-zero cost so manual edits survive.
         <div style="margin-top:8px;">
             <button id="dii-cat-preview" class="btn btn-default btn-sm">Preview categorization</button>
             <button id="dii-cat-apply" class="btn btn-warning btn-sm">Apply categories + costs</button>
             <span id="dii-cat-status" style="margin-left:10px;"></span>
+        </div>
+    </div>
+
+    <div class="callout" style="margin-top:8px; background:#e8f4fd;">
+        <strong>Warehouse sealed cost = $0.10</strong>
+        - For inventory valuation and taxes, every sealed title whose stock is only in the warehouse is valued at $0.10, not $17. Items that also have stock at Hollywood or Pico are left alone. Snapshot saved first.
+        <div style="margin-top:8px;">
+            <button id="dii-whs-preview" class="btn btn-default btn-sm">Preview</button>
+            <button id="dii-whs-apply" class="btn btn-primary btn-sm">Set to $0.10</button>
+            <span id="dii-whs-status" style="margin-left:10px;"></span>
         </div>
     </div>
 
@@ -337,6 +347,19 @@
             catStatus.innerHTML = '✓ Updated ' + r.body.products_updated.toLocaleString() + ' products + ' + r.body.variations_updated.toLocaleString() + ' variation costs. ' + breakdown;
         }
     }
+    const whsStatus = document.getElementById('dii-whs-status');
+    async function runWhs(confirm) {
+        whsStatus.textContent = confirm ? 'applying...' : 'checking...';
+        const r = await postJson('/admin/discogs-import-inventory/warehouse-sealed-cost', { confirm: confirm });
+        if (!r.body.ok) { whsStatus.textContent = 'error: ' + (r.body.error || r.status); return; }
+        const money = n => '$' + Number(n).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        const line = r.body.variations.toLocaleString() + ' sealed titles, ' + r.body.units.toLocaleString() + ' units: ' + money(r.body.value_before) + ' now, ' + money(r.body.value_after) + ' at $0.10.';
+        whsStatus.textContent = r.body.preview ? ('Would change ' + line) : ('Done. Changed ' + line + ' Snapshot: ' + r.body.snapshot);
+    }
+    const whsPrev = document.getElementById('dii-whs-preview');
+    const whsApply = document.getElementById('dii-whs-apply');
+    if (whsPrev) whsPrev.addEventListener('click', () => runWhs(false));
+    if (whsApply) whsApply.addEventListener('click', () => runWhs(true));
     if (catPreviewBtn) catPreviewBtn.addEventListener('click', () => runCat(false));
     if (catApplyBtn) catApplyBtn.addEventListener('click', () => {
         if (!confirm('Assign category_id to all uncategorized Discogs products? Snapshot saved first.')) return;

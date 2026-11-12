@@ -31,6 +31,11 @@ use Illuminate\Support\Facades\Log;
 class DiscogsInventoryImportController extends Controller
 {
     private const DEFAULT_LOCATION_NAME = 'Discogs Warehouse';
+
+    // Sealed titles sitting in the warehouse are valued at $0.10 each for
+    // inventory valuation / taxes, not the $17 / $6 store sealed rule
+    // (Sarah 2026-11-12).
+    public const WAREHOUSE_SEALED_COST = 0.10;
     private const SNAPSHOT_DIR = 'discogs-inventory-snapshots';
 
     public function index(Request $request)
@@ -109,11 +114,11 @@ class DiscogsInventoryImportController extends Controller
             '7" / 45 RPM'       => ['name' => '7", 45 RPM',              'cost' => 0.15],
             '8 track'           => ['name' => '8 track',                 'cost' => 0.25],
             'CD'                => ['name' => 'Used CD',                 'cost' => 0.10],
-            'Sealed CD'         => ['name' => 'Sealed CD / CD (Sealed)', 'cost' => 6.00],
+            'Sealed CD'         => ['name' => 'Sealed CD / CD (Sealed)', 'cost' => self::WAREHOUSE_SEALED_COST],
             'Cassette'          => ['name' => 'Cassettes',               'cost' => 0.30],
-            'Sealed Cassette'   => ['name' => 'Cassettes - Sealed',      'cost' => 6.00],
+            'Sealed Cassette'   => ['name' => 'Cassettes - Sealed',      'cost' => self::WAREHOUSE_SEALED_COST],
             'VHS'               => ['name' => 'VHS',                     'cost' => 0.10],
-            'Sealed LP / Vinyl' => ['name' => 'Sealed Vinyl',            'cost' => 17.00],
+            'Sealed LP / Vinyl' => ['name' => 'Sealed Vinyl',            'cost' => self::WAREHOUSE_SEALED_COST],
             'LP / Vinyl'        => ['name' => 'Used Vinyl',              'cost' => 0.35],
         ];
 
@@ -235,6 +240,103 @@ class DiscogsInventoryImportController extends Controller
             'breakdown' => $perCategory,
             'snapshot' => str_replace(storage_path('app') . '/', '', $snapPath),
         ]);
+    }
+
+    /**
+     * Warehouse sealed cost = $0.10 (Sarah 2026-11-12, inventory valuation /
+     * taxes). Sets the variation cost of every sealed product whose stock is
+     * only in a warehouse location (name LIKE '%warehouse%') to $0.10.
+     * Products that also have stock at Hollywood/Pico are left alone, since
+     * the cost lives on the variation and would change the store value too.
+     * Preview by default; confirm=1 writes a snapshot first, then updates.
+     */
+    public function warehouseSealedCost(Request $request)
+    {
+        $business_id = (int) $request->session()->get('user.business_id');
+        $confirm = filter_var($request->input('confirm', false), FILTER_VALIDATE_BOOLEAN);
+        $cost = self::WAREHOUSE_SEALED_COST;
+
+        @set_time_limit(0);
+        @ini_set('memory_limit', '512M');
+
+        $whIds = DB::table('business_locations')
+            ->where('business_id', $business_id)
+            ->where('name', 'like', '%warehouse%')
+            ->pluck('id')->map(function ($v) { return (int) $v; })->all();
+        if (empty($whIds)) {
+            return response()->json(['ok' => false, 'error' => 'No warehouse location found.'], 422);
+        }
+        $whList = implode(',', $whIds);
+
+        $sealedConds = [];
+        foreach (['%sealed%', '%new vinyl%', '%new cd%', '%new cassette%'] as $pat) {
+            $sealedConds[] = "LOWER(COALESCE(c.name,'')) LIKE '{$pat}'";
+            $sealedConds[] = "LOWER(COALESCE(sc.name,'')) LIKE '{$pat}'";
+        }
+        $sealedSql = '(' . implode(' OR ', $sealedConds) . ')';
+
+        $rows = DB::table('variations as v')
+            ->join('products as p', 'p.id', '=', 'v.product_id')
+            ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+            ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
+            ->where('p.business_id', $business_id)
+            ->whereNull('v.deleted_at')
+            ->whereRaw($sealedSql)
+            ->whereRaw("EXISTS (SELECT 1 FROM variation_location_details w WHERE w.variation_id = v.id AND w.location_id IN ({$whList}) AND w.qty_available > 0)")
+            ->whereRaw("NOT EXISTS (SELECT 1 FROM variation_location_details o WHERE o.variation_id = v.id AND o.location_id NOT IN ({$whList}) AND o.qty_available > 0)")
+            ->where(function ($q) use ($cost) {
+                $q->whereNull('v.dpp_inc_tax')->orWhere('v.dpp_inc_tax', '<>', $cost)
+                  ->orWhereNull('v.default_purchase_price')->orWhere('v.default_purchase_price', '<>', $cost);
+            })
+            ->select('v.id', 'v.product_id', 'v.default_purchase_price', 'v.dpp_inc_tax',
+                DB::raw("(SELECT SUM(w2.qty_available) FROM variation_location_details w2 WHERE w2.variation_id = v.id AND w2.location_id IN ({$whList})) as wh_qty"))
+            ->get();
+
+        $units = 0.0; $before = 0.0;
+        foreach ($rows as $r) {
+            $q = max(0, (float) $r->wh_qty);
+            $units += $q;
+            $before += $q * (float) ($r->dpp_inc_tax ?: $r->default_purchase_price ?: 0);
+        }
+        $summary = [
+            'variations' => $rows->count(),
+            'units' => (int) round($units),
+            'value_before' => round($before, 2),
+            'value_after' => round($units * $cost, 2),
+        ];
+
+        if (!$confirm) {
+            return response()->json(['ok' => true, 'preview' => true] + $summary);
+        }
+
+        $snapDir = storage_path('app/admin-snapshots');
+        if (!is_dir($snapDir)) {
+            @mkdir($snapDir, 0775, true);
+        }
+        $snapPath = $snapDir . '/' . date('Ymd_His') . '_warehouse_sealed_cost.json';
+        $ok = @file_put_contents($snapPath, json_encode([
+            'business_id' => $business_id,
+            'at' => date('c'),
+            'variations' => $rows->map(function ($r) {
+                return ['id' => (int) $r->id, 'product_id' => (int) $r->product_id,
+                    'default_purchase_price' => $r->default_purchase_price, 'dpp_inc_tax' => $r->dpp_inc_tax];
+            })->all(),
+        ]));
+        if ($ok === false) {
+            return response()->json(['ok' => false, 'error' => 'Could not write snapshot, nothing changed.'], 500);
+        }
+
+        $updated = 0;
+        foreach (array_chunk($rows->pluck('id')->all(), 1000) as $chunk) {
+            $updated += DB::table('variations')->whereIn('id', $chunk)->update([
+                'default_purchase_price' => $cost,
+                'dpp_inc_tax' => $cost,
+                'updated_at' => now(),
+            ]);
+        }
+
+        return response()->json(['ok' => true, 'preview' => false, 'updated' => $updated,
+            'snapshot' => str_replace(storage_path('app') . '/', '', $snapPath)] + $summary);
     }
 
     /**
