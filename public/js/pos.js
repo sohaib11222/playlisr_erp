@@ -4104,9 +4104,9 @@ function apply_store_credit_to_order_totals_display() {
 }
 
 /**
- * Sarah 2026-11-10 (bug #3): when the sale has tax-free lines, show two
- * amounts in the Clover bar: the taxed part for the normal key and the
- * tax-free part for the "No Tax" key. Otherwise the bar is unchanged.
+ * Sarah 2026-11-11: when the sale has tax-free lines (bag fee etc), Clover
+ * would tax them. Staff only want ONE pre-tax number to type, so find the
+ * pre-tax amount that, after Clover adds tax, lands exactly on the ERP total.
  * Display only; never touches totals or payments.
  */
 function update_clover_split() {
@@ -4115,31 +4115,35 @@ function update_clover_split() {
     if (!$bar.length || !$split.length) {
         return;
     }
-    var shown = 0;
+    var notax = Math.max(0, window.__clover_notax || 0);
+    var rate = 0;
     try {
-        shown = __number_uf($('span#pre_tax_amount').text(), false) || 0;
+        rate = __read_number($('#tax_calculation_amount')) || 0;
     } catch (e) {}
-    var notax = Math.min(Math.max(0, window.__clover_notax || 0), Math.max(0, shown));
-    notax = Math.round(notax * 100) / 100;
-    if (notax < 0.01 || shown <= 0) {
-        $bar.removeClass('has-split');
-        $split.hide();
-        return;
-    }
-    var taxed = Math.round((shown - notax) * 100) / 100;
-    $('#clover_split_taxed').text(taxed.toFixed(2));
-    $('#clover_split_notax').text(notax.toFixed(2));
-    // What Clover's screen should read after it adds tax (= ERP total due).
     var due = 0;
     try {
         due = __number_uf($('span#total_payable').text(), false) || 0;
     } catch (e) {}
-    $('#clover_split_total').text(due.toFixed(2));
-    $('#clover_split_total').closest('.clover-split-row').toggle(due >= 0.01);
-    // Nothing taxable (only bag / drinks): show just the No Tax key.
-    $('#clover_split_taxed').closest('.clover-split-main').toggle(taxed >= 0.01);
-    $('#clover_split_notax').closest('.clover-split-row').find('.clover-split-key')
-        .text(taxed >= 0.01 ? '2. Then No Tax key' : 'Type on No Tax key');
+    if (notax < 0.01 || rate <= 0 || due <= 0) {
+        $bar.removeClass('has-split');
+        $split.hide();
+        return;
+    }
+    // Clover total = key + round(key * rate%). Search around due / (1+rate).
+    var r = rate / 100;
+    var cents = Math.round(due * 100);
+    var guess = Math.round((due / (1 + r)) * 100);
+    var key = guess, best = null;
+    for (var d = -3; d <= 3; d++) {
+        var k = guess + d;
+        var got = k + Math.round(k * r);
+        var diff = Math.abs(got - cents);
+        if (best === null || diff < best || (diff === best && k < key)) {
+            best = diff;
+            key = k;
+        }
+    }
+    $('#clover_split_taxed').text((key / 100).toFixed(2));
     $bar.addClass('has-split');
     $split.css('display', 'flex');
 }
