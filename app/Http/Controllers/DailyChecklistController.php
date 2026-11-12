@@ -509,16 +509,47 @@ class DailyChecklistController extends Controller
         $this->guard();
         $business_id = (int) $request->session()->get('user.business_id');
         if ($request->query('refresh')) {
-            foreach (['open_items_web_orders', 'open_items_contact', 'open_items_bookings'] as $k) {
+            foreach (['open_items_web_orders', 'open_items_contact', 'open_items_bookings', 'open_items_discogs_old', 'open_items_discogs_wait'] as $k) {
                 \Cache::forget($k);
             }
         }
-        $sections = \App\Utils\OpenItemsUtil::sections($business_id);
+        list($sections, $sarah, $done) = \App\Utils\OpenItemsUtil::applyActions(\App\Utils\OpenItemsUtil::sections($business_id));
         return view('open_items.index', [
             'sections' => $sections,
+            'sarah'    => $sarah,
+            'done'     => $done,
+            'isOwner'  => \App\Utils\FatteenGoalsUtil::isOwner() || self::isJon(),
             'total'    => \App\Utils\OpenItemsUtil::total($sections),
             'asOf'     => \Carbon\Carbon::now('America/Los_Angeles')->format('m/d/y g:i A'),
         ]);
     }
+
+    /** "Fixed it" (what you did) or "Needs Sarah" (your recommendation) on one Open Items row. */
+    public function openItemsAct(Request $request)
+    {
+        $this->guard();
+        $key = mb_substr(trim((string) $request->input('key', '')), 0, 120);
+        $action = $request->input('action') === 'sarah' ? 'sarah' : 'fixed';
+        $note = mb_substr(trim((string) $request->input('note', '')), 0, 1000);
+        $label = mb_substr(trim((string) $request->input('label', '')), 0, 200);
+        $back = url('/open-items') . '#oi-' . preg_replace('/[^a-z]/', '', (string) $request->input('section', ''));
+        if ($key === '' || mb_strlen($note) < 8) {
+            return redirect($back)->with('oi_msg', $action === 'sarah'
+                ? 'Write what you recommend Sarah do (at least a few words).'
+                : 'Write what you did to fix it (at least a few words).');
+        }
+        $who = trim((string) auth()->user()->first_name);
+        \App\Utils\OpenItemsUtil::saveAction($key, $action, $note, $who, $label);
+
+        // A fixed customer text or call is closed in the Communications Hub too.
+        if ($action === 'fixed' && preg_match('/^comm:(\d+)$/', $key, $m)) {
+            \DB::table('communications')
+                ->where('business_id', (int) $request->session()->get('user.business_id'))
+                ->where('id', (int) $m[1])
+                ->update(['status' => 'resolved', 'resolved_by' => auth()->id(), 'resolved_at' => now(), 'resolution_notes' => $note, 'updated_at' => now()]);
+        }
+        return redirect($back)->with('oi_msg', $action === 'sarah' ? 'Sent to Sarah\'s list with your recommendation.' : 'Nice. Logged as fixed.');
+    }
 }
+
 

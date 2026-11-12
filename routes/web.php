@@ -1956,6 +1956,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/daily-checklist/toggle-periodic', 'DailyChecklistController@togglePeriodic')->name('daily-checklist.toggle-periodic');
     Route::get('/fatteen-goals', 'DailyChecklistController@goalsPage')->name('fatteen-goals');
     Route::get('/open-items', 'DailyChecklistController@openItems')->name('open-items');
+    Route::post('/open-items/act', 'DailyChecklistController@openItemsAct')->name('open-items.act');
     Route::post('/daily-checklist/wrapup', 'DailyChecklistController@saveWrapup')->name('daily-checklist.wrapup');
     Route::post('/daily-checklist/goals/log', 'DailyChecklistController@logGoal')->name('daily-checklist.goals.log');
     Route::post('/daily-checklist/goals/review', 'DailyChecklistController@reviewGoal')->name('daily-checklist.goals.review');

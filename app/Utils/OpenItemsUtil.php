@@ -23,20 +23,22 @@ class OpenItemsUtil
     {
         $out = [];
         foreach ([
-            'staff'     => fn () => self::staffNotReady($business_id),
-            'customers' => fn () => self::customersWaiting($business_id),
             'unhappy'   => fn () => self::unhappyCustomers($business_id),
+            'staff'     => fn () => self::staffNotReady($business_id),
+            'sellers'   => fn () => self::sellerLeads(),
             'orders'    => fn () => self::stuckOrders(),
+            'discogs'   => fn () => self::discogsOrders(),
+            'customers' => fn () => self::customersWaiting($business_id),
             'contact'   => fn () => self::contactForms(),
-            'bookings'  => fn () => self::unpaidBookings(),
-            'buys'      => fn () => self::draftBuys($business_id),
             'events'    => fn () => self::eventPrep($business_id),
+            'buys'      => fn () => self::draftBuys($business_id),
+            'bookings'  => fn () => self::unpaidBookings(),
         ] as $key => $fn) {
             try {
                 $out[$key] = $fn();
             } catch (\Throwable $e) {
                 \Log::warning('open-items ' . $key . ' failed: ' . $e->getMessage());
-                $names = ['staff' => 'Staff not set up', 'customers' => 'Customers waiting', 'unhappy' => 'Unhappy customers', 'orders' => 'Website orders stuck', 'contact' => 'Contact form messages', 'bookings' => 'Venue booking requests', 'buys' => 'Buys left as drafts', 'events' => 'Listening party prep'];
+                $names = ['sellers' => 'Seller leads', 'discogs' => 'Discogs orders', 'staff' => 'Staff not set up', 'customers' => 'Customers waiting', 'unhappy' => 'Unhappy customers', 'orders' => 'Website orders stuck', 'contact' => 'Contact form messages', 'bookings' => 'Venue booking requests', 'buys' => 'Buys left as drafts', 'events' => 'Listening party prep'];
                 $out[$key] = self::section($names[$key] ?? $key, '', '', [], 'Could not load this right now.');
             }
         }
@@ -53,7 +55,7 @@ class OpenItemsUtil
         return ['title' => $title, 'how' => $how, 'link' => $link, 'rows' => $rows, 'error' => $error];
     }
 
-    protected static function row($who, $what, $since, string $link): array
+    protected static function row($who, $what, $since, string $link, string $key = ''): array
     {
         $who = (string) $who;
         // Quo mirror tags like <!--quo-msg-...--> are not part of the message.
@@ -66,6 +68,7 @@ class OpenItemsUtil
             'age'   => $ts ? self::age($ts) : '',
             'hours' => $ts ? $ts->diffInHours(Carbon::now(self::TZ)) : 0,
             'link'  => $link,
+            'key'   => $key,
         ];
     }
 
@@ -114,7 +117,7 @@ class OpenItemsUtil
             if (self::isNoise((string) $r->message) || preg_match('/^\+?1?8(33|44|55|66|77|88)/', (string) $r->contact_info) || stripos((string) $r->contact_info, 'anonymous') !== false || stripos((string) $r->customer_name, 'anonymous') !== false) {
                 continue;
             }
-            $out[] = self::row($r->customer_name ?: $r->contact_info, (string) $r->message, $r->created_at, url('/communications'));
+            $out[] = self::row($r->customer_name ?: $r->contact_info, (string) $r->message, $r->created_at, url('/communications'), 'comm:' . $r->id);
         }
         return self::section('Customers waiting over 24 hours', 'Reply, or mark it resolved if it was handled another way.', url('/communications'), self::oldestFirst($out));
     }
@@ -132,7 +135,7 @@ class OpenItemsUtil
             ->get(['id', 'customer_name', 'contact_info', 'message', 'created_at']);
         $out = [];
         foreach ($rows as $r) {
-            $out[] = self::row($r->customer_name ?: $r->contact_info, (string) $r->message, $r->created_at, url('/communications'));
+            $out[] = self::row($r->customer_name ?: $r->contact_info, (string) $r->message, $r->created_at, url('/communications'), 'comm:' . $r->id);
         }
         return self::section('Unhappy customers not resolved (last 45 days)', 'Call them, fix it, then mark it resolved with what you did.', url('/communications'), self::oldestFirst($out));
     }
@@ -161,22 +164,24 @@ class OpenItemsUtil
             $name = (string) (($o['display_name'] ?? '') ?: (($o['shippingAddress'][0]['name'] ?? '') ?: ($o['user_id']['name'] ?? '')));
             $name = trim((!empty($o['orderNumber']) ? '#' . $o['orderNumber'] . ' ' : '') . $name);
             if (WebsiteOrdersController::inTab($o, 'cant_find')) {
-                $out[] = self::row($name, "Can't find: decide refund or replacement", $o['createdAt'] ?? null, url('/website-orders?order=' . $id));
+                $out[] = self::row($name, "Can't find: recheck the bins, offer a swap, refund only as a last step", $o['createdAt'] ?? null, url('/website-orders?order=' . $id), 'order:' . $id);
             } elseif ($created < $cut && WebsiteOrdersController::inTab($o, 'needs_action')) {
                 $how = ($o['fulfillment_method'] ?? '') === 'pickup' ? 'Pickup order not ready' : 'Not shipped';
-                $out[] = self::row($name, $how . ' after ' . intdiv(time() - $created, 86400) . ' days', $o['createdAt'] ?? null, url('/website-orders?order=' . $id));
+                $out[] = self::row($name, $how . ' after ' . intdiv(time() - $created, 86400) . ' days', $o['createdAt'] ?? null, url('/website-orders?order=' . $id), 'order:' . $id);
             }
         }
         return self::section('Website orders stuck (last 60 days)', 'Text the person on shift with the order link. No answer in 2 hours, call them, then the manager.', url('/website-orders?tab=needs_action'), self::oldestFirst($out));
     }
 
-    /** Website contact form messages nobody has replied to. */
-    public static function contactForms(): array
+    const SELLER_RE = '/\b(for sale|sell(ing)?|collection|bulk|library|estate|records? to sell|lot of)\b/i';
+
+    /** Contact form messages still "New" in the last 30 days, spam removed. Null if the website is down. */
+    protected static function newContactMessages(): ?array
     {
         $resp = \Cache::remember('open_items_contact', 300, fn () => WebsiteBridge::admin('GET', '/customer/messages'));
         if (empty($resp['success'])) {
             \Cache::forget('open_items_contact');
-            return self::section('Contact form messages', '', url('/website-inbox/messages'), [], 'Could not reach the website right now.');
+            return null;
         }
         $out = [];
         foreach ((array) ($resp['data'] ?? []) as $m) {
@@ -191,10 +196,71 @@ class OpenItemsUtil
             if (preg_match('/virtual assistant|explainer video|social media manager|seo|funding|leads for|streamlining your workflow|transparency certificate|homepage|free set of new ads/', $blob)) {
                 continue;
             }
-            $what = trim(($m['subject'] ?? '') . ': ' . ($m['message'] ?? ''), ': ');
-            $out[] = self::row((string) ($m['name'] ?? $m['email'] ?? ''), $what, $m['createdAt'] ?? null, url('/website-inbox/messages'));
+            $m['_seller'] = (bool) preg_match(self::SELLER_RE, $blob) && !preg_match('/\b(order|refund|ship|tracking)\b/', $blob);
+            $out[] = $m;
         }
-        return self::section('Contact form messages not answered (last 30 days)', 'Answer it yourself from the Website Inbox. Sellers: get a time booked to bring the collection in.', url('/website-inbox/messages'), self::oldestFirst($out));
+        return $out;
+    }
+
+    protected static function contactRows(array $msgs): array
+    {
+        $out = [];
+        foreach ($msgs as $m) {
+            $what = trim(($m['subject'] ?? '') . ': ' . ($m['message'] ?? ''), ': ');
+            $out[] = self::row((string) ($m['name'] ?? $m['email'] ?? ''), $what, $m['createdAt'] ?? null, url('/website-inbox/messages'), 'contact:' . ($m['_id'] ?? md5($what)));
+        }
+        return self::oldestFirst($out);
+    }
+
+    /** People offering us records. The biggest money on the page. */
+    public static function sellerLeads(): array
+    {
+        $msgs = self::newContactMessages();
+        if ($msgs === null) {
+            return self::section('Seller leads', '', url('/website-inbox/messages'), [], 'Could not reach the website right now.');
+        }
+        $rows = self::contactRows(array_filter($msgs, fn ($m) => $m['_seller']));
+        return self::section('Seller leads', 'Call or email the same day, get photos and a rough count, and book a time for them to bring it in (or a pickup). Done = a date is booked or they said no.', url('/buy-from-customer'), $rows);
+    }
+
+    /** Website contact form messages nobody has replied to. */
+    public static function contactForms(): array
+    {
+        $msgs = self::newContactMessages();
+        if ($msgs === null) {
+            return self::section('Contact form messages', '', url('/website-inbox/messages'), [], 'Could not reach the website right now.');
+        }
+        $rows = self::contactRows(array_filter($msgs, fn ($m) => !$m['_seller']));
+        return self::section('Contact form messages not answered (last 30 days)', 'Answer it yourself from the Website Inbox with a real answer (stock, price, date), not a hand-off.', url('/website-inbox/messages'), $rows);
+    }
+
+    /** Discogs orders over 30 days old still not shipped, and buyers we owe an answer. */
+    public static function discogsOrders(): array
+    {
+        $ctl = app(WebsiteOrdersController::class);
+        $old = \Cache::remember('open_items_discogs_old', 300, fn () => $ctl->bridgeGet('/erp/discogs/to-ship?old=1', 20));
+        $wait = \Cache::remember('open_items_discogs_wait', 300, fn () => $ctl->bridgeGet('/erp/discogs/waiting-on-buyer', 25));
+        if (empty($old['success']) && empty($wait['success'])) {
+            \Cache::forget('open_items_discogs_old');
+            \Cache::forget('open_items_discogs_wait');
+            return self::section('Discogs orders', '', url('/website-orders?tab=discogs_old'), [], 'Could not reach Discogs right now.');
+        }
+        $out = [];
+        foreach ((array) ($old['data'] ?? []) as $d) {
+            if (is_array($d)) {
+                $out[] = self::row((string) ($d['buyer'] ?? ''), 'Paid ' . ($d['id'] ?? '') . ', not shipped after 30+ days', $d['order_date'] ?? $d['created'] ?? null, url('/website-orders?tab=discogs_old'), 'discogs:' . ($d['id'] ?? ''));
+            }
+        }
+        foreach ((array) ($wait['data'] ?? []) as $d) {
+            if (is_array($d)) {
+                $r = self::row((string) ($d['buyer'] ?? ''), "We said we can't find it, buyer hasn't answered: refund or send a substitute " . ($d['id'] ?? ''), null, url('/website-orders?tab=discogs_old'), 'discogs:' . ($d['id'] ?? ''));
+                $days = (int) ($d['days_waiting'] ?? 0);
+                $r['age'] = $days . ' days';
+                $r['hours'] = $days * 24;
+                $out[] = $r;
+            }
+        }
+        return self::section('Discogs orders', 'Ship it, or refund it the same day. Discogs buyers leave public feedback.', url('/website-orders?tab=discogs_old'), self::oldestFirst($out));
     }
 
     /** Venue booking requests that never got paid. */
@@ -214,7 +280,7 @@ class OpenItemsUtil
             if (preg_match('/^(admin|test)/i', trim($b['customerName'])) || preg_match('/^test/i', trim($b['customerEmail']))) {
                 continue;
             }
-            $out[] = self::row($b['customerName'] ?: $b['customerEmail'], trim($b['venueName'] . ' ' . $b['title']), $b['createdAt'] ?: null, url('/website-carts?tab=bookings'));
+            $out[] = self::row($b['customerName'] ?: $b['customerEmail'], trim($b['venueName'] . ' ' . $b['title']), $b['createdAt'] ?: null, url('/website-carts?tab=bookings'), 'booking:' . $b['id']);
         }
         return self::section('Venue booking requests not paid', 'Call or email them to finish the booking, or find out why not.', url('/website-carts?tab=bookings'), self::oldestFirst($out));
     }
@@ -253,7 +319,7 @@ class OpenItemsUtil
             if ($cash > 0 && $cash < 20000) {
                 $what .= ', $' . number_format($cash, 2) . ' cash';
             }
-            $out[] = self::row($r->seller_name ?: $r->seller_phone, $what, $r->created_at, url('/buy-from-customer/' . $r->id . '/edit'));
+            $out[] = self::row($r->seller_name ?: $r->seller_phone, $what, $r->created_at, url('/buy-from-customer/' . $r->id . '/edit'), 'buy:' . $r->id);
         }
         return self::section('Buys left as drafts (last 7 days)', 'Ask the cashier: did we buy it? Then Accept or Reject so the drawer and stock are right.', url('/buy-from-customer/history'), self::oldestFirst($out));
     }
@@ -291,7 +357,7 @@ class OpenItemsUtil
                 $eid = (string) ($ev['id'] ?? $id);
                 $name = (string) ($ev['name'] ?? $ev['title'] ?? 'Event');
                 $what = count($late) . ' step' . (count($late) === 1 ? '' : 's') . ' due: ' . implode(' / ', $late);
-                $r = self::row($name, $what, null, url('/events/' . $eid . '/edit'));
+                $r = self::row($name, $what, null, url('/events/' . $eid . '/edit'), 'prep:' . $eid . ':' . $today->format('Y-m-d'));
                 $r['since'] = $evDay->format('m/d/y');
                 $r['age'] = $evDay->isSameDay($today) ? 'today' : ($today->diffInDays($evDay) === 1 ? 'tomorrow' : 'in ' . $today->diffInDays($evDay) . ' days');
                 $r['hours'] = -$today->diffInDays($evDay);
@@ -352,7 +418,7 @@ class OpenItemsUtil
                 continue;
             }
             $name = $u ? trim($u->first_name . ' ' . $u->last_name) : (string) ($s->user_name ?: $s->user_email);
-            $r = self::row($name, ucfirst(implode(', ', $missing)) . ', ' . $when, null, url('/time-clock/settings'));
+            $r = self::row($name, ucfirst(implode(', ', $missing)) . ', ' . $when, null, url('/time-clock/settings'), 'staff:' . $key);
             $hrs = $now->diffInHours($start, false);
             $r['since'] = $start->format('m/d/y');
             $r['age'] = $hrs <= 24 ? 'within 24h' : 'in ' . (int) ceil($hrs / 24) . ' days';
@@ -369,12 +435,97 @@ class OpenItemsUtil
                 continue;
             }
             $steps = array_map(fn ($k) => mb_strimwidth((string) ($labels[$k] ?? $k), 0, 50, '...'), (array) $run['missed']);
-            $r = self::row((string) ($run['employee_name'] ?? ''), 'Onboarding not finished: ' . implode(' / ', $steps), $run['date'], url('/employee-checklist?type=onboarding'));
+            $r = self::row((string) ($run['employee_name'] ?? ''), 'Onboarding not finished: ' . implode(' / ', $steps), $run['date'], url('/employee-checklist?type=onboarding'), 'onboard:' . ($run['id'] ?? ''));
             $out[] = $r;
         }
 
         usort($out, fn ($a, $b) => $b['hours'] <=> $a['hours']);
         return self::section('Staff not set up', 'Every new hire needs an ERP login and a time clock PIN before their first shift. Finish the onboarding checklist the day they are hired.', url('/employee-checklist'), $out);
     }
+
+    /* ---------- Fixed it / Needs Sarah ---------- */
+
+    const ACTIONS_FILE = 'open_items_actions.json';
+    const RECHECK_HOURS = 48;
+
+    public static function readActions(): array
+    {
+        $f = storage_path('app/' . self::ACTIONS_FILE);
+        $d = is_file($f) ? json_decode((string) file_get_contents($f), true) : [];
+        return is_array($d) ? $d : [];
+    }
+
+    public static function saveAction(string $key, string $action, string $note, string $who, string $label): void
+    {
+        $f = storage_path('app/' . self::ACTIONS_FILE);
+        $fp = fopen($f, 'c+');
+        if (!$fp) {
+            return;
+        }
+        flock($fp, LOCK_EX);
+        $raw = stream_get_contents($fp);
+        $d = json_decode($raw ?: '[]', true) ?: [];
+        $d[$key] = ['action' => $action, 'note' => $note, 'by' => $who, 'label' => $label, 'at' => Carbon::now(self::TZ)->toIso8601String()];
+        // Keep the file small: drop entries older than 90 days.
+        $cut = Carbon::now(self::TZ)->subDays(90);
+        foreach ($d as $k => $v) {
+            if (empty($v['at']) || Carbon::parse($v['at'])->lt($cut)) {
+                unset($d[$k]);
+            }
+        }
+        ftruncate($fp, 0);
+        rewind($fp);
+        fwrite($fp, json_encode($d, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+        fflush($fp);
+        flock($fp, LOCK_UN);
+        fclose($fp);
+    }
+
+    /**
+     * Applies what he already did. "Fixed it" hides a row for 48 hours; if the
+     * problem is still open after that, it comes back showing his note, so a
+     * fix only counts when the problem is actually gone. "Needs Sarah" moves it
+     * to the Sarah list with his recommendation.
+     * Returns [sections, sarahRows, doneToday].
+     */
+    public static function applyActions(array $sections): array
+    {
+        $acts = self::readActions();
+        $now = Carbon::now(self::TZ);
+        $sarah = [];
+        foreach ($sections as $sk => $s) {
+            $keep = [];
+            foreach ($s['rows'] as $r) {
+                $a = ($r['key'] ?? '') !== '' ? ($acts[$r['key']] ?? null) : null;
+                if ($a) {
+                    $at = Carbon::parse($a['at'])->setTimezone(self::TZ);
+                    if ($a['action'] === 'sarah') {
+                        $r['section'] = $s['title'];
+                        $r['rec'] = $a['note'];
+                        $r['rec_by'] = $a['by'] . ', ' . $at->format('m/d/y g:i A');
+                        $sarah[] = $r;
+                        continue;
+                    }
+                    if ($a['action'] === 'fixed' && $at->diffInHours($now) < self::RECHECK_HOURS) {
+                        continue;
+                    }
+                    if ($a['action'] === 'fixed') {
+                        $r['reopened'] = 'Marked fixed ' . $at->format('m/d/y') . ' ("' . $a['note'] . '") but it is still open.';
+                    }
+                }
+                $keep[] = $r;
+            }
+            $sections[$sk]['rows'] = $keep;
+        }
+        $done = [];
+        foreach ($acts as $k => $a) {
+            if (($a['action'] ?? '') === 'fixed' && Carbon::parse($a['at'])->setTimezone(self::TZ)->isSameDay($now)) {
+                $done[] = $a;
+            }
+        }
+        usort($done, fn ($x, $y) => strcmp($y['at'], $x['at']));
+        return [$sections, $sarah, $done];
+    }
 }
+
 
