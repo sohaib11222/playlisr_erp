@@ -4,7 +4,7 @@
 @section('content')
 <section class="content-header">
     <h1>Store Manager Bonus</h1>
-    <p style="color:#222;">Each month the store manager earns {{ rtrim(rtrim(number_format($rate, 2), '0'), '.') }}% of the store's sales (before tax) above the same month last year, as long as the store stayed within its labor-hour budget. Starts 12/01/26, paid at the month-end payroll.</p>
+    <p style="color:#222;">Each month the store manager earns {{ rtrim(rtrim(number_format($rate, 2), '0'), '.') }}% of the store's sales (before tax) above the same month last year, as long as the store stayed within its labor-hour budget. Starts 12/01/26, paid once a month at the payroll closest to month end. Sales match the Like-for-Like report; tax is taken out of the growth before the bonus.</p>
 </section>
 
 <style>
@@ -45,6 +45,7 @@
                     <tr><td>Store sales this year</td><td>${{ number_format($r['sales'], 2) }}</td></tr>
                     <tr><td>Same days last year</td><td>${{ number_format($r['ly_sales'], 2) }}</td></tr>
                     <tr><td>Growth</td><td>${{ number_format($r['growth'], 2) }}@if($r['growth_pct'] !== null) ({{ $r['growth_pct'] > 0 ? '+' : '' }}{{ $r['growth_pct'] }}%)@endif</td></tr>
+                    <tr><td>Growth before sales tax</td><td>${{ number_format($r['growth_pretax'], 2) }}</td></tr>
                     <tr><td>Labor hours (time clock) vs budget</td><td>{{ number_format($r['hours'], 1) }} of {{ number_format($r['budget']) }} hrs
                         @if ($r['within_budget'])<span class="mb-ok">within budget</span>@else<span class="mb-no">over budget, no bonus</span>@endif</td></tr>
                     <tr><td><b>Bonus earned</b></td><td class="mb-big">${{ number_format($r['earned'], 2) }}</td></tr>
@@ -69,7 +70,7 @@
                 <tr><th>If {{ $r['store'] }} sells</th><th>Growth</th><th>Bonus (within labor budget)</th></tr>
                 @foreach ([0, 5, 10, 15, 20, 30] as $pct)
                     @php $s = $r['ly_full'] * (1 + $pct / 100); $g = $s - $r['ly_full']; @endphp
-                    <tr><td>${{ number_format($s, 0) }}</td><td>{{ $pct === 0 ? 'same as last year' : '+' . $pct . '% ($' . number_format($g, 0) . ')' }}</td><td>${{ number_format($g * $rate / 100, 2) }}</td></tr>
+                    <tr><td>${{ number_format($s, 0) }}</td><td>{{ $pct === 0 ? 'same as last year' : '+' . $pct . '% ($' . number_format($g, 0) . ')' }}</td><td>${{ number_format($g / 1.0975 * $rate / 100, 2) }}</td></tr>
                 @endforeach
                 <tr><td>Below last year</td><td>any drop</td><td>$0.00</td></tr>
             </table>

@@ -16,6 +16,7 @@ class ManagerBonusController extends Controller
 {
     const START_MONTH = '2026-12';
     const RATE = 2.0;
+    const TAX_RATE = 0.0975; // CA rate used by the historical import; growth is paid before tax
     const PAYOUTS_FILE = 'manager-bonus-payouts.json';
 
     // location_id => manager + daily labor caps [Mon-Thu, Fri-Sun]
@@ -28,9 +29,8 @@ class ManagerBonusController extends Controller
     // Hollywood store total (Sarah 2026-09-22). Nick = shipping.
     const SHIPPING_FIRST_NAMES = ['Nick'];
 
-    // Only Sarah, Jon and Fatteen (payroll) see everything; each manager
-    // (Luis 26, Zak 18) sees only his own store (Sarah 2026-11-12).
-    const FULL_ACCESS = [1, 8, 10];
+    // Only Sarah and Jon see this page (Sarah 2026-11-12).
+    const FULL_ACCESS = [1, 8]; // Sarah 2026-11-12: only Sarah + Jon see both stores
     const MANAGER_IDS = [26 => 2, 18 => 1]; // user_id => location_id
 
     private function ensureAllowed()
@@ -43,8 +43,9 @@ class ManagerBonusController extends Controller
     {
         $u = auth()->user();
         if (!$u) { abort(403); }
+        // Managers don't see this page; once paid, the bonus shows on their
+        // own My Earnings statement (Sarah 2026-11-12).
         if (in_array((int) $u->id, self::FULL_ACCESS, true)) { return array_keys(self::STORES); }
-        if (isset(self::MANAGER_IDS[(int) $u->id])) { return [self::MANAGER_IDS[(int) $u->id]]; }
         abort(403);
     }
 
@@ -127,7 +128,8 @@ class ManagerBonusController extends Controller
         $hours = $through->gte($start) ? $this->laborHours($businessId, $locId, $start, $through) : 0.0;
         $withinBudget = $hours <= $budget;
 
-        $earned = ($growth > 0 && $withinBudget) ? round($growth * self::RATE / 100, 2) : 0.0;
+        $growthPreTax = round($growth / (1 + self::TAX_RATE), 2);
+        $earned = ($growth > 0 && $withinBudget) ? round($growthPreTax * self::RATE / 100, 2) : 0.0;
 
         $manager = DB::table('users')->where('business_id', $businessId)
             ->where('first_name', $cfg['manager_first'])->orderBy('id')->first(['id', 'first_name', 'last_name']);
@@ -147,6 +149,7 @@ class ManagerBonusController extends Controller
             'sales' => round($sales, 2),
             'ly_sales' => round($lySales, 2),
             'growth' => $growth,
+            'growth_pretax' => $growthPreTax,
             'ly_full' => round($lyFull, 2),
             'growth_pct' => $lySales > 0 ? round($growth / $lySales * 100, 1) : null,
             'hours' => round($hours, 2),
@@ -158,9 +161,11 @@ class ManagerBonusController extends Controller
         ];
     }
 
-    // Pre-tax store sales, live + imported history (same rule as the LFL
-    // report: take the larger of the sheet import vs the register for the
-    // period so imported months aren't double counted), Whatnot excluded.
+    // Store sales EXACTLY as the Like-for-Like report counts them (tax
+    // included, live + imported history, larger of sheet vs register for the
+    // period, Whatnot excluded), so every number here ties to /reports/lfl-sales.
+    // Last year's register rows carry no separate tax, so tax is taken out of
+    // the GROWTH instead (see TAX_RATE), the same way for both years.
     private function storeSales($businessId, $locId, \Carbon\Carbon $from, \Carbon\Carbon $to)
     {
         $r = DB::table('transactions')
@@ -169,9 +174,9 @@ class ManagerBonusController extends Controller
             ->where(function ($w) { $w->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
             ->whereBetween('transaction_date', [$from->toDateTimeString(), $to->toDateTimeString()])
             ->selectRaw("
-                COALESCE(SUM(CASE WHEN import_source LIKE 'nivessa_backend_sales_%' THEN final_total - COALESCE(tax_amount,0) ELSE 0 END),0) as sheet_rev,
-                COALESCE(SUM(CASE WHEN import_source IS NULL THEN final_total - COALESCE(tax_amount,0) ELSE 0 END),0) as register_rev,
-                COALESCE(SUM(CASE WHEN import_source IS NOT NULL AND import_source NOT LIKE 'nivessa_backend_sales_%' THEN final_total - COALESCE(tax_amount,0) ELSE 0 END),0) as other_rev
+                COALESCE(SUM(CASE WHEN import_source LIKE 'nivessa_backend_sales_%' THEN final_total ELSE 0 END),0) as sheet_rev,
+                COALESCE(SUM(CASE WHEN import_source IS NULL THEN final_total ELSE 0 END),0) as register_rev,
+                COALESCE(SUM(CASE WHEN import_source IS NOT NULL AND import_source NOT LIKE 'nivessa_backend_sales_%' THEN final_total ELSE 0 END),0) as other_rev
             ")->first();
         return max((float) $r->sheet_rev, (float) $r->register_rev) + (float) $r->other_rev;
     }
@@ -235,5 +240,14 @@ class ManagerBonusController extends Controller
     private function savePayouts(array $p)
     {
         Storage::disk('local')->put(self::PAYOUTS_FILE, json_encode(array_values($p), JSON_PRETTY_PRINT));
+    }
+
+    // Paid manager bonus rows for one person, for their My Earnings statement.
+    public static function paidForUser($userId)
+    {
+        $self = new self();
+        return array_values(array_filter($self->loadPayouts(), function ($p) use ($userId) {
+            return (int) ($p['user_id'] ?? 0) === (int) $userId;
+        }));
     }
 }

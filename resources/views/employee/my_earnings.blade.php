@@ -172,6 +172,21 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
             @endif
         </div>
 
+        @if(!empty($manager_bonus))
+        <div class="me-card">
+            <h3 style="margin-bottom:2px;">Store manager bonus</h3>
+            <p style="margin:2px 0 12px; color:#222;">Paid once a month: 2% of the store's growth over the same month last year (before tax), when the store stays within its labor budget.</p>
+            <table class="table">
+                <thead><tr><th>Month</th><th>Store</th><th style="text-align:right;">Paid</th></tr></thead>
+                <tbody>
+                    @foreach(array_reverse($manager_bonus) as $mb)
+                        <tr><td>{{ \Carbon::parse($mb['month'] . '-01')->format('F Y') }}</td><td>{{ $mb['store'] }}</td><td style="text-align:right;">${{ number_format($mb['amount'], 2) }}</td></tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+        @endif
+
         <div class="me-card">
             <h3 style="margin-bottom:2px;">Weekly commission statement</h3>
             <p class="me-muted" style="margin:2px 0 12px;">A running ledger, newest week first, of what {{ $viewing_other ? 'they' : 'you' }} earned vs. got paid. The <strong>top row's balance is the current one</strong> &mdash; that's what's still owed today. Each row: last week's balance + earned &minus; paid. A mid-list negative isn't an overpay &mdash; it just means a payment landed before that week's earnings caught up.</p>
