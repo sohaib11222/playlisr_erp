@@ -1101,6 +1101,32 @@ class ListingCommissionController extends Controller
             $u = DB::table('users')->where('id', $erpUid)->first(['first_name', 'last_name', 'surname']);
             $out[$erpUid] = $u ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->surname ?: ('User #' . $erpUid))) : ('User #' . $erpUid);
         }
+
+        // The live pull came back with nobody for the Oct 18 and Nov 7 parties
+        // even though the synced Sling table had Alec, Jacob and Manolo on
+        // Cashier shifts during them (checked 2026-11-12). Never say "nobody
+        // worked it" while the synced schedule shows floor staff: fall back
+        // to the synced table (same floor positions, same window overlap).
+        if (empty($out)) {
+            $synced = \App\SlingShift::where('event_type', \App\SlingShift::TYPE_SHIFT)
+                ->where('published', 1)->whereNotNull('erp_user_id')
+                ->whereDate('dtstart', $date)->get();
+            foreach ($synced as $s) {
+                $pos = strtolower((string) ($s->position_name ?? ''));
+                $isFloor = false;
+                foreach ($floorPos as $fp) { if (strpos($pos, $fp) !== false) { $isFloor = true; break; } }
+                if (!$isFloor) { continue; }
+                $loc = strtolower((string) ($s->location_name ?? ''));
+                if ($loc === '' || strpos($loc, $locationKey) === false) { continue; }
+                $ss = \Carbon::parse($s->dtstart);
+                $se = $s->dtend ? \Carbon::parse($s->dtend) : $ss->copy()->endOfDay();
+                if (!($ss->lt($endC) && $se->gt($startC))) { continue; }
+                $erpUid = (int) $s->erp_user_id;
+                if (isset($out[$erpUid])) { continue; }
+                $u = DB::table('users')->where('id', $erpUid)->first(['first_name', 'last_name', 'surname']);
+                $out[$erpUid] = $u ? (trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')) ?: ($u->surname ?: ('User #' . $erpUid))) : ('User #' . $erpUid);
+            }
+        }
         return $out;
     }
 
