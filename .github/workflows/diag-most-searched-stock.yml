@@ -56,6 +56,8 @@ jobs:
             $t = microtime(true);
             foreach (['taylor swift', 'beatles', 'radiohead vinyl', 'pink floyd dark side', 'vinyl', 'zzqqxx'] as $q) echo $q . ' => ' . json_encode($f($q)) . "\n";
             echo "6 lookups " . round((microtime(true) - $t) * 1000) . "ms\n";
+            $t = microtime(true); for ($k = 0; $k < 100; $k++) foreach (['taylor swift', 'beatles', 'radiohead', 'pink floyd dark side', 'love'] as $q) $f($q);
+            echo "500 lookups " . round((microtime(true) - $t) * 1000) . "ms\n";
             $rows = [['_id' => 'beatles', 'count' => 5, '_stock' => $f('beatles')], ['_id' => 'vinyl', 'count' => 2, '_stock' => null]];
             $html = view('website_admin.content.most_searched', ['stockLocations' => $locs, 'bridgeError' => null, 'queries' => $rows, 'artists' => [['query' => 'beatles', 'count' => 3, '_stock' => $f('beatles')]], 'artistError' => null, 'page' => 1, 'limit' => 500, 'total' => 2, 'totalPages' => 1, 'pageSizes' => [500], 'loadedAt' => 'now'])->renderSections()['content'];
             echo "view ok " . strlen($html) . " bytes\n";
