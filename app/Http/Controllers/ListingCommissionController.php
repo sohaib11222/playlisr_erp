@@ -1827,7 +1827,7 @@ class ListingCommissionController extends Controller
                     'amount' => $amt,
                     'label'  => $u['name'] . ' - ' . ($u['location_name'] ?: '?') . ' - '
                         . \Carbon::parse($u['date'])->format('M j') . ', ' . ($u['estimate']['window'] ?? '')
-                        . ' - ' . (int) ($u['estimate']['checked_in'] ?? 0) . ' checked in, ' . (int) ($u['estimate']['buyers'] ?? 0) . ' bought $' . number_format($u['estimate']['sales'] ?? 0, 2),
+                        . ' - ' . (int) ($u['estimate']['checked_in'] ?? 0) . ' checked in, store rang $' . number_format($u['estimate']['sales'] ?? 0, 2),
                 ];
             }
         }
