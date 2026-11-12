@@ -35,7 +35,8 @@ class OpenItemsUtil
                 $out[$key] = $fn();
             } catch (\Throwable $e) {
                 \Log::warning('open-items ' . $key . ' failed: ' . $e->getMessage());
-                $out[$key] = self::section('?', '', '', [], 'Could not load this right now.');
+                $names = ['customers' => 'Customers waiting', 'unhappy' => 'Unhappy customers', 'orders' => 'Website orders stuck', 'contact' => 'Contact form messages', 'bookings' => 'Venue booking requests', 'buys' => 'Buys left as drafts', 'events' => 'Listening party prep'];
+                $out[$key] = self::section($names[$key] ?? $key, '', '', [], 'Could not load this right now.');
             }
         }
         return $out;
@@ -51,8 +52,11 @@ class OpenItemsUtil
         return ['title' => $title, 'how' => $how, 'link' => $link, 'rows' => $rows, 'error' => $error];
     }
 
-    protected static function row(string $who, string $what, $since, string $link): array
+    protected static function row($who, $what, $since, string $link): array
     {
+        $who = (string) $who;
+        // Quo mirror tags like <!--quo-msg-...--> are not part of the message.
+        $what = trim(preg_replace('/<!--.*?-->/s', '', (string) $what));
         $ts = $since ? Carbon::parse($since)->setTimezone(self::TZ) : null;
         return [
             'who'   => trim($who) !== '' ? trim($who) : 'Unknown',
@@ -79,6 +83,13 @@ class OpenItemsUtil
         return $rows;
     }
 
+    /** Texts that never need a reply: login codes, opt-outs, automated notices. */
+    protected static function isNoise(string $msg): bool
+    {
+        $m = strtolower(preg_replace('/<!--.*?-->/s', '', $msg));
+        return (bool) preg_match('/verification code|two-factor|is your .{0,20}code|whatsapp business account|account confirmation request|\\bstop\\b|^\\s*(\\[[^\\]]*\\]\\s*)?(ok|ok\\.? thanks|thanks|thank you|liked .*)\\W*$/s', $m);
+    }
+
     /** Quo texts and calls with no reply after 24 hours (last 30 days). */
     public static function customersWaiting(int $business_id): array
     {
@@ -98,7 +109,11 @@ class OpenItemsUtil
             ->get(['id', 'customer_name', 'contact_info', 'message', 'created_at']);
         $out = [];
         foreach ($rows as $r) {
-            $out[] = self::row($r->customer_name ?: $r->contact_info, (string) $r->message, $r->created_at, url('/communications?open=' . $r->id));
+            // Toll-free 833/844/855 numbers calling us are robocalls.
+            if (self::isNoise((string) $r->message) || preg_match('/^\+?1?8(33|44|55|66|77|88)/', (string) $r->contact_info)) {
+                continue;
+            }
+            $out[] = self::row($r->customer_name ?: $r->contact_info, (string) $r->message, $r->created_at, url('/communications'));
         }
         return self::section('Customers waiting over 24 hours', 'Reply, or mark it resolved if it was handled another way.', url('/communications'), self::oldestFirst($out));
     }
@@ -110,14 +125,15 @@ class OpenItemsUtil
             ->where('business_id', $business_id)
             ->where('topic', 'unhappy_customer')
             ->where('status', 'pending')
+            ->where('created_at', '>=', now()->subDays(45))
             ->orderBy('created_at')
             ->limit(100)
             ->get(['id', 'customer_name', 'contact_info', 'message', 'created_at']);
         $out = [];
         foreach ($rows as $r) {
-            $out[] = self::row($r->customer_name ?: $r->contact_info, (string) $r->message, $r->created_at, url('/communications?open=' . $r->id));
+            $out[] = self::row($r->customer_name ?: $r->contact_info, (string) $r->message, $r->created_at, url('/communications'));
         }
-        return self::section('Unhappy customers not resolved', 'Call them, fix it, then mark it resolved with what you did.', url('/communications'), self::oldestFirst($out));
+        return self::section('Unhappy customers not resolved (last 45 days)', 'Call them, fix it, then mark it resolved with what you did.', url('/communications'), self::oldestFirst($out));
     }
 
     /** Paid website orders still open after 3 days, plus every "can't find" order. */
@@ -128,7 +144,7 @@ class OpenItemsUtil
         });
         if (!is_array($resp) || !isset($resp['data'])) {
             \Cache::forget('open_items_web_orders');
-            return self::section('Website orders stuck', '', url('/website-orders'), [], 'Could not reach the website right now.');
+            return self::section('Website orders stuck (last 60 days)', '', url('/website-orders'), [], 'Could not reach the website right now.');
         }
         $cut = now()->subDays(3)->timestamp;
         $out = [];
@@ -137,11 +153,15 @@ class OpenItemsUtil
                 continue;
             }
             $id = (string) ($o['_id'] ?? '');
-            $name = (string) ($o['display_name'] ?? '');
             $created = strtotime((string) ($o['createdAt'] ?? '')) ?: 0;
+            if (!$created || $created < now()->subDays(60)->timestamp) {
+                continue;
+            }
+            $name = (string) (($o['display_name'] ?? '') ?: (($o['shippingAddress'][0]['name'] ?? '') ?: ($o['user_id']['name'] ?? '')));
+            $name = trim((!empty($o['orderNumber']) ? '#' . $o['orderNumber'] . ' ' : '') . $name);
             if (WebsiteOrdersController::inTab($o, 'cant_find')) {
                 $out[] = self::row($name, "Can't find: decide refund or replacement", $o['createdAt'] ?? null, url('/website-orders?order=' . $id));
-            } elseif ($created && $created < $cut && WebsiteOrdersController::inTab($o, 'needs_action')) {
+            } elseif ($created < $cut && WebsiteOrdersController::inTab($o, 'needs_action')) {
                 $how = ($o['fulfillment_method'] ?? '') === 'pickup' ? 'Pickup order not ready' : 'Not shipped';
                 $out[] = self::row($name, $how . ' after ' . intdiv(time() - $created, 86400) . ' days', $o['createdAt'] ?? null, url('/website-orders?order=' . $id));
             }
@@ -162,10 +182,18 @@ class OpenItemsUtil
             if (!is_array($m) || ($m['status'] ?? 'new') !== 'new') {
                 continue;
             }
+            $at = strtotime((string) ($m['createdAt'] ?? '')) ?: 0;
+            if ($at < now()->subDays(30)->timestamp) {
+                continue;
+            }
+            $blob = strtolower(($m['subject'] ?? '') . ' ' . ($m['message'] ?? ''));
+            if (preg_match('/virtual assistant|explainer video|social media manager|seo|funding|leads for|streamlining your workflow|transparency certificate|homepage|free set of new ads/', $blob)) {
+                continue;
+            }
             $what = trim(($m['subject'] ?? '') . ': ' . ($m['message'] ?? ''), ': ');
             $out[] = self::row((string) ($m['name'] ?? $m['email'] ?? ''), $what, $m['createdAt'] ?? null, url('/website-inbox/messages'));
         }
-        return self::section('Contact form messages not answered', 'Answer it yourself from the Website Inbox. Sellers: get a time booked to bring the collection in.', url('/website-inbox/messages'), self::oldestFirst($out));
+        return self::section('Contact form messages not answered (last 30 days)', 'Answer it yourself from the Website Inbox. Sellers: get a time booked to bring the collection in.', url('/website-inbox/messages'), self::oldestFirst($out));
     }
 
     /** Venue booking requests that never got paid. */
@@ -182,6 +210,9 @@ class OpenItemsUtil
         }
         $out = [];
         foreach ($rows as $b) {
+            if (preg_match('/^(admin|test)/i', trim($b['customerName'])) || preg_match('/^test/i', trim($b['customerEmail']))) {
+                continue;
+            }
             $out[] = self::row($b['customerName'] ?: $b['customerEmail'], trim($b['venueName'] . ' ' . $b['title']), $b['createdAt'] ?: null, url('/website-carts?tab=bookings'));
         }
         return self::section('Venue booking requests not paid', 'Call or email them to finish the booking, or find out why not.', url('/website-carts?tab=bookings'), self::oldestFirst($out));
@@ -247,7 +278,7 @@ class OpenItemsUtil
                 $what = count($late) . ' step' . (count($late) === 1 ? '' : 's') . ' due: ' . implode(' / ', $late);
                 $r = self::row($name, $what, null, url('/events/' . $eid . '/edit'));
                 $r['since'] = $evDay->format('m/d/y');
-                $r['age'] = $evDay->isSameDay($today) ? 'today' : 'in ' . $today->diffInDays($evDay) . ' days';
+                $r['age'] = $evDay->isSameDay($today) ? 'today' : ($today->diffInDays($evDay) === 1 ? 'tomorrow' : 'in ' . $today->diffInDays($evDay) . ' days');
                 $r['hours'] = -$today->diffInDays($evDay);
                 $out[] = $r;
             }
