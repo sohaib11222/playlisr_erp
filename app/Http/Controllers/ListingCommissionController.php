@@ -32,6 +32,7 @@ class ListingCommissionController extends Controller
     const PARTY_NET_PRETAX = '(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))';
     const PARTY_DEFAULT_PERCENT = 3.0; // Sarah 2026-11-12: 3% of party-window sales when guests checked in
     const PARTY_DEFAULT_FROM = '18:00'; // 6 PM, matches the from_h/to_h defaults above
+    const PARTY_CARRY_FROM = '2026-10-01'; // unpaid parties from here on stay owed until paid
 
     // Category exclusions copied verbatim from barcodingCommissionByUser so the
     // owed numbers match the leaderboard exactly.
@@ -1164,12 +1165,22 @@ class ListingCommissionController extends Controller
     // place, so the two pages can't disagree about what's still unpaid.
     private function unpaidListeningParties($businessId, $locations, $pStart, $pEnd)
     {
-        $paidDates = [];
+        // Paid = a "Listening party" payout for that DATE AND STORE. It used to
+        // be date only, so paying Hollywood's party also hid Pico's party on the
+        // same night (Sarah 2026-11-12: parties kept going missing). Notes end
+        // in "(store)"; an old note with no store still covers the whole date.
+        $paidDates = [];      // date => true (legacy notes without a store)
+        $paidDateStore = [];  // "date|store" => true
         foreach ($this->loadSalesPayouts() as $row) {
             $note = (string) ($row['note'] ?? '');
             if (stripos($note, 'Listening party') !== 0) { continue; }
             $pdate = substr((string) ($row['from_date'] ?? $row['marked_at'] ?? ''), 0, 10);
-            if ($pdate !== '') { $paidDates[$pdate] = true; }
+            if ($pdate === '') { continue; }
+            if (preg_match('/\(([^()]+)\)\s*$/', $note, $mm)) {
+                $paidDateStore[$pdate . '|' . strtolower(trim($mm[1]))] = true;
+            } else {
+                $paidDates[$pdate] = true;
+            }
         }
 
         $unpaidParties = [];
@@ -1206,6 +1217,8 @@ class ListingCommissionController extends Controller
             if (empty($locIds)) { continue; } // location tag present but didn't resolve to a known store
 
             foreach ($locIds as $locId => $locKey) {
+                $lname = strtolower((string) ($locations[$locId] ?? $locKey));
+                if (isset($paidDateStore[$edate . '|' . $lname]) || isset($paidDateStore[$edate . '|' . $locKey])) { continue; }
                 // Auto-estimate the split so this list is useful without
                 // another click: the event's own posted start time against
                 // Sarah's usual 4% rate, split among whoever had a live Sling
@@ -1796,8 +1809,11 @@ class ListingCommissionController extends Controller
     public function payrollPartyWindow()
     {
         $today = \Carbon::now();
-        $start = $today->copy()->startOfMonth();
-        if ((int) $today->format('j') <= 7) { $start = $start->subMonth(); }
+        // Every party not yet paid since 10/01/26 stays owed until it is paid,
+        // instead of dropping off after its month (Sarah 2026-11-12: "this
+        // happens every week"). Before 10/01 stays info-only: those were paid
+        // outside the ERP or dropped (Sarah 2026-09-30).
+        $start = \Carbon::parse(self::PARTY_CARRY_FROM);
         // Ends YESTERDAY: a party dated today hasn't happened / finished yet, so
         // it has no sales to split and must not appear under anyone (Sarah
         // 2026-10-01: "why the heck is michael getting remi wolf it didnt happen yet").
