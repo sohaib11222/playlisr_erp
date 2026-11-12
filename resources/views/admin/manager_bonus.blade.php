@@ -67,6 +67,14 @@
                 <tr><td><b>Plan for {{ \Carbon::parse($month . '-01')->format('F') }}</b></td><td><b>@if($r['plan_set'])${{ number_format($r['plan'], 0) }}@else<span class="mb-no">not set yet, no bonus until it is</span>@endif</b></td></tr>
             </table>
 
+            <h4 style="margin-top:18px;">Last 5 months (Clover net sales)</h4>
+            <table>
+                <tr><th>Month</th><th>Sales</th><th>Same month last year</th><th>Change</th></tr>
+                @foreach (array_reverse($r['hist'], true) as $hm => $hv)
+                    <tr><td>{{ \Carbon::parse($hm . '-01')->format('F Y') }}</td><td>${{ number_format($hv[0], 0) }}</td><td>${{ number_format($hv[1], 0) }}</td><td>@if($hv[1] > 0){{ $hv[0] >= $hv[1] ? '+' : '' }}{{ round(($hv[0] / $hv[1] - 1) * 100) }}%@endif</td></tr>
+                @endforeach
+            </table>
+
             <h4 style="margin-top:18px;">Bonus</h4>
             <table>
                 <tr><th>Hit</th><th>{{ $r['store'] }} sales (Clover net)</th><th>Bonus</th></tr>

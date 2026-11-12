@@ -163,6 +163,15 @@ class ManagerBonusController extends Controller
             $prev[$pm] = $this->monthNet($businessId, $locId, $pm);
             $prevLy[$pm] = $this->monthNet($businessId, $locId, $pmStart->copy()->subYear()->format('Y-m'));
         }
+        // Last 5 finished months with the same month a year earlier, for the
+        // owners' page (Sarah 2026-11-12: so Jon can see the trend).
+        $hist = [];
+        for ($i = 1; count($hist) < 5 && $i <= 14; $i++) {
+            $hs = $start->copy()->subMonthsNoOverflow($i);
+            if ($hs->copy()->endOfMonth()->gte($today)) { continue; }
+            $hm = $hs->format('Y-m');
+            $hist[$hm] = [$this->monthNet($businessId, $locId, $hm), $this->monthNet($businessId, $locId, $hs->copy()->subYear()->format('Y-m'))];
+        }
         $pace = array_sum($prevLy) > 0 ? (array_sum($prev) / array_sum($prevLy) - 1) : 0.0;
         // Suggested plan = last year's month + HALF the recent growth, to $500.
         $suggested = round($lyFull * (1 + max(0, $pace) / 2) / 500) * 500;
@@ -217,6 +226,7 @@ class ManagerBonusController extends Controller
             'ly2_full' => round($ly2Full, 2),
             'prev' => $prev,
             'prev_ly' => $prevLy,
+            'hist' => $hist,
             'pace' => round($pace * 100, 1),
             'suggested' => $suggested,
             'plan' => $planFull,
