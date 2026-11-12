@@ -32,6 +32,7 @@ class ListingCommissionController extends Controller
     const PARTY_NET_PRETAX = '(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))';
     const PARTY_DEFAULT_PERCENT = 3.0; // Sarah 2026-11-12: 3% of party-window sales when guests checked in
     const PARTY_DEFAULT_FROM = '18:00'; // 6 PM, matches the from_h/to_h defaults above
+    const PARTY_MIN_CHECKINS = 5; // fewer checked-in guests = not a party, no bonus
     const PARTY_CARRY_FROM = '2026-11-01'; // unpaid parties from here on stay owed until paid (Sarah 11/12: not 10/18)
 
     // Category exclusions copied verbatim from barcodingCommissionByUser so the
@@ -1253,7 +1254,10 @@ class ListingCommissionController extends Controller
                     // 10/31 concern). Matching guests to receipts paid $0 on
                     // every party because guests are rarely put on receipts.
                     $guest = $this->partyGuestSales($businessId, $locId, $locKey, $edate, (string) ($it['name'] ?? ''), $it['id'] ?? null);
-                    $sales = $this->windowSales($businessId, $locId, $sC, $eC); // Sarah 2026-11-12: all party sales, check-ins not required
+                    // Sarah 2026-11-12: all party-window sales count, but only if
+                    // guests actually came ("no one came!" - 10/18 had 1 check-in).
+                    $tooFew = !empty($guest['ready']) && (int) ($guest['checked_in'] ?? 0) < self::PARTY_MIN_CHECKINS;
+                    $sales = $tooFew ? 0.0 : $this->windowSales($businessId, $locId, $sC, $eC);
                     $salesGoal = $this->windowSalesGoal($businessId, $locId, $sC, $eC);
                     // Live Sling floor-position shift is the real signal
                     // (Sarah 2026-09-25) - falls back to who rang a sale only
