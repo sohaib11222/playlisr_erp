@@ -30,13 +30,14 @@
     @else
     <div class="wc-scroll">
       <table class="wc-tbl">
-        <thead><tr><th style="width:50px;">#</th><th>Search query</th><th class="num">Searches</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th style="width:50px;">#</th><th>Search query</th><th class="num">Searches</th>@foreach($stockLocations as $locName)<th class="num" title="Units in stock at {{ $locName }} matching this search">{{ $locName }}</th>@endforeach<th>Status</th><th></th></tr></thead>
         <tbody>
         @foreach($artists as $i => $a)
           <tr>
             <td class="wc-muted">{{ $i + 1 }}</td>
             <td style="font-weight:600;">{{ $a['query'] ?? '' }}</td>
             <td class="num">{{ number_format((int) ($a['count'] ?? 0)) }}</td>
+            @include('website_admin.content._most_searched_stock', ['stock' => $a['_stock'] ?? null])
             <td>@if(!empty($a['isPrioritized']))<span class="wc-pill green">Boosted</span>@else<span class="wc-pill">Normal</span>@endif</td>
             <td>
               <form method="POST" action="{{ !empty($a['isPrioritized']) ? route('wa.content.mostSearchedUnboost') : route('wa.content.mostSearchedBoost') }}" style="margin:0;">
@@ -54,7 +55,7 @@
   </div>
 
   <div class="wc-card">
-    <div class="wc-card-head"><div><h2>Most frequent search terms</h2><div class="wc-muted">Loaded {{ $loadedAt }}.</div></div></div>
+    <div class="wc-card-head"><div><h2>Most frequent search terms</h2><div class="wc-muted">Loaded {{ $loadedAt }}. Store columns = units in stock whose artist/title contains every word of the search (red = 0).</div></div></div>
     @if(count($queries) === 0)
       <div class="wc-empty">No search data yet.</div>
     @else
@@ -69,7 +70,7 @@
       @endif
       <div class="wc-scroll">
         <table class="wc-tbl">
-          <thead><tr><th style="width:60px;">#</th><th>Query</th><th class="num">Count</th><th>Last searched</th></tr></thead>
+          <thead><tr><th style="width:60px;">#</th><th>Query</th><th class="num">Count</th>@foreach($stockLocations as $locName)<th class="num" title="Units in stock at {{ $locName }} matching this search">{{ $locName }}</th>@endforeach<th>Last searched</th></tr></thead>
           <tbody>
           @foreach($queries as $i => $q)
             @php $rank = ($page - 1) * $limit + $i; @endphp
@@ -77,6 +78,7 @@
               <td>{{ $rank + 1 }}</td>
               <td title="{{ $q['_id'] ?? '' }}">{{ \Illuminate\Support\Str::limit((string) ($q['_id'] ?? ''), 60) }}</td>
               <td class="num">{{ number_format((int) ($q['count'] ?? 0)) }}</td>
+              @include('website_admin.content._most_searched_stock', ['stock' => $q['_stock'] ?? null])
               <td class="wc-muted">{{ !empty($q['latestSearch']) ? $H::fmtDate($q['latestSearch'], 'M j, Y g:i A') : 'N/A' }}</td>
             </tr>
           @endforeach
