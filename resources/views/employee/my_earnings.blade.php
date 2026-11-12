@@ -180,6 +180,33 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
             @if(!$mb['plan_set'])
                 <p style="color:#b42318; font-weight:700;">This month's plan isn't set yet.</p>
             @else
+                @php
+                    $mName = \Carbon::parse($mb['month'] . '-01')->format('F');
+                    $avg3 = count($mb['prev']) ? array_sum($mb['prev']) / count($mb['prev']) : 0;
+                    $vsLy = $mb['ly_full'] > 0 ? round(($mb['plan'] / $mb['ly_full'] - 1) * 100) : null;
+                    $vsAvg = $avg3 > 0 ? round(($mb['plan'] / $avg3 - 1) * 100) : null;
+                @endphp
+                <h4 style="margin:6px 0 4px;">How your {{ $mName }} plan was set: ${{ number_format($mb['plan'], 0) }}</h4>
+                <p style="color:#222; margin:0 0 8px;">We looked at what {{ $mb['store'] }} sold in {{ $mName }} the last two years and how the last 3 months compare to the same months a year earlier. The plan is set so 100% is reachable if the store keeps its current pace; 110% and 120% take extra push.</p>
+                <table class="table">
+                    <thead><tr><th>Like-for-like ({{ $mName }})</th><th style="text-align:right;">Store sales</th></tr></thead>
+                    <tbody>
+                        @if($mb['ly2_full'] > 0)<tr><td>{{ \Carbon::parse($mb['ly2_month'] . '-01')->format('F Y') }}</td><td style="text-align:right;">${{ number_format($mb['ly2_full'], 0) }}</td></tr>@endif
+                        <tr><td>{{ \Carbon::parse($mb['ly_month'] . '-01')->format('F Y') }}</td><td style="text-align:right;">${{ number_format($mb['ly_full'], 0) }}</td></tr>
+                        <tr><td><b>{{ \Carbon::parse($mb['month'] . '-01')->format('F Y') }} plan</b></td><td style="text-align:right;"><b>${{ number_format($mb['plan'], 0) }}</b>@if($vsLy !== null) ({{ $vsLy >= 0 ? '+' : '' }}{{ $vsLy }}% vs last year)@endif</td></tr>
+                    </tbody>
+                </table>
+                <table class="table">
+                    <thead><tr><th>Last 3 months</th><th style="text-align:right;">Store sales</th><th style="text-align:right;">Same month last year</th><th style="text-align:right;">Change</th></tr></thead>
+                    <tbody>
+                        @foreach(array_reverse($mb['prev'], true) as $pm => $pv)
+                            @php $lv = $mb['prev_ly'][$pm] ?? 0; @endphp
+                            <tr><td>{{ \Carbon::parse($pm . '-01')->format('F Y') }}</td><td style="text-align:right;">${{ number_format($pv, 0) }}</td><td style="text-align:right;">${{ number_format($lv, 0) }}</td><td style="text-align:right;">@if($lv > 0){{ $pv >= $lv ? '+' : '' }}{{ round(($pv / $lv - 1) * 100) }}%@endif</td></tr>
+                        @endforeach
+                        <tr><td><b>3-month average</b></td><td style="text-align:right;"><b>${{ number_format($avg3, 0) }}</b></td><td></td><td style="text-align:right;"><b>{{ $mb['pace'] >= 0 ? '+' : '' }}{{ round($mb['pace']) }}%</b></td></tr>
+                    </tbody>
+                </table>
+                <p style="color:#222; margin:0 0 10px;">Sales are from Clover, after tax.</p>
                 <table class="table">
                     <thead><tr><th>Hit</th><th style="text-align:right;">Store sales for the month</th><th style="text-align:right;">Your bonus</th></tr></thead>
                     <tbody>
