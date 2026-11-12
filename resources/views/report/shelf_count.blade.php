@@ -25,7 +25,7 @@
 .sc-mile.on { background: #2E6B2E; border-color: #2E6B2E; color: #fff; }
 
 /* Stats + leaderboard */
-.sc-side { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0 0 14px; }
+.sc-side { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0 0 14px; align-items: start; }
 @media (max-width: 760px) { .sc-side { grid-template-columns: 1fr; } }
 .sc-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 16px; }
 .sc-stat b { display: block; font-size: 26px; font-weight: 800; line-height: 1.1; }
@@ -39,6 +39,11 @@
 .sc-lead-n { margin-left: auto; font-weight: 800; }
 .sc-top-tag { font-size: 11px; font-weight: 800; letter-spacing: .05em; background: #2E6B2E; color: #fff; padding: 2px 7px; border-radius: 6px; }
 
+/* Goal */
+.sc-goalbar { background: #1F1B16; color: #fff; border-radius: 16px; padding: 18px 22px; margin: 0 0 14px; }
+.sc-goalbar-t { font-size: 13px; font-weight: 800; letter-spacing: .12em; color: #fff; }
+.sc-goalbar-b { font-size: 26px; font-weight: 800; line-height: 1.2; margin: 2px 0 4px; color: #fff; }
+.sc-goalbar-w { font-size: 16px; color: #fff; }
 /* Guide */
 .sc-guide { padding: 16px 18px; margin: 0 0 14px; font-size: 16px; line-height: 1.5; }
 .sc-goal { font-size: 17px; margin: 0 0 10px; }
@@ -76,6 +81,7 @@
 <div class="sc-wrap">
 @include('report._count_tabs', ['ctOn' => 'count'])
     <h1>Shelf count</h1>
+    <div class="sc-goalbar"><div class="sc-goalbar-t">GOAL</div><div class="sc-goalbar-b">The ERP shows exactly what we have in each store.</div><div class="sc-goalbar-w">This helps us with 5-star customer service, organization, ordering and tracking theft.</div></div>
     <form class="sc-row" method="get">
         <select name="location_id" onchange="this.form.submit()">@foreach ($locations as $id => $nm)<option value="{{ $id }}" {{ $id == $loc ? 'selected' : '' }}>{{ ucfirst($nm) }}</option>@endforeach</select>
         <select name="kind" onchange="this.form.submit()">@foreach (($kind === 'all' ? $kinds : ['all' => 'All shelves'] + $kinds) as $k => $l)<option value="{{ $k }}" {{ $kind === $k ? 'selected' : '' }}>{{ $l }}</option>@endforeach</select>
@@ -94,12 +100,7 @@
         <div class="sc-hero-main">
             <div class="sc-hero-title">{{ $overall['name'] }}{{ $overall['sealed'] ? ': year-end count' : '' }}</div>
             <div class="sc-hero-line"><b>{{ number_format($overall['counted']) }}</b> of {{ number_format($overall['titles']) }} titles counted. <b>{{ number_format($left) }}</b> to go.</div>
-            @if ($overall['sealed'] && $left > 0)
-                <span class="sc-pace">Daily goal: {{ number_format($perDay) }} titles a day to finish by 12/31/26</span>
-            @elseif (!$overall['sealed'])
-                <div class="sc-hero-line">Counted in the last {{ \App\Http\Controllers\ShelfCountController::DUE_DAYS }} days.</div>
-            @endif
-            <div class="sc-miles">@foreach ($miles as $m => $label)<span class="sc-mile{{ $ovPct >= $m ? ' on' : '' }}">{{ $m }}% {{ $label }}</span>@endforeach</div>
+            @if (!$overall['sealed'])<div class="sc-hero-line">Counted in the last {{ \App\Http\Controllers\ShelfCountController::DUE_DAYS }} days.</div>@endif
         </div>
     </div>
     @endif
@@ -123,7 +124,6 @@
     @endif
 
     <div class="sc-card sc-guide">
-        <div class="sc-goal"><b>Goal:</b> the ERP shows exactly what we have in each store. This helps us with 5-star customer service, organization, ordering and tracking theft.</div>
         <ol class="sc-steps">
             <li>Pick the bin you're standing at.</li>
             <li>Scan every record in it, or tap it in the list.</li>
