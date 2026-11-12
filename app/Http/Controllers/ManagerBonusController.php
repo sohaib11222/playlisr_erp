@@ -136,8 +136,12 @@ class ManagerBonusController extends Controller
         $lyMonth = $start->copy()->subYear()->format('Y-m');
         $lyFull = $this->monthNet($businessId, $locId, $lyMonth);
         $prev = [];
-        for ($i = 1; $i <= 3; $i++) {
-            $pm = $start->copy()->subMonthsNoOverflow($i)->format('Y-m');
+        // Last 3 COMPLETED months (a month still in progress would drag the
+        // average down).
+        for ($i = 1; count($prev) < 3 && $i <= 12; $i++) {
+            $pmStart = $start->copy()->subMonthsNoOverflow($i);
+            if ($pmStart->copy()->endOfMonth()->gte($today)) { continue; }
+            $pm = $pmStart->format('Y-m');
             $prev[$pm] = $this->monthNet($businessId, $locId, $pm);
         }
         $avg3 = round(array_sum($prev) / 3, 2);
