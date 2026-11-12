@@ -52,6 +52,8 @@ class EmployeeEarningsController extends Controller
         $start = $from . ' 00:00:00';
         $end = now()->toDateTimeString();
 
+        $__t = microtime(true); $__timing = [];
+        $__mark = function ($n) use (&$__t, &$__timing) { $__timing[$n] = round(microtime(true) - $__t, 2); $__t = microtime(true); };
         // Every qualifying sold line this person listed (paid + unpaid).
         $lines = $this->ownedSoldLines($businessId, $userId, $start, $end);
 
@@ -88,10 +90,12 @@ class EmployeeEarningsController extends Controller
         // (dollar-based so manual payments reconcile; negative when overpaid).
         $owed   = round($earned - $paidOut, 2);
 
+        $__mark('lines');
         // This person's full payment history (listing + sales), grouped by the
         // date they were paid, so they can see what they got and when.
         $myPaymentHistory = $this->paymentHistoryForUser($payoutsAll, $this->loadSalesPayouts(), $userId);
 
+        $__mark('history');
         // Sales goal bonus — reuse the leaderboard's exact per-day target math.
         // Only paid since it went live (2026-06-15), so the bonus window starts
         // there, separate from the listing-commission rollout (2026-05-15).
@@ -115,6 +119,7 @@ class EmployeeEarningsController extends Controller
             \Log::warning('my-earnings sales bonus failed: ' . $e->getMessage());
         }
 
+        $__mark('sales_bonus');
         // Listening-party split: fold this person's applied party redistribution
         // into their sales bonus so the statement matches the payroll page. A
         // floor helper sees a positive "Listening party commission"; the cashier
@@ -142,6 +147,7 @@ class EmployeeEarningsController extends Controller
         $salesBonus['party_split'] = round($partySplit, 2);
         $salesBonus['bonus'] = round(((float) $salesBonus['bonus']) + $partySplit, 2);
 
+        $__mark('party');
         // Reconciled paid/owed that INCLUDES manual payments (from both ledgers),
         // matching the admin Commissions page: owed = total earned − total paid,
         // and can go negative when overpaid.
@@ -167,10 +173,12 @@ class EmployeeEarningsController extends Controller
             \Log::warning('my-earnings owed-now pull failed: ' . $e->getMessage());
         }
 
+        $__mark('owed_now');
         // Productivity context (NOT pay): items listed + items put out (labeled).
         $listedCount = $this->listedCount($businessId, $userId, $start);
         $labeledCount = $this->labeledCount($businessId, $userId, $start, $end);
 
+        $__mark('counts');
         // Day-by-day breakdown (recent window) — register sales + listed-sold
         // sales, with listing pay and the sales bonus broken out per day. Reuses
         // the leaderboard engine so each day reconciles with the totals above.
@@ -191,6 +199,7 @@ class EmployeeEarningsController extends Controller
             \Log::warning('my-earnings daily breakdown failed: ' . $e->getMessage());
         }
 
+        $__mark('daily30');
         // Weekly commission statement — earned (listing + sales bonus) vs paid for
         // each Mon–Sun week since the rollout, with a RUNNING balance. The balance
         // is cumulative earned minus cumulative paid: it should sit at/above $0, and
@@ -266,6 +275,8 @@ class EmployeeEarningsController extends Controller
                 });
         }
 
+        $__mark('rest');
+        if ($request->input('timing') && in_array((int) $me->id, [1, 8], true)) { return response()->json($__timing); }
         return response()->view('employee.my_earnings', [
             // Store manager bonus, shown only once paid (Sarah 2026-11-12).
             'manager_bonus' => \App\Http\Controllers\ManagerBonusController::paidForUser($userId),
