@@ -36,8 +36,13 @@ jobs:
             set +e
             cd /www/playlist.nivessa.com/app
             echo "=== nginx error logs ==="
-            ls -la /var/log/nginx/ 2>&1 | head -20
-            for f in /var/log/nginx/*error*.log; do echo "--- $f"; tail -n 4000 "$f" 2>&1 | grep -E "upstream|playlist" | tail -15 | cut -c1-500; done
+            tail -n 300 /var/log/nginx/error.log 2>&1 | tail -25 | cut -c1-400
+            echo "=== access: /home statuses today ==="
+            tail -n 400000 /var/log/nginx/access.log 2>&1 | grep -E '"GET /home[ ?]' | awk '{print $9}' | sort | uniq -c
+            tail -n 400000 /var/log/nginx/access.log 2>&1 | grep -E '"GET /home[ ?]' | grep -E '" 50[24] ' | tail -12 | cut -c1-250
+            echo "=== access: all 502s by path (recent) ==="
+            tail -n 400000 /var/log/nginx/access.log 2>&1 | awk '$9==502 {print $7}' | cut -d'?' -f1 | sort | uniq -c | sort -rn | head -15
+            head -c 400 /var/log/nginx/access.log 2>&1
             echo "=== php-fpm log tail ==="
             tail -n 40 /var/log/php7.4-fpm.log 2>&1 | cut -c1-300
             echo "=== fpm status ==="
