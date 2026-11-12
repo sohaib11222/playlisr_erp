@@ -98,6 +98,16 @@ class ListingCommissionController extends Controller
         $from = self::DEFAULT_FROM;
         $businessId = $request->session()->get('user.business_id');
 
+        // Whole-page cache (Sarah 2026-11-12: page took ~60s and 502'd). Busts
+        // the moment any payout/freeze/party ledger changes (file times are in
+        // the key), otherwise refreshes every 15 minutes. ?fresh=1 forces a rebuild.
+        $pageKey = $this->commissionsPageKey($businessId, $request);
+        if (!$request->input('timing') && !$request->input('fresh') && ($cachedPage = \Cache::get($pageKey))) {
+            return response()->view('admin.listing_commissions', $cachedPage)
+                ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+                ->header('Pragma', 'no-cache');
+        }
+
         $paid = $this->loadPayouts();
         $paidLineIds = $this->paidLineIds($paid);
         $paidSet = array_flip($paidLineIds);
@@ -396,7 +406,7 @@ class ListingCommissionController extends Controller
         // can appear to still owe money.
         $__mark('rest');
         if ($request->input('timing') && in_array((int) auth()->id(), [1, 8], true)) { return response()->json($__timing); }
-        return response()->view('admin.listing_commissions', [
+        $pageData = [
             'bonus_day'    => $bonusDay,
             'bonus_person' => $bonusPerson,
             'day_rows'     => $dayRows,
@@ -424,7 +434,9 @@ class ListingCommissionController extends Controller
             'party_window'       => [$partyStart, $partyEnd],
             'total_pay_now'      => $people->sum('pay_now'),
             'credit_people'      => $people->filter(function ($p) { return ($p->credit_total ?? 0) < -0.004; })->sortBy('credit_total')->values(),
-        ])->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+        ];
+        try { \Cache::put($pageKey, $pageData, 900); } catch (\Throwable $ce) { \Log::warning('commissions page cache put failed: ' . $ce->getMessage()); }
+        return response()->view('admin.listing_commissions', $pageData)->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
           ->header('Pragma', 'no-cache');
     }
 
@@ -1175,6 +1187,16 @@ class ListingCommissionController extends Controller
     // party-bonus tool and the Commissions page notice — same criteria, one
     // place, so the two pages can't disagree about what's still unpaid.
     private $partyMemo = [];
+
+    public function commissionsPageKey($businessId, $request = null)
+    {
+        $mt = [];
+        foreach ([self::PAYOUTS_FILE, self::SALES_PAYOUTS_FILE, self::FREEZE_FILE, self::PARTY_SPLIT_FILE] as $f) {
+            $mt[] = Storage::disk('local')->exists($f) ? Storage::disk('local')->lastModified($f) : 0;
+        }
+        $params = $request ? [$request->input('day'), $request->input('person')] : [null, null];
+        return 'commissions_page_v1_' . $businessId . '_' . md5(json_encode([$mt, $params, (int) floor(time() / 900)]));
+    }
 
     // $withEstimates=false skips the payout math (Sling/time clock/sales per
     // party) for lists that only show names: the Commissions page's "older
