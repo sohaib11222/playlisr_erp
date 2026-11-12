@@ -2902,9 +2902,16 @@ class ProductController extends Controller
                 $request->input('sku')
             );
             if (!empty($conflict)) {
+                // Alec 10/12: a sealed record already in the ERP was a dead
+                // end here. Send back the existing listing so the POS can ring
+                // it (and a purchase can add it) instead of just blocking.
+                $existingVariation = $conflict['product']->variations()->whereNull('deleted_at')->first();
                 return [
                     'success' => 0,
                     'msg' => $dupService->conflictMessage($conflict),
+                    'existing_product_id' => $conflict['product']->id,
+                    'existing_variation_id' => $existingVariation ? $existingVariation->id : null,
+                    'existing_name' => $conflict['product']->name,
                 ];
             }
 

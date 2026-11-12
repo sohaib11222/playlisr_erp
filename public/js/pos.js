@@ -4375,6 +4375,19 @@ function reset_pos_form(){
     $('.contact_due_text').find('span').text('');
     $('.contact_due_text').addClass('hide');
 
+    // Bag fee (Quenton 10/8, "have to double click"): the bag row was removed
+    // with the cart, and form.reset() re-checked the Bag Fee box without a
+    // change event, so the box showed checked with no fee. Re-add the bag for
+    // the next sale. Wrapped so a bag problem can never block the reset.
+    try {
+        $('#bag-count').text(1);
+        if ($('#bag-toggle-checkbox').length) {
+            $('#bag-toggle-checkbox').trigger('change');
+        } else if ($('#add_plastic_bag').is(':checked')) {
+            $('#add_plastic_bag').trigger('change');
+        }
+    } catch (e) {}
+
     $(document).trigger('sell_form_reset');
 }
 
@@ -5868,7 +5881,8 @@ $(document).on('change', '#add_plastic_bag', function() {
                         // appended a row while this AJAX was in flight,
                         // skip the append.
                         var existing = $('#pos_table tbody tr[data-plastic-bag="true"]');
-                        if (existing.length === 0) {
+                        // Skip if the cashier unchecked Bag Fee while this was in flight.
+                        if (existing.length === 0 && $('#add_plastic_bag').is(':checked')) {
                             $('#pos_table tbody').append(result.html_content);
 
                             var newRow = $('#pos_table tbody tr').last();

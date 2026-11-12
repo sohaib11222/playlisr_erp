@@ -242,35 +242,14 @@
   $(document).ready(function(){
     $("form#quick_add_product_form").validate({
       rules: {
-          sku: {
-              remote: {
-                  url: "/products/check_product_sku",
-                  type: "post",
-                  data: {
-                      sku: function() {
-                          return $( "#sku" ).val();
-                      },
-                      product_id: function() {
-                          if($('#product_id').length > 0 ){
-                              return $('#product_id').val();
-                          } else {
-                              return '';
-                          }
-                      },
-                  }
-              }
-          },
+          // SKU duplicates are checked on save (saveQuickProduct), which
+          // hands back the existing listing instead of a dead-end error.
           expiry_period:{
               required: {
                   depends: function(element) {
                       return ($('#expiry_period_type').val().trim() != '');
                   }
               }
-          }
-      },
-      messages: {
-          sku: {
-              remote: LANG.sku_already_exists
           }
       },
       submitHandler: function (form) {
@@ -299,9 +278,19 @@
                       
                     }
                     $(document).trigger({type: "quickProductAdded", 'product': data.product, 'variation': data.variation });
+                } else if (data.existing_variation_id && typeof pos_product_row === 'function' && $('#pos_table').length) {
+                    pos_product_row(data.existing_variation_id);
+                    toastr.info('Already in the ERP: added "' + (data.existing_name || 'that listing') + '" to the sale.');
+                } else if (data.existing_product_id && typeof get_purchase_entry_row !== 'undefined') {
+                    get_purchase_entry_row(data.existing_product_id, 0);
+                    toastr.info('Already in the ERP: added "' + (data.existing_name || 'that listing') + '" here instead of a new product.');
                 } else {
                     toastr.error(data.msg);
                 }
+            },
+            error: function () {
+                form.find('button[type="submit"]').attr('disabled', false);
+                toastr.error('Could not save. Please try again.');
             }
         });
         return false;
