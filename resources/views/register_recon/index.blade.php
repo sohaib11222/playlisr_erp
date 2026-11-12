@@ -55,7 +55,7 @@
 						&middot; @if(abs($s['diff']) < 1) matches @else {{ $s['diff'] > 0 ? 'Clover' : 'ERP' }} higher by ${{ number_format(abs($s['diff']), 2) }} @endif
 					</div>
 					@forelse(\App\Utils\RegisterReconUtil::shortRows($s) as $row)
-						<div class="rr-item"><strong>{{ $row[0] }}</strong> &nbsp; <a href="{{ $row[2] }}">{{ str_replace('*', '', $row[1]) }}</a></div>
+						<div class="rr-item"><strong>{{ $row[0] }}</strong> &nbsp; @if($row[1] !== '') <a href="{{ $row[2] }}">{{ str_replace('*', '', $row[1]) }}</a> @endif @if(!empty($row[3])) {!! ($row[1] !== '' ? '; ' : '') . \App\Utils\RegisterReconUtil::draftBuyText($row[3], function ($name, $url) { return '<a href="' . e($url) . '">' . e($name) . '</a>'; }) !!} @endif</div>
 					@empty
 						@if(abs($s['diff']) < 5) <div class="rr-ok">All reconciled</div> @else <div class="rr-ok" style="color:#8A3A2E;">Nothing specific flagged, but the totals differ - please review the recent feed.</div> @endif
 					@endforelse

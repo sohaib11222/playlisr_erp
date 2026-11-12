@@ -466,7 +466,10 @@ class RegisterReconUtil
             $flags[] = [
                 'location_id' => $n->location_id,
                 'kind'   => 'handover',
-                'detail' => 'drawer went from $' . number_format($left, 0) . ' (' . $pName . ' closed ' . \Carbon\Carbon::parse($prev->closed_at)->format('g:ia')
+                // Quenton 11/5 "I didn't work yesterday": an overnight close
+                // read like the same day. Name the day when it differs.
+                'detail' => 'drawer went from $' . number_format($left, 0) . ' (' . $pName . ' closed ' . \Carbon\Carbon::parse($prev->closed_at)->format(
+                        \Carbon\Carbon::parse($prev->closed_at)->toDateString() === \Carbon\Carbon::parse($n->created_at)->toDateString() ? 'g:ia' : 'D n/j g:ia')
                     . ') to $' . number_format($found, 0) . ' (' . $nName . ' opened ' . \Carbon\Carbon::parse($n->created_at)->format('g:ia') . ')',
                 'ask'    => $pName . ' / ' . $nName,
                 'note'   => $backNote,
@@ -538,22 +541,42 @@ class RegisterReconUtil
             ->leftJoin('users as u', 'u.id', '=', 'o.created_by')
             ->leftJoin('contacts as c', 'c.id', '=', 'o.contact_id')
             ->where('o.business_id', $business_id)
-            ->where('o.status', 'draft')
+            ->whereIn('o.status', ['draft', 'accepted', 'rejected'])
             ->whereDate('o.created_at', $date)
-            ->select('o.location_id', 'o.seller_name', 'o.seller_first_name', 'o.seller_last_name', 'c.name as contact_name', 'u.first_name', 'u.username')
+            ->select('o.id', 'o.status', 'o.location_id', 'o.created_by', 'o.contact_id', 'o.seller_name', 'o.seller_first_name', 'o.seller_last_name', 'c.name as contact_name', 'u.first_name', 'u.username')
             ->orderBy('o.created_at')
             ->get();
-        $groups = [];
-        foreach ($rows as $o) {
-            $who = ucfirst(strtolower(trim((string) ($o->first_name ?: $o->username))));
+        $sellerOf = function ($o) {
             $seller = trim((string) $o->seller_first_name . ' ' . (string) $o->seller_last_name);
             if ($seller === '') $seller = trim((string) $o->seller_name);
             if ($seller === '') $seller = trim((string) $o->contact_name);
             if ($seller === '' || stripos($seller, 'walk-in') === 0) $seller = 'a walk-in';
+            return $seller;
+        };
+        // Quenton 10/22 "I rejected the ones i didn't buy. System duplicated
+        // draft after that": a leftover draft for a seller whose buy was
+        // already accepted or rejected that day is a copy, not an open buy.
+        $finished = [];
+        foreach ($rows as $o) {
+            if ($o->status === 'draft') continue;
+            $finished[(int) $o->location_id . '|' . strtolower($sellerOf($o))] = true;
+            if ($o->contact_id) $finished[(int) $o->location_id . '|c' . (int) $o->contact_id] = true;
+        }
+        $groups = [];
+        foreach ($rows as $o) {
+            if ($o->status !== 'draft') continue;
+            $seller = $sellerOf($o);
+            if ($seller !== 'a walk-in' && isset($finished[(int) $o->location_id . '|' . strtolower($seller)])) continue;
+            if ($o->contact_id && isset($finished[(int) $o->location_id . '|c' . (int) $o->contact_id])) continue;
+            $who = ucfirst(strtolower(trim((string) ($o->first_name ?: $o->username))));
             $g = (int) $o->location_id . '|' . $who;
             $groups[$g]['location_id'] = $o->location_id;
             $groups[$g]['ask'] = $who;
             $groups[$g]['sellers'][strtolower($seller)] = $seller;
+            // Andy 10/29-10/30: "I can't find that transaction... if you send
+            // me the link I can check it out." Link each draft straight to
+            // its buy form, where Accept / Reject are (latest copy wins).
+            $groups[$g]['links'][strtolower($seller)] = self::ERP_URL . '/buy-from-customer/' . (int) $o->id . '/edit';
         }
         $flags = [];
         foreach ($groups as $g) {
@@ -566,6 +589,7 @@ class RegisterReconUtil
                 'ask'    => $g['ask'],
                 'note'   => null,
                 'amount' => 0,
+                'links'  => array_combine(array_values($g['sellers']), array_values($g['links'])),
             ];
         }
         return $flags;
@@ -901,7 +925,7 @@ class RegisterReconUtil
             if (!empty($kinds['mismatch'])) {
                 $parts[] = $plural(count($kinds['mismatch']), 'sale', 'sales') . ' rung a different amount than Clover';
             }
-            foreach (['drawer', 'handover', 'changerun', 'draftbuy', 'smallshort'] as $k) {
+            foreach (['drawer', 'handover', 'changerun', 'smallshort'] as $k) {
                 foreach ($kinds[$k] ?? [] as $it) {
                     $parts[] = $it['detail'] ?? ($it['tiny'] ?? 'drawer count off');
                 }
@@ -909,8 +933,13 @@ class RegisterReconUtil
             if (!empty($kinds['uncounted'])) {
                 $parts[] = 'register never closed/counted';
             }
-            if (!empty($parts)) {
-                $rows[] = [$who, implode('; ', $parts), $s['url']];
+            $links = [];
+            foreach ($kinds['draftbuy'] ?? [] as $it) {
+                $links = array_merge($links, $it['links'] ?? []);
+                if (empty($it['links'])) $parts[] = $it['detail'];
+            }
+            if (!empty($parts) || !empty($links)) {
+                $rows[] = [$who, implode('; ', $parts), $s['url'], $links];
             }
         }
         usort($rows, fn($x, $y) => strcmp($x[0], $y[0]));
@@ -925,7 +954,22 @@ class RegisterReconUtil
     private static function shortLines(array $s): array
     {
         $esc = function ($t) { return str_replace(['&', '<', '>', '|'], ['&amp;', '&lt;', '&gt;', '/'], (string) $t); };
-        return array_map(fn($r) => $esc($r[0]) . ': <' . $r[2] . '|' . $esc($r[1]) . '>', self::shortRows($s));
+        return array_map(function ($r) use ($esc) {
+            $out = [];
+            if ($r[1] !== '') $out[] = '<' . $r[2] . '|' . $esc($r[1]) . '>';
+            if (!empty($r[3])) $out[] = self::draftBuyText($r[3], function ($name, $url) use ($esc) { return '<' . $url . '|' . $esc($name) . '>'; });
+            return $esc($r[0]) . ': ' . implode('; ', $out);
+        }, self::shortRows($s));
+    }
+
+    /** "2 buys left as a draft (A, B) - did we buy these? ..." with each seller linked. */
+    public static function draftBuyText(array $links, callable $link): string
+    {
+        $n = count($links);
+        $names = [];
+        foreach ($links as $name => $url) $names[] = $link($name, $url);
+        return $n . ' ' . ($n === 1 ? 'buy' : 'buys') . ' left as a draft (' . implode(', ', $names)
+            . ') - did we buy ' . ($n === 1 ? 'it' : 'these') . '? If yes, enter what was paid and Accept; if not, Reject';
     }
 
     /** Very simple plain text (Sarah 9/27: "much simpler"). */
