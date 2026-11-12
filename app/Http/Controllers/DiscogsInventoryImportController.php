@@ -288,6 +288,12 @@ class DiscogsInventoryImportController extends Controller
                 $q->whereNull('v.dpp_inc_tax')->orWhere('v.dpp_inc_tax', '<>', $cost)
                   ->orWhereNull('v.default_purchase_price')->orWhere('v.default_purchase_price', '<>', $cost);
             })
+            // Never overwrite a cost that was actually entered (Sarah 11/12):
+            // only replace blank costs or the automatic rule placeholders
+            // ($17 sealed vinyl / $6 sealed CD+cassette), and never a
+            // variation that has a real purchase line with a price.
+            ->whereRaw('COALESCE(NULLIF(v.dpp_inc_tax, 0), v.default_purchase_price, 0) IN (0, 17, 6)')
+            ->whereRaw('NOT EXISTS (SELECT 1 FROM purchase_lines pl WHERE pl.variation_id = v.id AND pl.purchase_price_inc_tax > 0)')
             ->select('v.id', 'v.product_id', 'v.default_purchase_price', 'v.dpp_inc_tax',
                 DB::raw("(SELECT SUM(w2.qty_available) FROM variation_location_details w2 WHERE w2.variation_id = v.id AND w2.location_id IN ({$whList})) as wh_qty"))
             ->get();
@@ -337,6 +343,69 @@ class DiscogsInventoryImportController extends Controller
 
         return response()->json(['ok' => true, 'preview' => false, 'updated' => $updated,
             'snapshot' => str_replace(storage_path('app') . '/', '', $snapPath)] + $summary);
+    }
+
+    /**
+     * Undo part of the 11/12 warehouse sealed $0.10 run: put back every cost
+     * that was actually entered (not blank, not the $17/$6 rule placeholder,
+     * or backed by a real purchase line). Reads the newest
+     * *_warehouse_sealed_cost.json snapshot. Preview unless confirm=1.
+     */
+    public function warehouseSealedCostRestoreEntered(Request $request)
+    {
+        $business_id = (int) $request->session()->get('user.business_id');
+        $confirm = filter_var($request->input('confirm', false), FILTER_VALIDATE_BOOLEAN);
+        $files = glob(storage_path('app/admin-snapshots') . '/*_warehouse_sealed_cost.json') ?: [];
+        sort($files);
+        if (empty($files)) {
+            return response()->json(['ok' => false, 'error' => 'No warehouse sealed cost snapshot found.'], 422);
+        }
+        $snap = json_decode((string) file_get_contents(end($files)), true);
+        if (!is_array($snap) || (int) ($snap['business_id'] ?? 0) !== $business_id) {
+            return response()->json(['ok' => false, 'error' => 'Snapshot unreadable.'], 422);
+        }
+        $rows = $snap['variations'] ?? [];
+        $ids = array_map(function ($r) { return (int) $r['id']; }, $rows);
+        $withPurchase = [];
+        foreach (array_chunk($ids, 2000) as $chunk) {
+            foreach (DB::table('purchase_lines')->whereIn('variation_id', $chunk)->where('purchase_price_inc_tax', '>', 0)
+                ->distinct()->pluck('variation_id') as $vid) {
+                $withPurchase[(int) $vid] = true;
+            }
+        }
+        $restore = [];
+        $byValue = [];
+        foreach ($rows as $r) {
+            $before = (float) (($r['dpp_inc_tax'] ?? 0) ?: ($r['default_purchase_price'] ?? 0) ?: 0);
+            $isRule = in_array(round($before, 2), [0.0, 17.0, 6.0], true);
+            if (!$isRule || isset($withPurchase[(int) $r['id']])) {
+                $restore[] = $r;
+                $k = number_format($before, 2);
+                $byValue[$k] = ($byValue[$k] ?? 0) + 1;
+            }
+        }
+        ksort($byValue);
+        $summary = [
+            'snapshot' => basename(end($files)),
+            'in_snapshot' => count($rows),
+            'entered' => count($restore),
+            'with_purchase_line' => count($withPurchase),
+            'entered_costs' => $byValue,
+        ];
+        if (!$confirm) {
+            return response()->json(['ok' => true, 'preview' => true] + $summary);
+        }
+        $restored = 0;
+        foreach ($restore as $r) {
+            $restored += DB::table('variations')->where('id', (int) $r['id'])
+                ->where('dpp_inc_tax', self::WAREHOUSE_SEALED_COST)
+                ->update([
+                    'default_purchase_price' => $r['default_purchase_price'],
+                    'dpp_inc_tax' => $r['dpp_inc_tax'],
+                    'updated_at' => now(),
+                ]);
+        }
+        return response()->json(['ok' => true, 'preview' => false, 'restored' => $restored] + $summary);
     }
 
     /**

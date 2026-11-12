@@ -38,7 +38,7 @@
 
     <div class="callout" style="margin-top:8px; background:#e8f4fd;">
         <strong>Warehouse sealed cost = $0.10</strong>
-        - For inventory valuation and taxes, every sealed title whose stock is only in the warehouse is valued at $0.10, not $17. Items that also have stock at Hollywood or Pico are left alone. Snapshot saved first.
+        - For inventory valuation and taxes, every sealed title whose stock is only in the warehouse is valued at $0.10, not $17. Items that also have stock at Hollywood or Pico, and any cost that was actually entered (anything other than blank or the automatic $17 / $6), are left alone. Snapshot saved first.
         <div style="margin-top:8px;">
             <button id="dii-whs-preview" class="btn btn-default btn-sm">Preview</button>
             <button id="dii-whs-apply" class="btn btn-primary btn-sm">Set to $0.10</button>
