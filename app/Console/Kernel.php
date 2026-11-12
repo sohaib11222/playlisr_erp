@@ -183,6 +183,7 @@ class Kernel extends ConsoleKernel
                 foreach (\DB::table('business')->pluck('id') as $bid) {
                     $to = \Carbon::now()->toDateString();
                     \Cache::put('sales_bonus_by_user_v1_' . $bid . '_2026-06-15_' . $to, $rc->salesBonusByUserFresh($bid, '2026-06-15', $to), 600);
+                    $rc->userSalesBonusAll($bid, '2026-06-15 00:00:00', \Carbon::now()->toDateTimeString(), true);
                 }
             } catch (\Throwable $e) {
                 \Log::warning('sales bonus warm failed: ' . $e->getMessage());

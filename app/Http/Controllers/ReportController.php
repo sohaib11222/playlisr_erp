@@ -15501,6 +15501,29 @@ class ReportController extends Controller
      * their own). Returns bonus, non-whatnot revenue, the live flag, and a
      * per-location breakdown.
      */
+    public function userSalesBonusAll($business_id, $start, $end, $fresh = false)
+    {
+        $key = 'user_sales_bonus_all_v1_' . $business_id . '_' . \Carbon::parse($start)->toDateString() . '_' . \Carbon::parse($end)->toDateString();
+        $build = function () use ($business_id, $start, $end) {
+            $out = [];
+            $locations = \DB::table('business_locations')->where('business_id', $business_id)->where('is_active', 1)->pluck('name', 'id');
+            foreach ($locations as $lid => $lname) {
+                $rows = $this->buildLeaderboardRows($business_id, $start, $end, null, $lid, ['with_commission' => true, 'exclude_owners' => false]);
+                $rows = $this->attachHourTargets($rows, $business_id, $lid, $start, $end);
+                foreach ($rows as $r) {
+                    $out[$lid][(int) $r->user_id] = [
+                        'b' => (float) ($r->goal_bonus ?? 0),
+                        'rev' => (float) ($r->non_whatnot_revenue ?? 0),
+                        'target' => isset($r->hour_target) ? round((float) $r->hour_target, 2) : null,
+                    ];
+                }
+            }
+            return $out;
+        };
+        if ($fresh) { $v = $build(); \Cache::put($key, $v, 600); return $v; }
+        return \Cache::remember($key, 600, $build); // seconds (Laravel 5.8)
+    }
+
     public function userSalesBonus($business_id, $user_id, $start, $end)
     {
         $bonus = 0.0;
@@ -15514,14 +15537,16 @@ class ReportController extends Controller
             ->orderBy('id')
             ->pluck('name', 'id');
 
+        // Every employee's numbers per store come out of one leaderboard run, so
+        // cache the whole run 10 minutes and pick this person from it (Sarah
+        // 2026-11-12: My Earnings was 15-24s, 8s of it here, per visit).
+        $all = $this->userSalesBonusAll($business_id, $start, $end);
         foreach ($locations as $lid => $lname) {
-            $rows = $this->buildLeaderboardRows($business_id, $start, $end, null, $lid, ['with_commission' => true, 'exclude_owners' => false]);
-            $rows = $this->attachHourTargets($rows, $business_id, $lid, $start, $end);
-            $mine = $rows->first(function ($r) use ($user_id) { return (int) $r->user_id === (int) $user_id; });
+            $mine = $all[$lid][(int) $user_id] ?? null;
             if (!$mine) { continue; }
 
-            $b = (float) ($mine->goal_bonus ?? 0);
-            $rev = (float) ($mine->non_whatnot_revenue ?? 0);
+            $b = (float) $mine['b'];
+            $rev = (float) $mine['rev'];
             $bonus += $b;
             $revenue += $rev;
             if ($b != 0 || $rev != 0) {
@@ -15529,7 +15554,7 @@ class ReportController extends Controller
                     'location' => $lname,
                     'bonus'    => round($b, 2),
                     'revenue'  => round($rev, 2),
-                    'target'   => isset($mine->hour_target) ? round((float) $mine->hour_target, 2) : null,
+                    'target'   => $mine['target'],
                 ];
             }
         }
