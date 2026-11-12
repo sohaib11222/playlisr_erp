@@ -13999,7 +13999,18 @@ class ReportController extends Controller
      * across locations never double-counts. Returns 0s before the 2026-06-15
      * go-live (sales_bonus_live gate). Used by the Pay Commissions page.
      */
+    // Cached 10 minutes (Sarah 2026-11-12: My Earnings took ~22s, 15s of it
+    // here). Earned bonus only moves as new sales ring, so a few minutes of
+    // lag is fine; the scheduler keeps the common window warm.
     public function salesBonusByUser($business_id, $from, $to)
+    {
+        $key = 'sales_bonus_by_user_v1_' . $business_id . '_' . \Carbon::parse($from)->toDateString() . '_' . \Carbon::parse($to)->toDateString();
+        return \Cache::remember($key, 600, function () use ($business_id, $from, $to) { // seconds (Laravel 5.8)
+            return $this->salesBonusByUserFresh($business_id, $from, $to);
+        });
+    }
+
+    public function salesBonusByUserFresh($business_id, $from, $to)
     {
         $start_str = \Carbon::parse($from)->startOfDay()->toDateTimeString();
         $end_str   = \Carbon::parse($to)->endOfDay()->toDateTimeString();

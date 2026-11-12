@@ -175,6 +175,20 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(30);
         // Cancelled / refunded / refund-pending on /website-orders shows on
         // the ERP sale too (Sarah, 2026-10-29).
+        // Keep the sales-bonus totals warm so My Earnings and the Commissions
+        // page don't recompute every employee's bonus since June on each visit.
+        $schedule->call(function () {
+            try {
+                $rc = app(\App\Http\Controllers\ReportController::class);
+                foreach (\DB::table('business')->pluck('id') as $bid) {
+                    $to = \Carbon::now()->toDateString();
+                    \Cache::put('sales_bonus_by_user_v1_' . $bid . '_2026-06-15_' . $to, $rc->salesBonusByUserFresh($bid, '2026-06-15', $to), 600);
+                }
+            } catch (\Throwable $e) {
+                \Log::warning('sales bonus warm failed: ' . $e->getMessage());
+            }
+        })->name('warm-sales-bonus')->everyFiveMinutes()->withoutOverlapping(10);
+
         $schedule->command('website-orders:sync-erp-status')
             ->everyTenMinutes()
             ->withoutOverlapping(15);
