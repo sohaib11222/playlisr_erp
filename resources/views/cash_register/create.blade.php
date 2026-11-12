@@ -406,6 +406,31 @@
               </div>
               <span id="cr-safe-drop-hint" class="ocr-drop-hint"></span>
             </div>
+            {{-- Shown only when the count is $20+ below what the last shift
+                 left (Sarah 11/12). Display only, never blocks opening. --}}
+            <div id="cr-last-left" style="display:none; margin-top:12px; padding:10px 12px; border:1px solid #E7C9A9; background:#FFF6EC; border-radius:8px; font-size:14px; font-weight:600; color:#8A3A2E;"></div>
+            <script>
+              (function () {
+                var left = {!! json_encode($last_left ?? []) !!};
+                function money(n) { return '$' + Math.round(n).toLocaleString('en-US'); }
+                function check() {
+                  try {
+                    var box = document.getElementById('cr-last-left');
+                    var amt = document.getElementById('cash_in_hand_amount');
+                    var loc = document.querySelector('[name="location_id"]');
+                    if (!box || !amt || !loc) return;
+                    var info = left[loc.value];
+                    var val = parseFloat((amt.value || '').toString().replace(/,/g, ''));
+                    if (!info || !isFinite(val) || val <= 0 || info.amount - val < 20) { box.style.display = 'none'; return; }
+                    box.textContent = info.who + ' left ' + money(info.amount) + ' in the drawer. Your count is '
+                      + money(info.amount - val) + ' less. Please recount, and check under the tray. '
+                      + 'If you put cash in the safe, add it to your count and type it in the safe box above.';
+                    box.style.display = 'block';
+                  } catch (e) {}
+                }
+                setInterval(check, 700);
+              })();
+            </script>
           </div>
         </div>
         @if(count($business_locations) > 1)

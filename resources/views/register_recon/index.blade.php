@@ -71,7 +71,7 @@
 				$drawerItems = [];
 				foreach ($report['stores'] as $s) {
 					foreach ($s['items'] as $it) {
-						if (in_array($it['kind'], ['drawer', 'handover', 'smallshort'], true) && !empty($it['note_key'])) $drawerItems[] = [$s['name'], $it];
+						if (in_array($it['kind'], ['drawer', 'handover', 'smallshort', 'samecount'], true) && !empty($it['note_key'])) $drawerItems[] = [$s['name'], $it];
 					}
 				}
 			@endphp

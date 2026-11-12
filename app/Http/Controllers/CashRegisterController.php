@@ -146,7 +146,36 @@ class CashRegisterController extends Controller
         }
         $cashier_name = $this->cashierDisplayName(auth()->user());
 
-        return view('cash_register.create')->with(compact('business_locations', 'sub_type', 'other_open_cashiers', 'prior_unclosed', 'next_deposit_seqs', 'cashier_name'));
+        // What the last shift left in each store's drawer (its closing count
+        // minus its close-time safe drop), so the open form can say so when
+        // the new count comes in lower (Pico 11/9 and 11/11: $180 and $99
+        // gone overnight, no safe drop logged). Display only.
+        $last_left = [];
+        try {
+            foreach ($business_locations as $loc_id => $loc_name) {
+                // A drawer is already open here (second till, Jon's side
+                // register) - this isn't a handover, say nothing.
+                if (\DB::table('cash_registers')->where('business_id', $business_id)->where('location_id', $loc_id)->where('status', 'open')->exists()) continue;
+                $prev = \DB::table('cash_registers as cr')->leftJoin('users as u', 'u.id', '=', 'cr.user_id')
+                    ->where('cr.business_id', $business_id)->where('cr.location_id', $loc_id)
+                    ->where('cr.status', 'close')->whereNotNull('cr.closing_amount')
+                    ->where('cr.closed_at', '>=', \Carbon::now()->subHours(36)->format('Y-m-d H:i:s'))
+                    ->where(function ($q) { $q->whereNull('cr.closing_note')->orWhere('cr.closing_note', 'not like', '%Auto-closed by system%'); })
+                    ->orderByDesc('cr.closed_at')->first(['cr.id', 'cr.closing_amount', 'cr.closed_at', 'u.first_name', 'u.username']);
+                if (!$prev) continue;
+                $drop = \Schema::hasTable('cash_deposits')
+                    ? (float) \DB::table('cash_deposits')->where('cash_register_id', $prev->id)->where('phase', 'close')->sum('amount') : 0.0;
+                $last_left[$loc_id] = [
+                    'amount' => round((float) $prev->closing_amount - $drop, 2),
+                    'who'    => ucfirst(strtolower(trim((string) ($prev->first_name ?: $prev->username)))),
+                ];
+            }
+        } catch (\Throwable $e) {
+            \Log::warning('last-left lookup failed: ' . $e->getMessage());
+            $last_left = [];
+        }
+
+        return view('cash_register.create')->with(compact('business_locations', 'sub_type', 'other_open_cashiers', 'prior_unclosed', 'next_deposit_seqs', 'cashier_name', 'last_left'));
     }
 
     /**

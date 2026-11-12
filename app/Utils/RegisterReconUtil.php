@@ -690,6 +690,24 @@ class RegisterReconUtil
             if (!$row) continue;
             [$expected, $cashBuys] = self::shiftExpected($business_id, $r, $row);
             $variance = round((float) $r->closing_amount - $expected, 2);
+            // Closing count identical to the opening count although cash
+            // moved during the shift (Pico 11/9-11/10: $174 open, $174 close
+            // three shifts running, with $100 of cash buys on Zak's) - the
+            // drawer probably wasn't recounted. A short is already flagged
+            // below, so only the "looks fine" case gets this line.
+            $opening = (float) ($row->opening_cash ?? 0);
+            if (abs((float) $r->closing_amount - $opening) < 0.01 && abs($expected - $opening) >= self::DRAWER_TOLERANCE
+                && $variance > -self::DRAWER_TOLERANCE && $expected >= 0) {
+                $flags[] = [
+                    'location_id' => $r->location_id,
+                    'kind'   => 'samecount',
+                    'detail' => 'closing count was the same as the opening count ($' . number_format($opening, 0)
+                        . ') but the drawer should have had $' . number_format($expected, 0) . ' - please recount carefully at close',
+                    'ask'    => $who,
+                    'note'   => null,
+                    'amount' => abs($expected - $opening),
+                ];
+            }
             // Only shorts matter (Sarah 9/27); a negative expected means the
             // buy was paid from outside the drawer - not a drawer problem.
             if ($variance > -self::DRAWER_TOLERANCE || $expected < 0) continue;
@@ -933,7 +951,7 @@ class RegisterReconUtil
     /** A drawer/handover flag someone already answered. */
     public static function isExplained(array $it): bool
     {
-        return in_array($it['kind'] ?? '', ['drawer', 'handover', 'changerun', 'draftbuy', 'smallshort'], true) && !empty($it['note']);
+        return in_array($it['kind'] ?? '', ['drawer', 'handover', 'changerun', 'draftbuy', 'smallshort', 'samecount'], true) && !empty($it['note']);
     }
 
     public static function shortRows(array $s): array
@@ -971,7 +989,7 @@ class RegisterReconUtil
             if (!empty($kinds['mismatch'])) {
                 $parts[] = $plural(count($kinds['mismatch']), 'sale', 'sales') . ' rung a different amount than Clover';
             }
-            foreach (['drawer', 'handover', 'changerun', 'smallshort'] as $k) {
+            foreach (['drawer', 'handover', 'changerun', 'smallshort', 'samecount'] as $k) {
                 foreach ($kinds[$k] ?? [] as $it) {
                     $parts[] = $it['detail'] ?? ($it['tiny'] ?? 'drawer count off');
                 }
