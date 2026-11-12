@@ -1976,6 +1976,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // JSON sidecar storage/app/manager_checkins.json, no migration.
     Route::get('/manager-checkins', 'ManagerCheckinController@index')->name('manager-checkins.index');
     Route::post('/manager-checkins', 'ManagerCheckinController@store')->name('manager-checkins.store');
+    Route::post('/manager-checkins/notes', 'ManagerCheckinController@saveNotes')->name('manager-checkins.notes');
 
     // EOS: V/TO, Accountability Chart, Rocks, Scorecard, Issues, To-dos and
     // the weekly L10 for the leadership team. JSON sidecar storage/app/eos.json.

@@ -26,6 +26,12 @@ class ManagerCheckinController extends Controller
 {
     const STORE_PATH = 'manager_checkins.json';
 
+    // Jon's running notes for his own weekly check-in with each manager
+    // (Sarah 2026-11-12): fixes from the check-ins, things to follow up on.
+    // One text per store, keyed "<business_id>:<store>". Admins edit, the
+    // store's manager reads it at the top of this page.
+    const NOTES_PATH = 'manager_jon_notes.json';
+
     const STORES = ['hw' => 'Hollywood', 'pico' => 'Pico'];
 
     // Not floor staff, never in the employee dropdown (Sarah 2026-09-25): gone
@@ -78,6 +84,44 @@ class ManagerCheckinController extends Controller
     private static function save(array $items)
     {
         Storage::put(self::STORE_PATH, json_encode(array_values($items), JSON_PRETTY_PRINT));
+    }
+
+    private static function loadNotes()
+    {
+        if (!Storage::exists(self::NOTES_PATH)) {
+            return [];
+        }
+        $data = json_decode(Storage::get(self::NOTES_PATH), true);
+        return is_array($data) ? $data : [];
+    }
+
+    /** Manager's home store (hw / pico) or null for admins and everyone else. */
+    private static function managerHomeStore()
+    {
+        $key = ManagerChecklistController::currentManagerKey();
+        return $key ? (self::HOME_STORE[$key] ?? null) : null;
+    }
+
+    /** Admins save Jon's notes for one store's manager. */
+    public function saveNotes(Request $request)
+    {
+        if (!$this->isAdmin()) {
+            abort(403, 'Only Jon and Sarah can edit these notes.');
+        }
+        $businessId = $request->session()->get('user.business_id') ?: auth()->user()->business_id;
+        $store      = $this->currentStore($request);
+        $me         = auth()->user();
+
+        $notes = self::loadNotes();
+        $notes[$businessId . ':' . $store] = [
+            'text'       => mb_substr(trim((string) $request->input('notes')), 0, 20000),
+            'updated_at' => date('Y-m-d H:i:s'),
+            'updated_by' => trim($me->first_name . ' ' . $me->last_name),
+        ];
+        Storage::put(self::NOTES_PATH, json_encode($notes, JSON_PRETTY_PRINT));
+
+        return redirect()->action('ManagerCheckinController@index', ['store' => $store])
+            ->with('status', ['success' => 1, 'msg' => 'Saved notes for ' . self::STORES[$store] . '.']);
     }
 
     /** Store picked by the toggle; defaults to the manager's own store (Zakary = Pico, everyone else = Hollywood). */
@@ -237,6 +281,10 @@ class ManagerCheckinController extends Controller
 
         $employees = $this->employees($businessId, $store);
 
+        // A manager only sees the notes for his own store.
+        $showNotes = $isAdmin || self::managerHomeStore() === $store;
+        $jonNotes  = $showNotes ? (self::loadNotes()[$businessId . ':' . $store] ?? null) : null;
+
         return view('manager_checkin.index', [
             'employees'      => $employees,
             'work'           => $this->workFor($businessId, $employees->pluck('id')->all()),
@@ -248,6 +296,9 @@ class ManagerCheckinController extends Controller
             'filterEmployee' => $filterEmployee,
             'ratings'        => self::RATINGS,
             'questions'      => self::QUESTIONS,
+            'showNotes'      => $showNotes,
+            'jonNotes'       => $jonNotes,
+            'notesManager'   => $store === 'pico' ? 'Zak' : 'Luis',
         ]);
     }
 

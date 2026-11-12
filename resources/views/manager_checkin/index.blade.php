@@ -115,6 +115,13 @@
 .open-shell .work .none { color: var(--d-ink-3); }
 .open-shell .mk-task { font-size: 12.5px; font-weight: 700; color: var(--d-accent-text); background: var(--d-accent-soft); border: 1px solid var(--d-accent-deep); border-radius: 999px; padding: 2px 10px; text-decoration: none; margin-left: 6px; white-space: nowrap; }
 .open-shell .empty { color: var(--d-ink-3); font-size: 14px; }
+.open-shell .jon-notes { border: 2px solid var(--d-accent-deep); background: var(--d-accent-soft); }
+.open-shell .jon-notes h2 { font-size: 18px; font-weight: 800; margin: 0 0 4px; }
+.open-shell .jon-notes .sub { font-size: 13px; color: var(--d-ink-2); margin: 0 0 10px; }
+.open-shell .jon-notes .body { font-size: 14.5px; line-height: 1.55; white-space: pre-wrap; }
+.open-shell .jon-notes .body a { color: var(--d-accent-text); font-weight: 700; word-break: break-all; }
+.open-shell .jon-notes textarea { min-height: 320px; font-size: 14px; line-height: 1.5; }
+.open-shell .jon-notes .btn-save { margin-top: 10px; }
 </style>
 
 <div class="open-shell">
@@ -137,6 +144,34 @@
             <a href="{{ url('/manager-checkins') . '?store=' . $key }}" class="{{ $store === $key ? 'on' : '' }}">{{ $label }}</a>
         @endforeach
     </div>
+
+    @if($showNotes)
+        @php
+            $notesText = $jonNotes['text'] ?? '';
+            // Escape, then turn bare links into clickable ones.
+            $notesHtml = preg_replace('~(https?://[^\s<]+)~', '<a href="$1" target="_blank" rel="noopener">$1</a>', e($notesText));
+        @endphp
+        <div class="card jon-notes">
+            <h2>Notes for {{ $notesManager }} from Jon</h2>
+            <p class="sub">What got fixed from your check-ins and what to follow up on. Jon goes over these with you at your weekly check-in.@if(!empty($jonNotes['updated_at'])) Updated {{ date('m/d/y', strtotime($jonNotes['updated_at'])) }}.@endif</p>
+            @if($isAdmin)
+                <form method="POST" action="{{ url('/manager-checkins/notes') }}">
+                    {{ csrf_field() }}
+                    <input type="hidden" name="store" value="{{ $store }}">
+                    <textarea name="notes" placeholder="Notes for {{ $notesManager }}">{{ $notesText }}</textarea>
+                    <button type="submit" class="btn-save">Save notes</button>
+                </form>
+                @if(trim($notesText) !== '')
+                    <h4 style="margin:16px 0 6px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--d-ink-2);">What {{ $notesManager }} sees</h4>
+                    <div class="body">{!! $notesHtml !!}</div>
+                @endif
+            @elseif(trim($notesText) !== '')
+                <div class="body">{!! $notesHtml !!}</div>
+            @else
+                <p class="empty">No notes yet.</p>
+            @endif
+        </div>
+    @endif
 
     <form method="POST" action="{{ url('/manager-checkins') }}" class="card">
         {{ csrf_field() }}
