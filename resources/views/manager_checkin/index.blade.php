@@ -115,13 +115,22 @@
 .open-shell .work .none { color: var(--d-ink-3); }
 .open-shell .mk-task { font-size: 12.5px; font-weight: 700; color: var(--d-accent-text); background: var(--d-accent-soft); border: 1px solid var(--d-accent-deep); border-radius: 999px; padding: 2px 10px; text-decoration: none; margin-left: 6px; white-space: nowrap; }
 .open-shell .empty { color: var(--d-ink-3); font-size: 14px; }
-.open-shell .jon-notes { border: 2px solid var(--d-accent-deep); background: var(--d-accent-soft); }
+.open-shell .jon-notes { border: 1px solid var(--d-accent-deep); background: var(--d-accent-soft); padding: 20px 22px; }
+.open-shell .jon-notes .jn-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 6px; }
 .open-shell .jon-notes h2 { font-size: 18px; font-weight: 800; margin: 0 0 4px; }
-.open-shell .jon-notes .sub { font-size: 13px; color: var(--d-ink-2); margin: 0 0 10px; }
-.open-shell .jon-notes .body { font-size: 14.5px; line-height: 1.55; white-space: pre-wrap; }
-.open-shell .jon-notes .body a { color: var(--d-accent-text); font-weight: 700; word-break: break-all; }
-.open-shell .jon-notes textarea { min-height: 320px; font-size: 14px; line-height: 1.5; }
-.open-shell .jon-notes .btn-save { margin-top: 10px; }
+.open-shell .jon-notes .sub { font-size: 13px; color: var(--d-ink-2); margin: 0; }
+.open-shell .jn-edit-btn, .open-shell .jn-cancel { background: #fff; border: 1px solid var(--d-line-2); color: var(--d-ink); border-radius: 999px; padding: 7px 16px; font: inherit; font-weight: 700; font-size: 13.5px; cursor: pointer; white-space: nowrap; }
+.open-shell .jon-notes .body { font-size: 14.5px; line-height: 1.55; }
+.open-shell .jon-notes .body h4 { font-size: 12.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--d-accent-text); margin: 16px 0 6px; padding-top: 12px; border-top: 1px solid var(--d-accent-deep); }
+.open-shell .jon-notes .body h4:first-child { margin-top: 10px; }
+.open-shell .jon-notes .body ul { margin: 0; padding-left: 20px; }
+.open-shell .jon-notes .body li { margin: 4px 0; }
+.open-shell .jon-notes .body p { margin: 6px 0; }
+.open-shell .jon-notes .body a { color: var(--d-accent-text); font-weight: 700; text-decoration: underline; word-break: break-word; }
+.open-shell .jon-notes .jn-help { font-size: 13px; color: var(--d-ink-2); margin: 12px 0 6px; }
+.open-shell .jon-notes textarea { min-height: 340px; font-size: 14px; line-height: 1.5; }
+.open-shell .jon-notes .jn-actions { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
+.open-shell .jon-notes .jn-actions .btn-save { margin-top: 0; }
 </style>
 
 <div class="open-shell">
@@ -148,27 +157,75 @@
     @if($showNotes)
         @php
             $notesText = $jonNotes['text'] ?? '';
-            // Escape, then turn bare links into clickable ones.
-            $notesHtml = preg_replace('~(https?://[^\s<]+)~', '<a href="$1" target="_blank" rel="noopener">$1</a>', e($notesText));
+            // Render the plain text: ALL CAPS lines = section headings,
+            // "- " lines = bullets, bare links clickable. Escaped first.
+            $linkify = function ($t) {
+                return preg_replace('~(https?://[^\s<]+)~', '<a href="$1" target="_blank" rel="noopener">$1</a>', e($t));
+            };
+            $notesHtml = '';
+            $inList = false;
+            foreach (preg_split('/\r?\n/', $notesText) as $line) {
+                $line = trim($line);
+                $isItem = strpos($line, '- ') === 0;
+                if ($inList && !$isItem) { $notesHtml .= '</ul>'; $inList = false; }
+                if ($line === '') { continue; }
+                if ($isItem) {
+                    if (!$inList) { $notesHtml .= '<ul>'; $inList = true; }
+                    $notesHtml .= '<li>' . $linkify(substr($line, 2)) . '</li>';
+                } elseif (preg_match('/[A-Z]/', $line) && strtoupper($line) === $line) {
+                    $notesHtml .= '<h4>' . e(ucfirst(strtolower(rtrim($line, ':')))) . '</h4>';
+                } else {
+                    $notesHtml .= '<p>' . $linkify($line) . '</p>';
+                }
+            }
+            if ($inList) { $notesHtml .= '</ul>'; }
+            $hasNotes = trim($notesText) !== '';
         @endphp
-        <div class="card jon-notes">
-            <h2>Notes for {{ $notesManager }} from Jon</h2>
-            <p class="sub">What got fixed from your check-ins and what to follow up on. Jon goes over these with you at your weekly check-in.@if(!empty($jonNotes['updated_at'])) Updated {{ date('m/d/y', strtotime($jonNotes['updated_at'])) }}.@endif</p>
+        <div class="card jon-notes" id="jon-notes">
+            <div class="jn-top">
+                <div>
+                    <h2>Notes for {{ $notesManager }} from Jon</h2>
+                    <p class="sub">What got fixed from the check-ins and what to follow up on. Jon goes over these at the weekly check-in.@if(!empty($jonNotes['updated_at'])) Updated {{ date('m/d/y', strtotime($jonNotes['updated_at'])) }}.@endif</p>
+                </div>
+                @if($isAdmin)
+                    <button type="button" class="jn-edit-btn" id="jn-edit-btn">{{ $hasNotes ? 'Edit notes' : 'Add notes' }}</button>
+                @endif
+            </div>
+            <div class="body" id="jn-view">
+                @if($hasNotes)
+                    {!! $notesHtml !!}
+                @else
+                    <p class="empty">No notes yet.</p>
+                @endif
+            </div>
             @if($isAdmin)
-                <form method="POST" action="{{ url('/manager-checkins/notes') }}">
+                <form method="POST" action="{{ url('/manager-checkins/notes') }}" id="jn-form" style="display:none;">
                     {{ csrf_field() }}
                     <input type="hidden" name="store" value="{{ $store }}">
+                    <p class="jn-help">Write a heading in CAPITALS, start a bullet with a dash and a space, and paste links as they are.</p>
                     <textarea name="notes" placeholder="Notes for {{ $notesManager }}">{{ $notesText }}</textarea>
-                    <button type="submit" class="btn-save">Save notes</button>
+                    <div class="jn-actions">
+                        <button type="submit" class="btn-save">Save notes</button>
+                        <button type="button" class="jn-cancel" id="jn-cancel">Cancel</button>
+                    </div>
                 </form>
-                @if(trim($notesText) !== '')
-                    <h4 style="margin:16px 0 6px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--d-ink-2);">What {{ $notesManager }} sees</h4>
-                    <div class="body">{!! $notesHtml !!}</div>
-                @endif
-            @elseif(trim($notesText) !== '')
-                <div class="body">{!! $notesHtml !!}</div>
-            @else
-                <p class="empty">No notes yet.</p>
+                <script>
+                (function () {
+                    var btn = document.getElementById('jn-edit-btn'),
+                        form = document.getElementById('jn-form'),
+                        view = document.getElementById('jn-view'),
+                        cancel = document.getElementById('jn-cancel');
+                    if (!btn || !form) return;
+                    function show(edit) {
+                        form.style.display = edit ? '' : 'none';
+                        view.style.display = edit ? 'none' : '';
+                        btn.style.display = edit ? 'none' : '';
+                        if (edit) form.querySelector('textarea').focus();
+                    }
+                    btn.addEventListener('click', function () { show(true); });
+                    cancel.addEventListener('click', function () { show(false); });
+                })();
+                </script>
             @endif
         </div>
     @endif
