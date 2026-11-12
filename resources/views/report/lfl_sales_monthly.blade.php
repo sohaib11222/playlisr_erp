@@ -117,7 +117,7 @@
                 <p class="text-muted" style="margin-top:8px;">
                     Each cell: this month's sales (bold) and the % change vs the same month last year — hover for exact figures.
                     The current month is in progress and compares month-to-date through yesterday on both years (a fair, full-days compare).
-                    Finalized in-store sells, including bulk-imported history (last year's sales live there); Whatnot excluded.
+                    Clover net sales (after tax, tips and refunds), the same numbers as the Clover dashboard and the 2025 tax return. Online, Whatnot and Discogs are not included.
                 </p>
             @endcomponent
         </div>

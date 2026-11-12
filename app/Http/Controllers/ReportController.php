@@ -4886,7 +4886,89 @@ class ReportController extends Controller
     // is the COMPLETE record that month (the larger of the two) and ignore the
     // partial duplicate. Other channels (web / Discogs / rentals) are separate and
     // added on top. Non-destructive — purely which rows the report sums.
+    // LFL now reads CLOVER (Sarah 2026-11-12: "PLS FIX LFL #S"). Clover net
+    // sales (after tax, tips and refunds) tie to the filed 2025 return within
+    // 0.1%; the ERP's imported history was missing big chunks (Oct 2025 about
+    // half), so last-year numbers and every % were wrong. History through
+    // the file's "through" date comes from storage/app/clover-daily.json (pulled
+    // from the Clover API, every merchant account incl. the old Pico ones);
+    // later days come from the ERP's own Clover sync (clover_payments).
+    const CLOVER_DAILY_FILE = 'clover-daily.json'; // storage/app, written by /admin/clover-daily/import
+    private static $cloverDaily = null;
+
+    private function cloverDailyFile()
+    {
+        if (self::$cloverDaily === null) {
+            $raw = \Storage::disk('local')->exists(self::CLOVER_DAILY_FILE) ? \Storage::disk('local')->get(self::CLOVER_DAILY_FILE) : null;
+            self::$cloverDaily = $raw ? (json_decode($raw, true) ?: []) : [];
+        }
+        return self::$cloverDaily;
+    }
+
+    private function cloverDaily() { return $this->cloverDailyFile()['days'] ?? []; }
+
+    // Owner-only: receives the daily Clover export (pulled in the Clover
+    // dashboard) and saves it. Format per store "loc:YYYY-MM-DD|c36.n36,..."
+    // joined by "#": net cents and payment count in base 36, one per day.
+    public function cloverDailyImport(\Illuminate\Http\Request $request)
+    {
+        if (!in_array((int) auth()->id(), [1, 8], true)) { abort(403); }
+        $payload = (string) $request->input('payload', '');
+        $days = []; $totals = [];
+        foreach (explode('#', $payload) as $chunk) {
+            if (!preg_match('/^(\d+):(\d{4}-\d{2}-\d{2})\|(.*)$/s', $chunk, $m)) { continue; }
+            $loc = $m[1]; $d = \Carbon::parse($m[2]);
+            foreach (explode(',', $m[3]) as $cell) {
+                if ($cell !== '') {
+                    [$c, $n] = array_pad(explode('.', $cell), 2, '0');
+                    $neg = strpos($c, '-') === 0;
+                    $cents = (int) base_convert(ltrim($c, '-'), 36, 10) * ($neg ? -1 : 1);
+                    $days[$loc][$d->toDateString()] = [round($cents / 100, 2), (int) base_convert($n, 36, 10)];
+                    $y = $d->format('Y');
+                    $totals[$loc][$y] = round(($totals[$loc][$y] ?? 0) + $cents / 100, 2);
+                }
+                $d->addDay();
+            }
+        }
+        if (empty($days)) { return response()->json(['ok' => false, 'msg' => 'nothing parsed'], 422); }
+        $through = (string) $request->input('through', '');
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $through)) { return response()->json(['ok' => false, 'msg' => 'through date required'], 422); }
+        \Storage::disk('local')->put(self::CLOVER_DAILY_FILE, json_encode(['through' => $through, 'saved_at' => now()->toDateTimeString(), 'days' => $days]));
+        self::$cloverDaily = null;
+        return response()->json(['ok' => true, 'through' => $through, 'days' => array_map('count', $days), 'totals' => $totals]);
+    }
+
     private function lflRevAndCount($business_id, $location_id, $start, $end)
+    {
+        $start = \Carbon::parse($start);
+        $end = \Carbon::parse($end);
+        $daily = $this->cloverDaily()[(string) $location_id] ?? null;
+        if ($daily === null) { return $this->lflRevAndCountErp($business_id, $location_id, $start, $end); }
+        $rev = 0.0; $n = 0;
+        $syncFrom = null;
+        for ($d = $start->copy()->startOfDay(); $d->lte($end); $d->addDay()) {
+            $k = $d->toDateString();
+            if ($k <= ($this->cloverDailyFile()['through'] ?? '0000-00-00')) {
+                if (isset($daily[$k])) { $rev += (float) $daily[$k][0]; $n += (int) $daily[$k][1]; }
+            } else { $syncFrom = $syncFrom ?: $d->copy(); break; }
+        }
+        if ($syncFrom) {
+            $from = $syncFrom->gt($start) ? $syncFrom : $start;
+            $r = DB::table('clover_payments')
+                ->where('business_id', $business_id)->where('location_id', $location_id)
+                ->where('result', 'SUCCESS')
+                // paid_at is UTC; paid_on is the store's local date. Ranges here
+                // are whole days (or today so far), so local dates are exact.
+                ->whereBetween('paid_on', [$from->toDateString(), $end->toDateString()])
+                ->selectRaw('COALESCE(SUM(amount_cents - COALESCE(tax_cents,0) - COALESCE(tip_cents,0)),0) as net, COUNT(*) as n')
+                ->first();
+            $rev += ((int) $r->net) / 100; $n += (int) $r->n;
+        }
+        return (object) ['revenue' => round($rev, 2), 'tx_count' => $n];
+    }
+
+    // The old ERP-transactions version, kept as a fallback only.
+    private function lflRevAndCountErp($business_id, $location_id, $start, $end)
     {
         $r = DB::table('transactions')
             ->where('business_id', $business_id)

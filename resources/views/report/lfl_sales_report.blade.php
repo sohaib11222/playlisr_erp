@@ -139,7 +139,7 @@
                 (sales so far, as of {{ $nav['as_of'] }}); last year's imported history has no usable time-of-day,
                 so today can't be compared hour-for-hour — its % shows n/a and it's left out of the
                 {{ $nav['week_to_date'] ? 'week-to-date total (completed days only' . ($nav['through_label'] ? ', through ' . $nav['through_label'] : '') . ')' : 'week total' }}.
-                Finalized in-store sells, including bulk-imported history; Whatnot excluded.
+                Clover net sales (after tax, tips and refunds), the same numbers as the Clover dashboard. Online, Whatnot and Discogs are not included.
             </p>
         @endcomponent
 

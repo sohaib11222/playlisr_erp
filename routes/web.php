@@ -1206,6 +1206,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/reports/purchase-report/walkin-history', 'ReportController@purchaseReportWalkinHistory')->name('reports.purchase-report.walkin-history');
     Route::get('/reports/sale-report', 'ReportController@saleReport');
     Route::get('/reports/lfl-sales', 'ReportController@lflSalesReport')->name('reports.lfl-sales');
+    // Owner-only: save the daily Clover sales export the LFL report reads (2026-11-12).
+    Route::post('/admin/clover-daily/import', 'ReportController@cloverDailyImport');
     Route::post('/reports/lfl-sales/hours', 'ReportController@lflSaveStoreHours')->name('reports.lfl-sales.hours');
     Route::get('/reports/revenue-drivers', 'ReportController@revenueDrivers')->name('reports.revenue-drivers');
     Route::get('/reports/sales-by-hour', 'ReportController@salesByHour')->name('reports.sales-by-hour');
