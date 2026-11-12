@@ -1227,17 +1227,8 @@ class ListingCommissionController extends Controller
                     // count is live from the website bridge; falls back to 2h
                     // (the old safe default) if the bridge is unreachable,
                     // never 1.5h on a guess.
-                    $durationMin = 120;
-                    try {
-                        $liveCounts = app(\App\Http\Controllers\EventsController::class)
-                            ->liveEventCounts((string) ($it['name'] ?? ''), $it['id'] ?? null);
-                        if ($liveCounts !== null) {
-                            $attending = (int) ($liveCounts['store'][$locKey]['attending'] ?? 0);
-                            $durationMin = $attending >= 50 ? 120 : 90;
-                        }
-                    } catch (\Throwable $e) {
-                        \Log::warning('party estimate: liveEventCounts failed: ' . $e->getMessage());
-                    }
+                    // Sarah 2026-11-12: always the first 1.5 hours of the party.
+                    $durationMin = 90;
 
                     $winFrom = preg_match('/^\d{1,2}:\d{2}$/', (string) ($it['time'] ?? '')) ? $it['time'] : self::PARTY_DEFAULT_FROM;
                     $sC = \Carbon::parse($edate . ' ' . $winFrom . ':00');
