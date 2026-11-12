@@ -430,7 +430,40 @@ class DiscogsInventoryImportController extends Controller
                 DB::raw('SUM(CASE WHEN COALESCE(NULLIF(v.dpp_inc_tax, 0), v.default_purchase_price, 0) = 0 THEN vld.qty_available ELSE 0 END) as units_no_cost'),
                 DB::raw('SUM(vld.qty_available * COALESCE(v.sell_price_inc_tax, 0)) as retail_value'))
             ->orderBy('bl.name')->get();
-        return response()->json(['ok' => true, 'rows' => $rows]);
+        $out = ['ok' => true, 'rows' => $rows];
+
+        // ?location=warehouse -> breakdown by category and by unit cost.
+        $loc = trim((string) $request->input('location', ''));
+        if ($loc !== '') {
+            $costSql = 'COALESCE(NULLIF(v.dpp_inc_tax, 0), v.default_purchase_price, 0)';
+            $base = function () use ($business_id, $loc) {
+                return DB::table('variation_location_details as vld')
+                    ->join('variations as v', function ($j) { $j->on('v.id', '=', 'vld.variation_id')->whereNull('v.deleted_at'); })
+                    ->join('products as p', 'p.id', '=', 'v.product_id')
+                    ->join('business_locations as bl', 'bl.id', '=', 'vld.location_id')
+                    ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
+                    ->where('p.business_id', $business_id)
+                    ->where('p.enable_stock', 1)
+                    ->where('vld.qty_available', '>', 0)
+                    ->where('bl.name', 'like', '%' . $loc . '%');
+            };
+            $out['by_category'] = $base()->groupBy('c.name')
+                ->select(DB::raw("COALESCE(c.name, '(none)') as category"),
+                    DB::raw('SUM(vld.qty_available) as units'),
+                    DB::raw("SUM(vld.qty_available * {$costSql}) as cost_value"))
+                ->orderByDesc('cost_value')->get();
+            $out['by_unit_cost'] = $base()->groupBy(DB::raw("ROUND({$costSql}, 2)"))
+                ->select(DB::raw("ROUND({$costSql}, 2) as unit_cost"),
+                    DB::raw('SUM(vld.qty_available) as units'),
+                    DB::raw("SUM(vld.qty_available * {$costSql}) as cost_value"))
+                ->orderByDesc('cost_value')->limit(25)->get();
+            $out['top_items'] = $base()
+                ->select('p.name', 'v.sub_sku', 'c.name as category', 'vld.qty_available as qty',
+                    DB::raw("{$costSql} as unit_cost"), 'v.sell_price_inc_tax as price',
+                    DB::raw("vld.qty_available * {$costSql} as cost_value"))
+                ->orderByDesc('cost_value')->limit(25)->get();
+        }
+        return response()->json($out);
     }
 
     /**
