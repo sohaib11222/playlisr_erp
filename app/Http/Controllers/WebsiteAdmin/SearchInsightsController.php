@@ -27,10 +27,22 @@ class SearchInsightsController extends Controller
         $q = WebsiteBridge::admin('GET', '/search-log/top-queries?page=' . $page . '&limit=' . $limit, null, 45);
         $artists = WebsiteBridge::admin('GET', '/search-log/top-artist-queries', null, 45);
         $pg = $this->pick($q, 'pagination', []) ?: [];
+        $queries = $this->listFrom($q);
+        $artistList = $this->listFrom($artists);
+        [$stockLocations, $stockFor] = $this->stockMatcher();
+        foreach ($queries as &$row) {
+            $row['_stock'] = $stockFor((string) ($row['_id'] ?? ''));
+        }
+        unset($row);
+        foreach ($artistList as &$row) {
+            $row['_stock'] = $stockFor((string) ($row['query'] ?? ''));
+        }
+        unset($row);
         return view('website_admin.content.most_searched', [
+            'stockLocations' => $stockLocations,
             'bridgeError' => empty($q['success']) ? ($q['message'] ?? 'Could not load search data.') : null,
-            'queries' => $this->listFrom($q),
-            'artists' => $this->listFrom($artists),
+            'queries' => $queries,
+            'artists' => $artistList,
             'artistError' => empty($artists['success']) ? ($artists['message'] ?? 'Could not load artist data.') : null,
             'page' => (int) ($pg['page'] ?? $page),
             'limit' => (int) ($pg['limit'] ?? $limit),
@@ -39,6 +51,108 @@ class SearchInsightsController extends Controller
             'pageSizes' => self::PAGE_SIZES,
             'loadedAt' => now()->setTimezone('America/Los_Angeles')->format('M j, Y g:i A'),
         ]);
+    }
+
+    /** Words dropped from a search before matching: format words and filler. */
+    const STOCK_SKIP_WORDS = ['the', 'a', 'an', 'and', 'of', 'vinyl', 'vinyls', 'record', 'records', 'lp', 'lps', 'cd', 'cds', 'album', 'albums'];
+
+    /**
+     * In-stock units per location for each search term (Sarah 2026-11-12:
+     * Pico / Hollywood / Discogs columns on Most Searched). A product matches
+     * when every word of the search (minus format/filler words) is a word in
+     * its artist or name. Returns [[location_id => name], fn(query) => [location_id => units] | null].
+     */
+    protected function stockMatcher()
+    {
+        $business_id = (int) session('business.id');
+        $names = \DB::table('business_locations')->where('business_id', $business_id)->pluck('name', 'id')->all();
+
+        $words = [];   // word => [product index, ...]
+        $qty = [];     // product index => [location_id => units]
+        $pidx = [];
+        $stockLocs = [];
+        \DB::table('variation_location_details as vld')
+            ->join('products as p', 'p.id', '=', 'vld.product_id')
+            ->where('p.business_id', $business_id)
+            ->where('p.is_inactive', 0)
+            ->where('vld.qty_available', '>', 0)
+            ->select('p.id', 'p.artist', 'p.name', 'vld.location_id', 'vld.qty_available')
+            ->orderBy('vld.id')
+            ->chunk(20000, function ($rows) use (&$words, &$qty, &$pidx, &$stockLocs) {
+                foreach ($rows as $r) {
+                    if (!isset($pidx[$r->id])) {
+                        $i = count($pidx);
+                        $pidx[$r->id] = $i;
+                        foreach (array_unique($this->stockWords($r->artist . ' ' . $r->name)) as $w) {
+                            $words[$w][] = $i;
+                        }
+                    }
+                    $i = $pidx[$r->id];
+                    $loc = (int) $r->location_id;
+                    $qty[$i][$loc] = ($qty[$i][$loc] ?? 0) + (float) $r->qty_available;
+                    $stockLocs[$loc] = true;
+                }
+            });
+
+        // Pico, Hollywood, then the rest (Discogs etc.) by name.
+        $locations = [];
+        foreach ($names as $id => $name) {
+            if (isset($stockLocs[(int) $id])) {
+                $locations[(int) $id] = (string) $name;
+            }
+        }
+        uksort($locations, function ($a, $b) use ($locations) {
+            $rank = function ($n) {
+                $n = mb_strtolower($n);
+                return strpos($n, 'pico') !== false ? 0 : (strpos($n, 'hollywood') !== false ? 1 : 2);
+            };
+            return [$rank($locations[$a]), $locations[$a]] <=> [$rank($locations[$b]), $locations[$b]];
+        });
+
+        $skip = array_flip(self::STOCK_SKIP_WORDS);
+        $stockFor = function ($query) use ($words, $qty, $skip, $locations) {
+            $terms = array_values(array_filter(array_unique($this->stockWords($query)), function ($w) use ($skip) {
+                return !isset($skip[$w]);
+            }));
+            if (!$terms) {
+                return null;
+            }
+            $lists = [];
+            foreach ($terms as $t) {
+                if (empty($words[$t])) {
+                    return array_fill_keys(array_keys($locations), 0);
+                }
+                $lists[] = $words[$t];
+            }
+            usort($lists, function ($a, $b) {
+                return count($a) <=> count($b);
+            });
+            $hits = array_flip(array_shift($lists));
+            foreach ($lists as $l) {
+                $hits = array_intersect_key($hits, array_flip($l));
+                if (!$hits) {
+                    break;
+                }
+            }
+            $out = array_fill_keys(array_keys($locations), 0);
+            foreach ($hits as $i => $_) {
+                foreach ($qty[$i] as $loc => $n) {
+                    if (isset($out[$loc])) {
+                        $out[$loc] += $n;
+                    }
+                }
+            }
+            return $out;
+        };
+        return [$locations, $stockFor];
+    }
+
+    /** Lowercase ASCII words of a string. */
+    protected function stockWords($s)
+    {
+        $s = mb_strtolower(\Illuminate\Support\Str::ascii((string) $s));
+        $s = str_replace(["'", '’'], '', $s);
+        return preg_split('/[^a-z0-9]+/', $s, -1, PREG_SPLIT_NO_EMPTY);
     }
 
     public function boost(Request $request)
