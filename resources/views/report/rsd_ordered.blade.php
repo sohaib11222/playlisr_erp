@@ -14,6 +14,8 @@
     .rso .pico { background: #f5f3ff; }
     .rso .zero { color: #222; }
     .rso-tot td { font-weight: 700; border-top: 2px solid #222 !important; }
+    .rso-sort { cursor: pointer; user-select: none; }
+    .rso-sort:hover { text-decoration: underline; }
     .rso-pill { display: inline-block; padding: 2px 8px; border-radius: 10px; background: #e3f2fd; color: #0d47a1; font-size: 12px; font-weight: 600; }
 </style>
 <section class="content-header">
@@ -50,26 +52,24 @@
 
     <div class="box box-solid">
         <div class="box-body table-responsive">
-            <table class="table table-bordered table-condensed rso">
+            <table class="table table-bordered table-condensed rso" id="rso-table">
                 <thead>
                     <tr>
-                        <th rowspan="2">Album</th>
-                        <th colspan="2" class="n hw">Hollywood</th>
-                        <th colspan="2" class="n pico">Pico</th>
-                    </tr>
-                    <tr>
-                        <th class="n hw">Customer requests</th><th class="n hw">Ordered</th>
-                        <th class="n pico">Customer requests</th><th class="n pico">Ordered</th>
+                        <th class="rso-sort" data-col="0" data-type="text">Album <span class="rso-arrow"></span></th>
+                        <th class="n hw rso-sort" data-col="1">Hollywood customer requests <span class="rso-arrow"></span></th>
+                        <th class="n hw rso-sort" data-col="2">Hollywood ordered <span class="rso-arrow"></span></th>
+                        <th class="n pico rso-sort" data-col="3">Pico customer requests <span class="rso-arrow"></span></th>
+                        <th class="n pico rso-sort" data-col="4">Pico ordered <span class="rso-arrow"></span></th>
                     </tr>
                 </thead>
                 <tbody>
                 @foreach($rows as $r)
                     <tr>
-                        <td><b>{{ $r['artist'] }}</b><br>{{ $r['title'] }}@if($r['note'])<br><i>{{ $r['note'] }}</i>@endif</td>
+                        <td data-v="{{ strtolower($r['artist'] . ' ' . $r['title']) }}"><b>{{ $r['artist'] }}</b><br>{{ $r['title'] }}@if($r['note'])<br><i>{{ $r['note'] }}</i>@endif</td>
                         @foreach(['hollywood' => 'hw', 'pico' => 'pico'] as $st => $cls)
                             @php $c = $r[$st]; @endphp
-                            <td class="n {{ $cls }}">{{ $c['req'] ?: '' }}</td>
-                            <td class="n {{ $cls }}">
+                            <td class="n {{ $cls }}" data-v="{{ $c['req'] }}">{{ $c['req'] ?: '' }}</td>
+                            <td class="n {{ $cls }}" data-v="{{ $c['qty'] }}">
                                 @if($c['qty'])<b>{{ $c['qty'] }}</b>
                                     @foreach($c['by'] as $k => $n)<div style="font-size:12px">{!! $d($k) !!} {{ $n }}</div>@endforeach
                                 @endif
@@ -91,4 +91,27 @@
         </div>
     </div>
 </section>
+<script>
+(function () {
+    var table = document.getElementById('rso-table');
+    if (!table) return;
+    var body = table.tBodies[0], state = {};
+    table.querySelectorAll('th.rso-sort').forEach(function (th) {
+        th.addEventListener('click', function () {
+            var col = +th.dataset.col, text = th.dataset.type === 'text';
+            var dir = state.col === col ? -state.dir : (text ? 1 : -1);
+            state = {col: col, dir: dir};
+            var rows = Array.prototype.slice.call(body.rows);
+            rows.sort(function (a, b) {
+                var x = a.cells[col].dataset.v, y = b.cells[col].dataset.v;
+                var c = text ? x.localeCompare(y) : (+x - +y);
+                return c * dir || a.cells[0].dataset.v.localeCompare(b.cells[0].dataset.v);
+            });
+            rows.forEach(function (r) { body.appendChild(r); });
+            table.querySelectorAll('.rso-arrow').forEach(function (s) { s.textContent = ''; });
+            th.querySelector('.rso-arrow').textContent = dir > 0 ? '\u25B2' : '\u25BC';
+        });
+    });
+})();
+</script>
 @endsection
