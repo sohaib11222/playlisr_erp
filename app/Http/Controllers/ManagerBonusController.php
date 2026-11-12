@@ -7,16 +7,27 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 // Store manager bonus (Sarah 2026-11-12, starts 12/1/2026).
-// Each month, the store's manager earns 2% of the store's PRE-TAX sales above
-// the same calendar month last year, paid only if the store stayed within its
-// monthly labor-hour budget (Sabina's daily caps summed over the month, vs
-// actual ERP time-clock hours at that store). Paid at month-end payroll.
-// Payouts are ledgered in storage/app/manager-bonus-payouts.json.
+// Sales = CLOVER net sales (after tax, tips and refunds), which Sarah trusts:
+// 2025 Clover ties to the filed return (HW 611,676 vs 612,099; Pico 203,202
+// vs 203,432). ERP imported 2025 history has holes (Oct 2025 about half).
+// Target = the HIGHER of the same month last year or the average of the last
+// 3 months (so the bonus tracks the current trajectory, not just last year).
+// Bonus = 2% of Clover net sales above target, only if the store stayed within
+// its monthly labor-hour budget (Sabina's daily caps vs ERP time-clock hours).
+// Paid once a month at the payroll closest to month end. Payouts are ledgered
+// in storage/app/manager-bonus-payouts.json.
 class ManagerBonusController extends Controller
 {
     const START_MONTH = '2026-12';
     const RATE = 2.0;
-    const TAX_RATE = 0.0975; // CA rate used by the historical import; growth is paid before tax
+    // Clover net sales per month, pulled from the Clover API 2026-11-12 across
+    // every merchant account (HW F6J6PKNMC9VT1; Pico 5YAN6F4N3NCT1 +
+    // EQWV171MNZP31 + M0RFJQGMSMY91). Months after this come from the ERP's
+    // own Clover sync (clover_payments), checked against this list for Oct 2026.
+    const CLOVER_NET = [
+        1 => ['2025-01' => 18025.49, '2025-02' => 18596.33, '2025-03' => 18997.01, '2025-04' => 22327.62, '2025-05' => 15316.41, '2025-06' => 13908.00, '2025-07' => 16364.93, '2025-08' => 16488.68, '2025-09' => 11950.06, '2025-10' => 12326.41, '2025-11' => 16998.81, '2025-12' => 21901.95, '2026-01' => 15938.98, '2026-02' => 14390.32, '2026-03' => 13950.55, '2026-04' => 22237.09, '2026-05' => 17615.88, '2026-06' => 15933.94, '2026-07' => 19496.60, '2026-08' => 19274.78, '2026-09' => 16447.15, '2026-10' => 18583.51],
+        2 => ['2025-01' => 44831.44, '2025-02' => 42205.84, '2025-03' => 54910.52, '2025-04' => 56715.56, '2025-05' => 49713.80, '2025-06' => 44903.33, '2025-07' => 54663.60, '2025-08' => 60041.42, '2025-09' => 53749.07, '2025-10' => 49316.91, '2025-11' => 48527.56, '2025-12' => 52097.26, '2026-01' => 52620.96, '2026-02' => 55156.69, '2026-03' => 61275.07, '2026-04' => 78376.51, '2026-05' => 76873.75, '2026-06' => 73506.44, '2026-07' => 91371.19, '2026-08' => 93956.44, '2026-09' => 78142.86, '2026-10' => 83982.75],
+    ];
     const PAYOUTS_FILE = 'manager-bonus-payouts.json';
 
     // location_id => manager + daily labor caps [Mon-Thu, Fri-Sun]
@@ -83,6 +94,12 @@ class ManagerBonusController extends Controller
             'before_start' => $month < self::START_MONTH,
             'payouts' => array_reverse($payouts),
             'full' => $full,
+            // ?check=YYYY-MM compares the ERP's Clover sync to the pulled list.
+            'check' => preg_match('/^\d{4}-\d{2}$/', (string) $request->input('check')) ? array_map(function ($locId) use ($businessId, $request) {
+                $m = (string) $request->input('check');
+                $s = \Carbon::parse($m . '-01');
+                return ['store' => self::STORES[$locId]['store'], 'month' => $m, 'pulled' => self::CLOVER_NET[$locId][$m] ?? null, 'synced' => $this->syncedNet($businessId, $locId, $s, $s->copy()->endOfMonth())];
+            }, array_keys(self::STORES)) : [],
         ]);
     }
 
@@ -107,29 +124,37 @@ class ManagerBonusController extends Controller
         $end = $start->copy()->endOfMonth();
         $today = \Carbon::today();
         $complete = $end->lt($today);
-        // In-progress month: compare to-date (through yesterday) against the
-        // same days last year, so the number is fair mid-month.
+        // In-progress month: sales through yesterday vs a target prorated to
+        // the same number of days.
         $through = $complete ? $end->copy() : $today->copy()->subDay()->endOfDay();
-        if ($through->lt($start)) { $through = $start->copy()->subSecond(); }
+        $started = $through->gte($start);
+        $daysIn = $start->daysInMonth;
+        $daysDone = $started ? ($start->diffInDays($through->copy()->startOfDay()) + 1) : 0;
 
-        $lyStart = $start->copy()->subYear();
-        $lyThrough = $lyStart->copy()->addDays($start->diffInDays($through))->endOfDay();
+        $sales = $started ? $this->cloverNet($businessId, $locId, $start, $through, $complete) : 0.0;
 
-        $sales = $through->gte($start) ? $this->storeSales($businessId, $locId, $start, $through) : 0.0;
-        $lySales = $through->gte($start) ? $this->storeSales($businessId, $locId, $lyStart, $lyThrough) : 0.0;
-        $growth = round($sales - $lySales, 2);
-        $lyFull = $this->storeSales($businessId, $locId, $lyStart, $lyStart->copy()->endOfMonth());
+        $lyMonth = $start->copy()->subYear()->format('Y-m');
+        $lyFull = $this->monthNet($businessId, $locId, $lyMonth);
+        $prev = [];
+        for ($i = 1; $i <= 3; $i++) {
+            $pm = $start->copy()->subMonthsNoOverflow($i)->format('Y-m');
+            $prev[$pm] = $this->monthNet($businessId, $locId, $pm);
+        }
+        $avg3 = round(array_sum($prev) / 3, 2);
+        $targetFull = max($lyFull, $avg3);
+        $targetBasis = $targetFull == $lyFull ? 'same month last year' : 'average of the last 3 months';
+        $target = $complete ? $targetFull : round($targetFull * $daysDone / $daysIn, 2);
+        $over = round($sales - $target, 2);
 
         // Labor budget over the same days.
         $budget = 0;
         for ($d = $start->copy(); $d->lte($through); $d->addDay()) {
             $budget += in_array($d->dayOfWeekIso, [5, 6, 7], true) ? $cfg['peak'] : $cfg['regular'];
         }
-        $hours = $through->gte($start) ? $this->laborHours($businessId, $locId, $start, $through) : 0.0;
+        $hours = $started ? $this->laborHours($businessId, $locId, $start, $through) : 0.0;
         $withinBudget = $hours <= $budget;
 
-        $growthPreTax = round($growth / (1 + self::TAX_RATE), 2);
-        $earned = ($growth > 0 && $withinBudget) ? round($growthPreTax * self::RATE / 100, 2) : 0.0;
+        $earned = ($over > 0 && $withinBudget) ? round($over * self::RATE / 100, 2) : 0.0;
 
         $manager = DB::table('users')->where('business_id', $businessId)
             ->where('first_name', $cfg['manager_first'])->orderBy('id')->first(['id', 'first_name', 'last_name']);
@@ -145,13 +170,16 @@ class ManagerBonusController extends Controller
             'manager' => $manager ? trim($manager->first_name . ' ' . $manager->last_name) : $cfg['manager_first'],
             'month' => $month,
             'complete' => $complete,
-            'through' => $through->gte($start) ? $through->format('m/d/y') : null,
+            'through' => $started ? $through->format('m/d/y') : null,
             'sales' => round($sales, 2),
-            'ly_sales' => round($lySales, 2),
-            'growth' => $growth,
-            'growth_pretax' => $growthPreTax,
+            'ly_month' => $lyMonth,
             'ly_full' => round($lyFull, 2),
-            'growth_pct' => $lySales > 0 ? round($growth / $lySales * 100, 1) : null,
+            'prev' => $prev,
+            'avg3' => $avg3,
+            'target_full' => round($targetFull, 2),
+            'target_basis' => $targetBasis,
+            'target' => $target,
+            'over' => $over,
             'hours' => round($hours, 2),
             'budget' => $budget,
             'within_budget' => $withinBudget,
@@ -161,24 +189,34 @@ class ManagerBonusController extends Controller
         ];
     }
 
-    // Store sales EXACTLY as the Like-for-Like report counts them (tax
-    // included, live + imported history, larger of sheet vs register for the
-    // period, Whatnot excluded), so every number here ties to /reports/lfl-sales.
-    // Last year's register rows carry no separate tax, so tax is taken out of
-    // the GROWTH instead (see TAX_RATE), the same way for both years.
-    private function storeSales($businessId, $locId, \Carbon\Carbon $from, \Carbon\Carbon $to)
+    // Clover net sales for a whole month: the pulled list when we have it,
+    // otherwise the ERP's Clover sync.
+    private function monthNet($businessId, $locId, $month)
     {
-        $r = DB::table('transactions')
+        if (isset(self::CLOVER_NET[$locId][$month])) { return (float) self::CLOVER_NET[$locId][$month]; }
+        $s = \Carbon::parse($month . '-01')->startOfDay();
+        $e = $s->copy()->endOfMonth();
+        if ($s->gt(\Carbon::today())) { return 0.0; }
+        return $this->syncedNet($businessId, $locId, $s, $e);
+    }
+
+    private function cloverNet($businessId, $locId, \Carbon\Carbon $from, \Carbon\Carbon $to, $wholeMonth)
+    {
+        $m = $from->format('Y-m');
+        if ($wholeMonth && isset(self::CLOVER_NET[$locId][$m])) { return (float) self::CLOVER_NET[$locId][$m]; }
+        return $this->syncedNet($businessId, $locId, $from, $to);
+    }
+
+    // Clover payments the ERP syncs every 5 minutes: amount minus tax minus tip.
+    public function syncedNet($businessId, $locId, \Carbon\Carbon $from, \Carbon\Carbon $to)
+    {
+        $r = DB::table('clover_payments')
             ->where('business_id', $businessId)->where('location_id', $locId)
-            ->where('type', 'sell')->where('status', 'final')
-            ->where(function ($w) { $w->where('is_whatnot', 0)->orWhereNull('is_whatnot'); })
-            ->whereBetween('transaction_date', [$from->toDateTimeString(), $to->toDateTimeString()])
-            ->selectRaw("
-                COALESCE(SUM(CASE WHEN import_source LIKE 'nivessa_backend_sales_%' THEN final_total ELSE 0 END),0) as sheet_rev,
-                COALESCE(SUM(CASE WHEN import_source IS NULL THEN final_total ELSE 0 END),0) as register_rev,
-                COALESCE(SUM(CASE WHEN import_source IS NOT NULL AND import_source NOT LIKE 'nivessa_backend_sales_%' THEN final_total ELSE 0 END),0) as other_rev
-            ")->first();
-        return max((float) $r->sheet_rev, (float) $r->register_rev) + (float) $r->other_rev;
+            ->where('result', 'SUCCESS')
+            ->whereBetween('paid_on', [$from->toDateString(), $to->toDateString()])
+            ->selectRaw('COALESCE(SUM(amount_cents - COALESCE(tax_cents,0) - COALESCE(tip_cents,0)),0) as net')
+            ->first();
+        return round(((int) $r->net) / 100, 2);
     }
 
     // Clocked hours at this store (ERP time clock), voided excluded, shipping excluded.

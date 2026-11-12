@@ -77,6 +77,7 @@
 .sc-done-tag { position: absolute; top: 12px; right: 14px; background: #fff; color: #2E6B2E; font-weight: 800; font-size: 13px; letter-spacing: .06em; padding: 3px 9px; border-radius: 8px; }
 .sc-bin.sc-done b { padding-right: 74px; }
 .sc-h2 { font-size: 19px; font-weight: 800; margin: 18px 0 10px; }
+.sc-h2-n { display: inline-block; margin-left: 6px; font-size: 14px; background: #F1EADF; border-radius: 999px; padding: 2px 10px; vertical-align: 2px; }
 </style>
 <div class="sc-wrap">
 @include('report._count_tabs', ['ctOn' => 'count'])
@@ -147,9 +148,20 @@
         </a>
     @endif
 
-    <div class="sc-h2">All sections</div>
+    @php
+        $groups = ['todo' => [], 'recount' => [], 'done' => []];
+        foreach ($bins as $b) {
+            if ($isDone($b)) $groups['done'][] = $b;
+            elseif (!empty($b['last']) && $b['last'] < $scCut) $groups['recount'][] = $b;
+            else $groups['todo'][] = $b;
+        }
+        $gTitle = ['todo' => 'To count', 'recount' => 'Due for a recount (last count over ' . \App\Http\Controllers\ShelfCountController::DUE_DAYS . ' days ago)', 'done' => 'Done'];
+    @endphp
+    @foreach ($groups as $g => $list)
+    @if (count($list))
+    <div class="sc-h2">{{ $gTitle[$g] }} <span class="sc-h2-n">{{ count($list) }}</span></div>
     <div class="sc-grid">
-    @foreach ($bins as $b)
+    @foreach ($list as $b)
         @php $scRecent = !empty($b['last']) && $b['last'] >= $scCut; $scDone = $isDone($b); $scPct = $b['titles'] ? min(100, (int) round(100 * ($b['recent'] ?? 0) / $b['titles'])) : 0; @endphp
         <a class="sc-card sc-bin{{ !empty($b['priority']) ? ' sc-hot' : '' }}{{ $scDone && empty($b['priority']) ? ' sc-done' : '' }}" href="/reports/shelf-count/bin?location_id={{ $loc }}&kind={{ $b['kind'] ?? $kind }}&sub={{ $b['sub'] }}">
             @if ($scDone && empty($b['priority']))<span class="sc-done-tag">DONE</span>@else<span class="sc-pct">{{ $scPct }}%</span>@endif
@@ -162,5 +174,7 @@
         </a>
     @endforeach
     </div>
+    @endif
+    @endforeach
 </div>
 @endsection
