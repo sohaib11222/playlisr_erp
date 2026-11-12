@@ -47,7 +47,7 @@
             <b>{{ $b['name'] }}</b>
             <div class="sc-bar"><span style="width:{{ $scPct }}%"></span></div>
             <div class="sc-line">{{ number_format((int) ($b['recent'] ?? 0)) }} of {{ number_format($b['titles']) }} counted</div>
-            <div class="sc-line">@if ($scRecent)Last count {{ \Carbon\Carbon::parse($b['last'])->format('m/d/y') }}@elseif (!empty($b['last']))Last count {{ \Carbon\Carbon::parse($b['last'])->format('m/d/y') }}, due again@else Never counted @endif</div>
+            <div class="sc-line">{{ !empty($b['last']) ? 'Last count ' . \Carbon\Carbon::parse($b['last'])->format('m/d/y') . ($scRecent ? '' : ', due again') : 'Never counted' }}</div>
             @if (!empty($b['priority']))<span class="sc-flag">High priority: {{ $b['web'] }} online {{ $b['web'] == 1 ? 'order' : 'orders' }}{{ !empty($b['web_bad']) ? ', ' . $b['web_bad'] . " cancelled or can't find" : '' }}</span>@endif
         </a>
     @endforeach
