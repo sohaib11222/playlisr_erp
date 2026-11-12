@@ -15,7 +15,11 @@
 .sc-row select { max-width: 320px; }
 .sc-small { color: #2B2620; font-size: 13px; }
 .sc-due { color: #8E1B1B; font-weight: 700; font-size: 13px; }
-.sc-bin.sc-done { border-color: #2E6B2E; background: #F2FAF2; }
+.sc-bin.sc-done { position: relative; border: 2px solid #1E5A1E; background: #2E6B2E; color: #fff; }
+.sc-bin.sc-done .sc-small, .sc-bin.sc-done .sc-ok { color: #fff; }
+.sc-bin.sc-done .sc-check { background: #fff; color: #2E6B2E; }
+.sc-done-tag { position: absolute; top: 8px; right: 10px; background: #fff; color: #2E6B2E; font-weight: 800; font-size: 13px; letter-spacing: .06em; padding: 2px 8px; border-radius: 6px; }
+.sc-bin.sc-done b { padding-right: 64px; }
 .sc-check { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: #2E6B2E; color: #fff; font-size: 14px; font-weight: 800; margin-right: 6px; vertical-align: -3px; }
 .sc-ok { color: #2E6B2E; font-weight: 700; font-size: 13px; }
 </style>
@@ -33,6 +37,7 @@
     @foreach ($bins as $b)
         @php $scRecent = !empty($b['last']) && $b['last'] >= $scCut; $scDone = $scRecent && ($b['recent'] ?? 0) >= 0.8 * $b['titles']; @endphp
         <a class="sc-bin{{ !empty($b['priority']) ? ' sc-hot' : '' }}{{ $scDone && empty($b['priority']) ? ' sc-done' : '' }}" href="/reports/shelf-count/bin?location_id={{ $loc }}&kind={{ $b['kind'] ?? $kind }}&sub={{ $b['sub'] }}">
+            @if ($scDone && empty($b['priority']))<span class="sc-done-tag">DONE</span>@endif
             <b>@if ($scDone)<span class="sc-check" aria-label="Done">&#10003;</span>@endif{{ $b['name'] }}</b>
             <span class="sc-small">{{ number_format($b['titles']) }} titles{{ !empty($b['counted']) ? ', ' . $b['counted'] . ' counted' : '' }}</span><br>
             @if ($scDone)<span class="sc-ok">Done {{ \Carbon\Carbon::parse($b['last'])->format('m/d/y') }}: {{ (int) ($b['recent'] ?? 0) }} of {{ number_format($b['titles']) }} titles counted</span>
