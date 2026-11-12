@@ -64,6 +64,7 @@ class SearchInsightsController extends Controller
      */
     protected function stockMatcher()
     {
+        @ini_set('memory_limit', '1024M');
         $business_id = (int) session('business.id');
         $names = \DB::table('business_locations')->where('business_id', $business_id)->pluck('name', 'id')->all();
 
