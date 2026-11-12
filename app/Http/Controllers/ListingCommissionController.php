@@ -32,7 +32,7 @@ class ListingCommissionController extends Controller
     const PARTY_NET_PRETAX = '(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))';
     const PARTY_DEFAULT_PERCENT = 3.0; // Sarah 2026-11-12: 3% of party-window sales when guests checked in
     const PARTY_DEFAULT_FROM = '18:00'; // 6 PM, matches the from_h/to_h defaults above
-    const PARTY_CARRY_FROM = '2026-10-01'; // unpaid parties from here on stay owed until paid
+    const PARTY_CARRY_FROM = '2026-11-01'; // unpaid parties from here on stay owed until paid (Sarah 11/12: not 10/18)
 
     // Category exclusions copied verbatim from barcodingCommissionByUser so the
     // owed numbers match the leaderboard exactly.
