@@ -110,7 +110,15 @@
                                 @elseif ($est['solo'])
                                     <span class="text-muted">Only {{ $est['staff'][0]['name'] }} was on the floor {{ $est['window'] }} - no pool, they're already covered by their normal sales commission</span>
                                 @else
-                                    <div class="text-muted" style="font-size:11px; margin-bottom:2px;">@if(empty($est['guest_ready']))Could not reach RSVPs, try again later @else{{ $est['checked_in'] ?? 0 }} checked in @if(($est['checked_in'] ?? 0) < \App\Http\Controllers\ListingCommissionController::PARTY_MIN_CHECKINS)&middot; under {{ \App\Http\Controllers\ListingCommissionController::PARTY_MIN_CHECKINS }} guests, no party bonus @else&middot; rang ${{ number_format($est['sales'], 2) }} during the party &middot; 3% = ${{ number_format($est['pool'], 2) }}@endif@endif</div>
+                                    <div class="text-muted" style="font-size:11px; margin-bottom:2px;">
+                                        @if(empty($est['guest_ready']))
+                                            Could not reach RSVPs, try again later
+                                        @elseif(($est['checked_in'] ?? 0) < \App\Http\Controllers\ListingCommissionController::PARTY_MIN_CHECKINS)
+                                            {{ $est['checked_in'] ?? 0 }} checked in &middot; under {{ \App\Http\Controllers\ListingCommissionController::PARTY_MIN_CHECKINS }} guests, no party bonus
+                                        @else
+                                            {{ $est['checked_in'] ?? 0 }} checked in &middot; rang ${{ number_format($est['sales'], 2) }} during the party &middot; 3% = ${{ number_format($est['pool'], 2) }}
+                                        @endif
+                                    </div>
                                     @foreach ($est['staff'] as $s)
                                         {{ $s['name'] }}: ${{ number_format($s['amount'], 2) }}@if(!$loop->last), @endif
                                     @endforeach
