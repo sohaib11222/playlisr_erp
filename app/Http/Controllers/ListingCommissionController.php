@@ -352,7 +352,7 @@ class ListingCommissionController extends Controller
         $__mark('unpaid_parties');
         $olderUnpaid = [];
         foreach ($this->unpaidListeningParties($businessId, $partyLocations,
-                    \Carbon::now()->subDays(120)->toDateString(), \Carbon::parse($partyStart)->subDay()->toDateString()) as $old) {
+                    \Carbon::now()->subDays(120)->toDateString(), \Carbon::parse($partyStart)->subDay()->toDateString(), false) as $old) {
             $olderUnpaid[] = $old['name'] . ' - ' . ($old['location_name'] ?: '?') . ' - ' . \Carbon::parse($old['date'])->format('M j');
         }
 
@@ -1174,8 +1174,15 @@ class ListingCommissionController extends Controller
     // payout logged yet, each with an auto-estimated split. Shared by the
     // party-bonus tool and the Commissions page notice — same criteria, one
     // place, so the two pages can't disagree about what's still unpaid.
-    private function unpaidListeningParties($businessId, $locations, $pStart, $pEnd)
+    private $partyMemo = [];
+
+    // $withEstimates=false skips the payout math (Sling/time clock/sales per
+    // party) for lists that only show names: the Commissions page's "older
+    // parties" line spent ~35s computing payouts it never shows (2026-11-12).
+    private function unpaidListeningParties($businessId, $locations, $pStart, $pEnd, $withEstimates = true)
     {
+        $memoKey = $businessId . '|' . $pStart . '|' . $pEnd . '|' . ($withEstimates ? 1 : 0);
+        if (isset($this->partyMemo[$memoKey])) { return $this->partyMemo[$memoKey]; }
         // Paid = a "Listening party" payout for that DATE AND STORE. It used to
         // be date only, so paying Hollywood's party also hid Pico's party on the
         // same night (Sarah 2026-11-12: parties kept going missing). Notes end
@@ -1239,7 +1246,7 @@ class ListingCommissionController extends Controller
                 // signal (validated against every confirmed party this
                 // session). Clearly labeled as an estimate.
                 $estimate = null;
-                if ($locId) {
+                if ($locId && $withEstimates) {
                     // Real duration scales with turnout (Sarah 2026-09-25):
                     // 1.5h by default, 2h if THAT STORE has 75+ RSVPs (a big
                     // draw runs long. Cutoff is 50, not Sarah's original 75 —
@@ -1328,6 +1335,7 @@ class ListingCommissionController extends Controller
             }
         }
         usort($unpaidParties, function ($a, $b) { return strcmp($b['date'], $a['date']); });
+        $this->partyMemo[$memoKey] = $unpaidParties;
         return $unpaidParties;
     }
 
