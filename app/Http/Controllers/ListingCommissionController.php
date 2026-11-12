@@ -1012,6 +1012,34 @@ class ListingCommissionController extends Controller
     // Each date's shifts/groups/users are cached 10 minutes — one live pull is
     // several seconds (Sling has no bulk endpoint, SlingClient::shifts() makes
     // one call per staff member) and several parties can share a page load.
+    // Everyone clocked in (ERP /clock) at this store at any point during the
+    // party window, voided punches excluded. Returns null for dates before the
+    // ERP time clock went live, so the caller falls back to Sling.
+    const TIME_CLOCK_FROM = '2026-10-14';
+    private function partyPunchStaff($businessId, $locationId, \Carbon\Carbon $startC, \Carbon\Carbon $endC)
+    {
+        if ($startC->toDateString() < self::TIME_CLOCK_FROM) { return null; }
+        $rows = DB::table('time_clock_punches as p')
+            ->join('users as u', 'u.id', '=', 'p.user_id')
+            ->where('p.business_id', $businessId)
+            ->where('p.location_id', $locationId)
+            ->whereNull('p.voided_at')
+            ->where('p.clock_in_at', '<', $endC->format('Y-m-d H:i:s'))
+            // a forgotten clock-out from a morning shift shouldn't count
+            ->where('p.clock_in_at', '>', $startC->copy()->subHours(12)->format('Y-m-d H:i:s'))
+            ->where(function ($q) use ($startC) {
+                $q->whereNull('p.clock_out_at')->orWhere('p.clock_out_at', '>', $startC->format('Y-m-d H:i:s'));
+            })
+            ->orderBy('p.clock_in_at')
+            ->get(['p.user_id', 'u.first_name', 'u.last_name', 'u.surname']);
+        $out = [];
+        foreach ($rows as $r) {
+            if (isset($out[$r->user_id])) { continue; }
+            $out[$r->user_id] = trim(($r->first_name ?? '') . ' ' . ($r->last_name ?? '')) ?: ($r->surname ?: ('User #' . $r->user_id));
+        }
+        return $out;
+    }
+
     private function livePartyFloorStaff($locationKey, $date, \Carbon\Carbon $startC, \Carbon\Carbon $endC)
     {
         $client = app(\App\Services\SlingClient::class);
@@ -1226,7 +1254,15 @@ class ListingCommissionController extends Controller
                     // (Sarah 2026-09-25) - falls back to who rang a sale only
                     // if Sling itself isn't reachable/configured, so the
                     // estimate never comes back empty.
-                    $ringers = $this->livePartyFloorStaff($locKey, $edate, $sC, $eC);
+                    // Sarah 2026-11-12: who worked a party = everyone actually
+                    // CLOCKED IN at this store during the window (ERP time
+                    // clock, any role, managers included). Sling was only the
+                    // schedule and missed Luis on 11/7 ("1:1 Check In" shift).
+                    // Sling is used only for dates before the clock existed.
+                    $ringers = $this->partyPunchStaff($businessId, $locId, $sC, $eC);
+                    if ($ringers === null) {
+                        $ringers = $this->livePartyFloorStaff($locKey, $edate, $sC, $eC);
+                    }
                     if ($ringers === null) {
                         $ringers = $this->partyDayRingers($businessId, $locId, $sC, $eC);
                     }
