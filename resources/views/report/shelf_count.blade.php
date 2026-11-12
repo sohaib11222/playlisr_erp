@@ -30,12 +30,14 @@
 .sc-overall b { font-size: 18px; display: block; padding-right: 80px; }
 .sc-ov-pct { position: absolute; top: 12px; right: 16px; font-size: 24px; font-weight: 800; }
 .sc-ov-bar { height: 14px; border-radius: 7px; }
+.sc-goal { font-size: 16px; line-height: 1.5; color: #1F1B16; margin: 0 0 12px; }
 .sc-fixnote { background: #fff; border: 2px solid #1F1B16; border-left: 8px solid #1F1B16; border-radius: 10px; padding: 12px 16px; margin: 0 0 12px; font-size: 16px; line-height: 1.45; color: #1F1B16; }
 </style>
 <div class="sc-wrap">
 @include('report._count_tabs', ['ctOn' => 'count'])
     <h1>Shelf count</h1>
     <div class="sc-fixnote"><b style="color:#B91C1C">If the record is in the wrong bin in the ERP, please fix it!</b> When you count a bin, tap <b>Genre</b> on any record that belongs somewhere else and pick the right one. This way we know exactly where to find things.</div>
+    <div class="sc-goal"><b>Goal: the ERP shows exactly what we have in each store.</b><br>Why? This helps us with 5-star customer service, organization, ordering and tracking theft.<br>If you need any edits to this page, please tap <b>Report a bug</b> below.</div>
     <p class="sc-sub">Pick the bin you're standing at. Then scan every record in it (or tap it in the list). <b>If a title is not there, tap None to mark it 0.</b> When the bin is done, the page shows what the ERP thought was there but wasn't.</p>
     <form class="sc-row" method="get">
         <select name="location_id" onchange="this.form.submit()">@foreach ($locations as $id => $nm)<option value="{{ $id }}" {{ $id == $loc ? 'selected' : '' }}>{{ ucfirst($nm) }}</option>@endforeach</select>
