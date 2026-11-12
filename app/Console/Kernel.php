@@ -47,6 +47,13 @@ class Kernel extends ConsoleKernel
         }
         */
 
+        // Keep the /home ("Go to the ERP") dashboard caches warm so nobody
+        // waits on the ~10s rebuild (it used to 502 at ~24s uncached).
+        $schedule->command('home:warm-cache')
+            ->everyFiveMinutes()
+            ->withoutOverlapping(10)
+            ->runInBackground();
+
         $schedule->command('stock:refresh-cache')
             ->dailyAt('00:15')
             ->timezone('America/Los_Angeles')

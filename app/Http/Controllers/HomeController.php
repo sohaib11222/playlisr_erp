@@ -77,7 +77,7 @@ class HomeController extends Controller
         //get all sells
         // Cached briefly: this whole-year scan is ~1s and identical for every
         // employee, and /home was timing out (502) from re-running it per visit.
-        $sells_this_fy = \Cache::remember("home:sells_fy:{$business_id}:{$least_30_days}:" . date('Y-m-d-H'), 600, function () use ($business_id, $least_30_days, $fy) {
+        $sells_this_fy = $this->homeCache("home:sells_fy:{$business_id}:{$least_30_days}:" . date('Y-m-d'), 1800, function () use ($business_id, $least_30_days, $fy) {
             return $this->transactionUtil->getSellsCurrentFy($business_id, $least_30_days, $fy['end']);
         });
         
@@ -573,7 +573,7 @@ class HomeController extends Controller
             $sales_scope_defs[] = ['key' => 'pico', 'label' => $sales_loc_pico->name, 'loc_id' => $sales_loc_pico->id];
         }
 
-        $sales_scope = \Cache::remember("home:sales_scope:{$business_id}:{$mtd_end}", 300, function () use ($sales_scope_defs, $sumSells, $mtd_start, $mtd_end, $last_month_same_start, $last_month_same_end, $ytd_start, $last_year_same_start, $last_year_same_end) {
+        $sales_scope = $this->homeCache("home:sales_scope:{$business_id}:{$mtd_end}", 900, function () use ($sales_scope_defs, $sumSells, $mtd_start, $mtd_end, $last_month_same_start, $last_month_same_end, $ytd_start, $last_year_same_start, $last_year_same_end) {
         $sales_scope = [];
         foreach ($sales_scope_defs as $def) {
             $mtd = $sumSells($mtd_start, $mtd_end, $def['loc_id']);
@@ -641,7 +641,7 @@ class HomeController extends Controller
         $ts_stores = $this->tsStoreDefs($business_id, $sales_locs);
 
         // Build the rollups for every [store × dimension] at the default range
-        $ts_data = \Cache::remember("home:ts_data:{$business_id}:{$ts_default_range}:" . \Carbon::today()->toDateString(), 900, function () use ($ts_stores, $business_id, $ts_curr_start, $ts_curr_end, $ts_prev_start, $ts_prev_end) {
+        $ts_data = $this->homeCache("home:ts_data:{$business_id}:{$ts_default_range}:" . \Carbon::today()->toDateString(), 1800, function () use ($ts_stores, $business_id, $ts_curr_start, $ts_curr_end, $ts_prev_start, $ts_prev_end) {
             $ts_data = [];
             foreach ($ts_stores as $s) {
                 foreach (['genres', 'artists', 'records'] as $dim) {
@@ -676,7 +676,7 @@ class HomeController extends Controller
             return ['key' => $d['key'], 'label' => $d['label']];
         }, $sales_scope_defs);
         $fsg_categories = \App\Category::forDropdown($business_id, 'product');
-        $fsg_rows = \Cache::remember("home:fsg_rows:{$business_id}:{$fsg_default_range}:" . \Carbon::today()->toDateString(), 1800, function () use ($business_id, $fsg_ranges, $fsg_default_range) {
+        $fsg_rows = $this->homeCache("home:fsg_rows:{$business_id}:{$fsg_default_range}:" . \Carbon::today()->toDateString(), 3600, function () use ($business_id, $fsg_ranges, $fsg_default_range) {
             return $this->fsgBuildRows(
                 $business_id,
                 null,
@@ -1085,6 +1085,22 @@ class HomeController extends Controller
      * every call — nothing here carries mutated Carbon state across
      * requests.
      */
+    /**
+     * Cache wrapper for the store-wide /home sections (identical for every
+     * employee). The home:warm-cache scheduled command sets
+     * home.cache_refresh=true to rebuild these every few minutes, so visitors
+     * always read a warm cache instead of paying the ~10s rebuild.
+     */
+    private function homeCache($key, $ttl, \Closure $build)
+    {
+        if (config('home.cache_refresh')) {
+            $value = $build();
+            \Cache::put($key, $value, $ttl);
+            return $value;
+        }
+        return \Cache::remember($key, $ttl, $build);
+    }
+
     private function dashboardRangeDefs()
     {
         $now = \Carbon::now();
