@@ -1977,6 +1977,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/manager-checkins', 'ManagerCheckinController@index')->name('manager-checkins.index');
     Route::post('/manager-checkins', 'ManagerCheckinController@store')->name('manager-checkins.store');
     Route::post('/manager-checkins/notes', 'ManagerCheckinController@saveNotes')->name('manager-checkins.notes');
+    Route::post('/manager-checkins/one-on-one', 'ManagerCheckinController@saveOneOnOne')->name('manager-checkins.one-on-one');
     Route::post('/manager-checkins/updates', 'ManagerCheckinController@addUpdate')->name('manager-checkins.updates.add');
     Route::post('/manager-checkins/updates/delete', 'ManagerCheckinController@deleteUpdate')->name('manager-checkins.updates.delete');
 

@@ -38,6 +38,12 @@ class ManagerCheckinController extends Controller
     // which check-in it was shared.
     const UPDATES_PATH = 'manager_checkin_updates.json';
 
+    // Jon's own weekly 1:1 with each manager (Sarah 2026-11-12): Zak Mondays
+    // 11am, Luis Mondays 12pm. Jon's notes above are the agenda; each 1:1 he
+    // logs here (date + what was talked about / decided), newest first.
+    const ONE_ON_ONES_PATH = 'manager_one_on_ones.json';
+    const ONE_ON_ONE_TIME = ['pico' => 'Mondays 11am', 'hw' => 'Mondays 12pm'];
+
     const STORES = ['hw' => 'Hollywood', 'pico' => 'Pico'];
 
     // Not floor staff, never in the employee dropdown (Sarah 2026-09-25): gone
@@ -151,6 +157,46 @@ class ManagerCheckinController extends Controller
 
         return redirect()->to(url('/manager-checkins') . '?store=' . $store . '#ci-updates')
             ->with('status', ['success' => 1, 'msg' => 'Added an update for ' . trim($employee->first_name . ' ' . $employee->last_name) . '.']);
+    }
+
+    private static function loadOneOnOnes()
+    {
+        if (!Storage::exists(self::ONE_ON_ONES_PATH)) {
+            return [];
+        }
+        $data = json_decode(Storage::get(self::ONE_ON_ONES_PATH), true);
+        return is_array($data) ? $data : [];
+    }
+
+    /** Admins log one of Jon's 1:1s with a store's manager. */
+    public function saveOneOnOne(Request $request)
+    {
+        if (!$this->isAdmin()) {
+            abort(403, 'Only Jon and Sarah can log 1:1s.');
+        }
+        $businessId = $request->session()->get('user.business_id') ?: auth()->user()->business_id;
+        $store      = $this->currentStore($request);
+        $date       = (string) $request->input('date');
+        $text       = mb_substr(trim((string) $request->input('text')), 0, 5000);
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || $text === '') {
+            return redirect()->to(url('/manager-checkins') . '?store=' . $store . '#ci-1on1')
+                ->with('status', ['success' => 0, 'msg' => 'Pick the date and write what you talked about.']);
+        }
+        $me    = auth()->user();
+        $items = self::loadOneOnOnes();
+        array_unshift($items, [
+            'id'          => uniqid('oo_'),
+            'business_id' => (int) $businessId,
+            'store'       => $store,
+            'date'        => $date,
+            'text'        => $text,
+            'created_by'  => trim($me->first_name . ' ' . $me->last_name),
+            'created_at'  => date('Y-m-d H:i:s'),
+        ]);
+        Storage::put(self::ONE_ON_ONES_PATH, json_encode(array_values($items), JSON_PRETTY_PRINT));
+
+        return redirect()->to(url('/manager-checkins') . '?store=' . $store . '#ci-1on1')
+            ->with('status', ['success' => 1, 'msg' => 'Saved the 1:1 from ' . date('m/d/y', strtotime($date)) . '.']);
     }
 
     /** Admins remove an update (added by mistake or no longer needed). */
@@ -377,6 +423,10 @@ class ManagerCheckinController extends Controller
         // A manager only sees the notes for his own store.
         $showNotes = $isAdmin || self::managerHomeStore() === $store;
         $jonNotes  = $showNotes ? (self::loadNotes()[$businessId . ':' . $store] ?? null) : null;
+        $oneOnOnes = $showNotes ? array_values(array_filter(self::loadOneOnOnes(), function ($o) use ($businessId, $store) {
+            return (int) ($o['business_id'] ?? 0) === (int) $businessId && ($o['store'] ?? '') === $store;
+        })) : [];
+        usort($oneOnOnes, function ($a, $b) { return strcmp($b['date'], $a['date']); });
 
         return view('manager_checkin.index', [
             'employees'      => $employees,
@@ -393,6 +443,8 @@ class ManagerCheckinController extends Controller
             'jonNotes'       => $jonNotes,
             'notesManager'   => $store === 'pico' ? 'Zak' : 'Luis',
             'updates'        => $updates,
+            'oneOnOnes'      => $oneOnOnes,
+            'oneOnOneTime'   => self::ONE_ON_ONE_TIME[$store] ?? '',
             'openUpdates'    => $openUpdates,
             'sharedByCheckin' => $sharedByCheckin,
         ]);

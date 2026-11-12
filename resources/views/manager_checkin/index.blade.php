@@ -231,7 +231,7 @@
         @endphp
         <div class="card ci-sec jon-notes" id="jon-notes">
             <div class="ci-sec-head">
-                <h2>Jon's notes for {{ $notesManager }}</h2>
+                <h2>Jon's 1:1 with {{ $notesManager }} @if($oneOnOneTime)<span class="meta" style="font-weight:700;">{{ $oneOnOneTime }}</span>@endif</h2>
                 <div>
                     @if(!empty($jonNotes['updated_at']))<span class="meta">Updated {{ date('m/d/y', strtotime($jonNotes['updated_at'])) }}</span>@endif
                     @if($isAdmin)
@@ -275,6 +275,46 @@
                 })();
                 </script>
             @endif
+        </div>
+    @endif
+
+    @if($showNotes)
+        <div class="card ci-sec" id="ci-1on1">
+            <div class="ci-sec-head">
+                <h2>Past 1:1s with {{ $notesManager }}</h2>
+                @if($isAdmin)
+                    <button type="button" class="ci-small-btn" id="oo-add-btn">Log a 1:1</button>
+                @endif
+            </div>
+            @if($isAdmin)
+                <form method="POST" action="{{ url('/manager-checkins/one-on-one') }}" id="oo-form" style="display:none;margin-bottom:12px;">
+                    {{ csrf_field() }}
+                    <input type="hidden" name="store" value="{{ $store }}">
+                    <div class="row2">
+                        <div style="flex:0 1 200px;">
+                            <label class="q" for="oo-date">Date</label>
+                            <input type="date" name="date" id="oo-date" value="{{ date('Y-m-d') }}" required>
+                        </div>
+                    </div>
+                    <label class="q" for="oo-text">What you talked about and decided</label>
+                    <textarea name="text" id="oo-text" maxlength="5000" required style="min-height:120px;"></textarea>
+                    <button type="submit" class="btn-save">Save 1:1</button>
+                </form>
+                <script>
+                (function () {
+                    var b = document.getElementById('oo-add-btn'), f = document.getElementById('oo-form');
+                    if (b && f) b.addEventListener('click', function () { f.style.display = ''; b.style.display = 'none'; document.getElementById('oo-text').focus(); });
+                })();
+                </script>
+            @endif
+            @forelse($oneOnOnes as $o)
+                <div class="upd-person">
+                    <div class="who">{{ date('m/d/y', strtotime($o['date'])) }}</div>
+                    <div class="ans" style="margin-top:0;">{!! $ciLinks($o['text']) !!}</div>
+                </div>
+            @empty
+                <p class="empty">No 1:1s logged yet.</p>
+            @endforelse
         </div>
     @endif
 
