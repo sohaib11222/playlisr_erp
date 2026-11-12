@@ -114,6 +114,7 @@ class ListingCommissionController extends Controller
         // ALL qualifying sold lines (paid + unpaid) for the window so Earned
         // and Owed both move with the date. At the default May-15 window,
         // Earned = Paid + Owed reconciles with the Leaderboard / My Earnings.
+        $__t = microtime(true); $__timing = []; $__mark = function ($n) use (&$__t, &$__timing) { $__timing[$n] = round(microtime(true) - $__t, 2); $__t = microtime(true); };
         $lines = $this->ownedSoldLines($businessId, $from, []);
         $listedTotals = $this->listedTotalsByUser($businessId, $from);
 
@@ -149,6 +150,7 @@ class ListingCommissionController extends Controller
         // 2026-06-15), now with its own payout ledger so sales commission can be
         // marked paid just like listing. Earned reuses the exact leaderboard
         // math, so it reconciles with the Employee Leaderboard to the penny.
+        $__mark('lines');
         $salesSummary = $this->salesSummaryByUser($businessId);
 
         // Make sure people who earned a sales bonus but have no listing lines
@@ -167,6 +169,7 @@ class ListingCommissionController extends Controller
                 ];
             }
         }
+        $__mark('sales_summary');
         $stores = $this->primaryStoreByUser($businessId);
         $partyAdj = $this->partySplitAdjustmentsByUser();
         $partyPaidManual = $this->manualPartyEarnedByUser();
@@ -281,6 +284,7 @@ class ListingCommissionController extends Controller
         // Also drop people who don't work here (Sarah 10/29: "why are we showing
         // ppl who dont even work here"): login turned off (the offboarding flag)
         // or no clock-in and no sale rung in the last 45 days.
+        $__mark('period_sales');
         $gone = $this->formerStaffIds($businessId, array_keys($byId));
         $people = collect($byId)->values()
             ->reject(function ($p) use ($gone) { return $this->isExcludedName($p->name) || isset($gone[(int) $p->user_id]); })
@@ -337,18 +341,22 @@ class ListingCommissionController extends Controller
         // dumb dash"). Anything older that was never recorded is listed below
         // the table for information only and never enters a total - old parties
         // were paid outside the ERP or deliberately dropped (Sarah 2026-09-30).
+        $__mark('daily_bonus');
         [$partyStart, $partyEnd] = $this->payrollPartyWindow();
         $partyShares = $this->unpaidPartySharesByUser($businessId);
+        $__mark('party_shares');
         $partyLocations = DB::table('business_locations')
             ->where('business_id', $businessId)->where('is_active', 1)
             ->orderBy('name')->pluck('name', 'id');
         $unpaidParties = $this->unpaidListeningParties($businessId, $partyLocations, $partyStart, $partyEnd);
+        $__mark('unpaid_parties');
         $olderUnpaid = [];
         foreach ($this->unpaidListeningParties($businessId, $partyLocations,
                     \Carbon::now()->subDays(120)->toDateString(), \Carbon::parse($partyStart)->subDay()->toDateString()) as $old) {
             $olderUnpaid[] = $old['name'] . ' - ' . ($old['location_name'] ?: '?') . ' - ' . \Carbon::parse($old['date'])->format('M j');
         }
 
+        $__mark('older_parties');
         $peopleById = $people->keyBy('user_id');
         foreach ($partyShares as $uid => $v) {
             if ($peopleById->has($uid)) {
@@ -386,6 +394,8 @@ class ListingCommissionController extends Controller
         // Never let a proxy/browser serve a stale copy of this page — the owed
         // numbers must always reflect the latest payouts, or a just-paid person
         // can appear to still owe money.
+        $__mark('rest');
+        if ($request->input('timing') && in_array((int) auth()->id(), [1, 8], true)) { return response()->json($__timing); }
         return response()->view('admin.listing_commissions', [
             'bonus_day'    => $bonusDay,
             'bonus_person' => $bonusPerson,
