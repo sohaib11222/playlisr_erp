@@ -118,6 +118,8 @@
         </div>
     @endforeach
 
+    @include('open_items.partials.focus')
+
     <div class="oi-card" id="oi-done">
         <div class="oi-head"><h2>Fixed or reported today <span class="oi-count zero">{{ count($done) }}</span></h2></div>
         @forelse($done as $a)
