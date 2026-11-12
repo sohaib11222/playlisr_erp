@@ -522,6 +522,15 @@ class TaxonomyController extends Controller
                     abort(403, 'Unauthorized action.');
                 }
 
+                // Deleting a genre that still has products leaves them in a
+                // ghost genre (own tiny bin on Shelf Count, Sarah 11/12).
+                // Merge moves them first, so send people there.
+                $inUse = \DB::table('products')->where('business_id', $business_id)
+                    ->where(function ($q) use ($id) { $q->where('category_id', $id)->orWhere('sub_category_id', $id); })->count();
+                if ($inUse > 0) {
+                    return ['success' => false, 'msg' => "This category still has {$inUse} products. Use Merge to move them into another category instead."];
+                }
+
                 $category->delete();
 
                 $output = ['success' => true,
