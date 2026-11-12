@@ -248,9 +248,55 @@ class RegisterReconUtil
             }
         }
 
+        // 0c) Split payments: one ERP sale paid with 2-3 Clover charges
+        //     (two cards, or a card run twice). Alec 11/10 rang $129.10 and
+        //     Clover had two charges adding to $129.10; Manolo 11/11 $154.47
+        //     vs two charges of $154.48. Same store, within 2 hours, sum
+        //     within 5c - that's one sale fully paid, nothing to chase.
+        $splitDone = [];
+        foreach ($sales as $sale) {
+            if (isset($pairFor[$sale->id]) || isset($cloverByTx[$sale->id])) continue;
+            if (isset($reconciled[$sale->id]) || isset($webPaid[$sale->id])) continue;
+            $due = $expected[$sale->id] ?? $cents($sale->final_total);
+            if ($due <= 0) continue;
+            $sTs = strtotime((string) $sale->transaction_date);
+            $cands = [];
+            foreach ($orphans as $cp) {
+                $key = (string) $cp->clover_payment_id;
+                if (isset($pairedCp[$key]) || isset($dupOf[$cp->id])) continue;
+                $res = (string) ($cp->result ?? '');
+                if ($res !== '' && $res !== 'SUCCESS' && $res !== 'APPROVED') continue;
+                if ($cp->location_id !== null && (int) $cp->location_id !== (int) $sale->location_id) continue;
+                $amt = $cents($cp->amount);
+                if ($amt <= 0 || $amt >= $due) continue;
+                try {
+                    $cTs = \App\Http\Controllers\SellPosController::parseCloverPaidAtLa($cp)->getTimestamp();
+                } catch (\Throwable $e) {
+                    continue;
+                }
+                if (abs($cTs - $sTs) > 7200) continue;
+                $cands[] = [$key, $amt];
+            }
+            $n = count($cands);
+            $hit = null;
+            for ($i = 0; $i < $n && !$hit; $i++) {
+                for ($j = $i + 1; $j < $n && !$hit; $j++) {
+                    if (abs($cands[$i][1] + $cands[$j][1] - $due) <= 5) { $hit = [$cands[$i][0], $cands[$j][0]]; break; }
+                    for ($k = $j + 1; $k < $n; $k++) {
+                        if (abs($cands[$i][1] + $cands[$j][1] + $cands[$k][1] - $due) <= 5) { $hit = [$cands[$i][0], $cands[$j][0], $cands[$k][0]]; break; }
+                    }
+                }
+            }
+            if ($hit) {
+                foreach ($hit as $key) $pairedCp[$key] = true;
+                $splitDone[$sale->id] = true;
+            }
+        }
+
         // 1) ERP sales: rung in ERP but no Clover swipe, or amounts differ.
         foreach ($sales as $sale) {
             if (isset($reconciled[$sale->id]) || isset($webPaid[$sale->id])) continue;
+            if (isset($splitDone[$sale->id])) continue;
             if (isset($pairFor[$sale->id])) {
                 $c    = $pairFor[$sale->id];
                 $who  = $first(optional($sale->sales_person)->first_name ?: optional($sale->sales_person)->username);
