@@ -73,7 +73,8 @@
         <b>How to count ({{ count($items) }} titles)</b>
         <ol>
             <li>Go down the list as you flip through the bin.</li>
-            <li>Tap <b>All here</b>, tap <b>None</b>, or type how many you see.</li>
+            <li>Tap <b>All here</b>, or type how many you see.</li>
+            <li><b>Not there? Tap None to mark it 0. Do this for every missing title.</b></li>
             <li>Record not on the list? Scan it.</li>
             <li>If a record was already counted in another bin this week, or you have more than the ERP says, it asks you first so nothing gets counted twice.</li>
             @if(count((array) $genres))<li>Wrong genre? Tap <b>Genre</b> on that record and pick the right one. It saves right away.</li>@endif
