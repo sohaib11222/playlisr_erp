@@ -37,8 +37,8 @@
     </div>
 
     <div class="callout" style="margin-top:8px; background:#e8f4fd;">
-        <strong>Warehouse sealed cost = $0.10</strong>
-        - For inventory valuation and taxes, every sealed title whose stock is only in the warehouse is valued at $0.10, not $17. Items that also have stock at Hollywood or Pico, and any cost that was actually entered (anything other than blank or the automatic $17 / $6), are left alone. Snapshot saved first.
+        <strong>Warehouse cost = $0.10</strong>
+        - For inventory valuation and taxes, every item whose stock is only in the warehouse is valued at $0.10. Left alone: items with stock at Hollywood or Pico, items with a recorded buy (purchase with a price), and any cost someone typed in that isn't one of the automatic rule amounts. Snapshot saved first.
         <div style="margin-top:8px;">
             <button id="dii-whs-preview" class="btn btn-default btn-sm">Preview</button>
             <button id="dii-whs-apply" class="btn btn-primary btn-sm">Set to $0.10</button>
@@ -353,7 +353,7 @@
         const r = await postJson('/admin/discogs-import-inventory/warehouse-sealed-cost', { confirm: confirm });
         if (!r.body.ok) { whsStatus.textContent = 'error: ' + (r.body.error || r.status); return; }
         const money = n => '$' + Number(n).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        const line = r.body.variations.toLocaleString() + ' sealed titles, ' + r.body.units.toLocaleString() + ' units: ' + money(r.body.value_before) + ' now, ' + money(r.body.value_after) + ' at $0.10.';
+        const line = r.body.variations.toLocaleString() + ' titles, ' + r.body.units.toLocaleString() + ' units: ' + money(r.body.value_before) + ' now, ' + money(r.body.value_after) + ' at $0.10.';
         whsStatus.textContent = r.body.preview ? ('Would change ' + line) : ('Done. Changed ' + line + ' Snapshot: ' + r.body.snapshot);
     }
     const whsPrev = document.getElementById('dii-whs-preview');

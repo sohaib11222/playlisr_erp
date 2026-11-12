@@ -36,6 +36,10 @@ class DiscogsInventoryImportController extends Controller
     // inventory valuation / taxes, not the $17 / $6 store sealed rule
     // (Sarah 2026-11-12).
     public const WAREHOUSE_SEALED_COST = 0.10;
+    // Every warehouse item is $0.10 (Sarah 2026-11-12), unless a real buy
+    // was recorded. Costs equal to one of the automatic rule values (or
+    // blank) count as not entered; anything else is left alone.
+    private const AUTO_RULE_COSTS = '0, 17, 6, 0.35, 0.30, 0.15, 0.25, 0.40, 3, 1.25, 0.20, 35, 1.50, 20, 4, 2';
     private const SNAPSHOT_DIR = 'discogs-inventory-snapshots';
 
     public function index(Request $request)
@@ -111,15 +115,15 @@ class DiscogsInventoryImportController extends Controller
         // Format key → [ERP category name, cost per /admin/cost-price-rules].
         // Sealed paths trigger when Discogs Media condition = "Mint (M)".
         $formatRules = [
-            '7" / 45 RPM'       => ['name' => '7", 45 RPM',              'cost' => 0.15],
-            '8 track'           => ['name' => '8 track',                 'cost' => 0.25],
-            'CD'                => ['name' => 'Used CD',                 'cost' => 0.10],
+            '7" / 45 RPM'       => ['name' => '7", 45 RPM',              'cost' => self::WAREHOUSE_SEALED_COST],
+            '8 track'           => ['name' => '8 track',                 'cost' => self::WAREHOUSE_SEALED_COST],
+            'CD'                => ['name' => 'Used CD',                 'cost' => self::WAREHOUSE_SEALED_COST],
             'Sealed CD'         => ['name' => 'Sealed CD / CD (Sealed)', 'cost' => self::WAREHOUSE_SEALED_COST],
-            'Cassette'          => ['name' => 'Cassettes',               'cost' => 0.30],
+            'Cassette'          => ['name' => 'Cassettes',               'cost' => self::WAREHOUSE_SEALED_COST],
             'Sealed Cassette'   => ['name' => 'Cassettes - Sealed',      'cost' => self::WAREHOUSE_SEALED_COST],
-            'VHS'               => ['name' => 'VHS',                     'cost' => 0.10],
+            'VHS'               => ['name' => 'VHS',                     'cost' => self::WAREHOUSE_SEALED_COST],
             'Sealed LP / Vinyl' => ['name' => 'Sealed Vinyl',            'cost' => self::WAREHOUSE_SEALED_COST],
-            'LP / Vinyl'        => ['name' => 'Used Vinyl',              'cost' => 0.35],
+            'LP / Vinyl'        => ['name' => 'Used Vinyl',              'cost' => self::WAREHOUSE_SEALED_COST],
         ];
 
         $categoryIdByName = DB::table('categories')
@@ -268,12 +272,6 @@ class DiscogsInventoryImportController extends Controller
         }
         $whList = implode(',', $whIds);
 
-        $sealedConds = [];
-        foreach (['%sealed%', '%new vinyl%', '%new cd%', '%new cassette%'] as $pat) {
-            $sealedConds[] = "LOWER(COALESCE(c.name,'')) LIKE '{$pat}'";
-            $sealedConds[] = "LOWER(COALESCE(sc.name,'')) LIKE '{$pat}'";
-        }
-        $sealedSql = '(' . implode(' OR ', $sealedConds) . ')';
 
         $rows = DB::table('variations as v')
             ->join('products as p', 'p.id', '=', 'v.product_id')
@@ -281,7 +279,6 @@ class DiscogsInventoryImportController extends Controller
             ->leftJoin('categories as sc', 'sc.id', '=', 'p.sub_category_id')
             ->where('p.business_id', $business_id)
             ->whereNull('v.deleted_at')
-            ->whereRaw($sealedSql)
             ->whereRaw("EXISTS (SELECT 1 FROM variation_location_details w WHERE w.variation_id = v.id AND w.location_id IN ({$whList}) AND w.qty_available > 0)")
             ->whereRaw("NOT EXISTS (SELECT 1 FROM variation_location_details o WHERE o.variation_id = v.id AND o.location_id NOT IN ({$whList}) AND o.qty_available > 0)")
             ->where(function ($q) use ($cost) {
@@ -292,7 +289,7 @@ class DiscogsInventoryImportController extends Controller
             // only replace blank costs or the automatic rule placeholders
             // ($17 sealed vinyl / $6 sealed CD+cassette), and never a
             // variation that has a real purchase line with a price.
-            ->whereRaw('COALESCE(NULLIF(v.dpp_inc_tax, 0), v.default_purchase_price, 0) IN (0, 17, 6)')
+            ->whereRaw('ROUND(COALESCE(NULLIF(v.dpp_inc_tax, 0), v.default_purchase_price, 0), 2) IN (' . self::AUTO_RULE_COSTS . ')')
             ->whereRaw('NOT EXISTS (SELECT 1 FROM purchase_lines pl WHERE pl.variation_id = v.id AND pl.purchase_price_inc_tax > 0)')
             ->select('v.id', 'v.product_id', 'v.default_purchase_price', 'v.dpp_inc_tax',
                 DB::raw("(SELECT SUM(w2.qty_available) FROM variation_location_details w2 WHERE w2.variation_id = v.id AND w2.location_id IN ({$whList})) as wh_qty"))
