@@ -1240,7 +1240,7 @@ class ListingCommissionController extends Controller
                     // 10/31 concern). Matching guests to receipts paid $0 on
                     // every party because guests are rarely put on receipts.
                     $guest = $this->partyGuestSales($businessId, $locId, $locKey, $edate, (string) ($it['name'] ?? ''), $it['id'] ?? null);
-                    $sales = ((int) ($guest['checked_in'] ?? 0) > 0) ? $this->windowSales($businessId, $locId, $sC, $eC) : 0.0;
+                    $sales = $this->windowSales($businessId, $locId, $sC, $eC); // Sarah 2026-11-12: all party sales, check-ins not required
                     $salesGoal = $this->windowSalesGoal($businessId, $locId, $sC, $eC);
                     // Live Sling floor-position shift is the real signal
                     // (Sarah 2026-09-25) - falls back to who rang a sale only
