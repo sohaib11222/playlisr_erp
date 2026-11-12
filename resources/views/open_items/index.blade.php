@@ -54,7 +54,7 @@
     <div class="oi-top">
         <div>
             <h1>Open Items</h1>
-            <p>Everything still waiting on someone. Work it top to bottom and solve each one the same day. "Fixed it" means the problem is gone, not that someone was told. If it is still open 48 hours later, it comes back. If the ERP is what's stopping you, report it as an ERP bug. Updated {{ $asOf }}.</p>
+            <p>Everything from the last 2 weeks still waiting on someone. Work it top to bottom and solve each one the same day. "Fixed it" means the problem is gone, not that someone was told. If it is still open 48 hours later, it comes back. If the ERP is what's stopping you, report it as an ERP bug. Updated {{ $asOf }}.</p>
             <div class="oi-total {{ $total === 0 ? 'zero' : '' }}">{{ $total === 0 ? 'Nothing open. Nice work.' : $total . ' open' }}</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -72,6 +72,7 @@
                 @if($s['link'])<a class="oi-btn" href="{{ $s['link'] }}">Open page</a>@endif
             </div>
             @if($s['how'])<p class="oi-how">{{ $s['how'] }}</p>@endif
+            @if(!empty($s['older']))<p class="oi-how" style="background:var(--d-surface)">Plus {{ $s['older'] }} older than 2 weeks, not shown here. @if($s['link'])<a href="{{ $s['link'] }}" style="color:var(--d-accent-text);font-weight:700">See them</a>@endif</p>@endif
             @if($s['error'])
                 <div class="oi-err">{{ $s['error'] }}</div>
             @elseif(count($s['rows']) === 0)

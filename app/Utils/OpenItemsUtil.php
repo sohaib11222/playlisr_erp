@@ -17,6 +17,7 @@ use Carbon\Carbon;
 class OpenItemsUtil
 {
     const TZ = 'America/Los_Angeles';
+    const RECENT_DAYS = 14;
 
     /** All sections, in the order they should be worked. */
     public static function sections(int $business_id): array
@@ -41,6 +42,15 @@ class OpenItemsUtil
                 $names = ['sellers' => 'Seller leads', 'discogs' => 'Discogs orders', 'staff' => 'Staff not set up', 'customers' => 'Customers waiting', 'unhappy' => 'Unhappy customers', 'orders' => 'Website orders stuck', 'contact' => 'Contact form messages', 'bookings' => 'Venue booking requests', 'buys' => 'Buys left as drafts', 'events' => 'Listening party prep'];
                 $out[$key] = self::section($names[$key] ?? $key, '', '', [], 'Could not load this right now.');
             }
+            // Only the last 2 weeks; older ones are counted, not listed.
+            // Staff and event prep are about upcoming dates, so they are never cut.
+            $out[$key]['older'] = 0;
+            if (!in_array($key, ['staff', 'events'], true)) {
+                $recent = array_values(array_filter($out[$key]['rows'], fn ($r) => $r['hours'] <= self::RECENT_DAYS * 24));
+                $out[$key]['older'] = count($out[$key]['rows']) - count($recent);
+                $out[$key]['rows'] = $recent;
+            }
+            $out[$key]['title'] = trim(preg_replace('/\s*\(last \d+ days\)/', '', $out[$key]['title']));
         }
         return $out;
     }
