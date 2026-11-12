@@ -37,13 +37,13 @@
     <div class="sc-grid">
     @php $scCut = now()->subDays(\App\Http\Controllers\ShelfCountController::DUE_DAYS)->toDateTimeString(); @endphp
     @foreach ($bins as $b)
-        @php $scRecent = !empty($b['last']) && $b['last'] >= $scCut; $scDone = $scRecent && ($b['recent'] ?? 0) >= 0.8 * $b['titles']; @endphp
+        @php $scRecent = !empty($b['last']) && $b['last'] >= $scCut; $scDone = $scRecent && ($b['recent'] ?? 0) >= 0.8 * $b['titles']; $scPct = $b['titles'] ? min(100, (int) round(100 * ($b['recent'] ?? 0) / $b['titles'])) : 0; @endphp
         <a class="sc-bin{{ !empty($b['priority']) ? ' sc-hot' : '' }}{{ $scDone && empty($b['priority']) ? ' sc-done' : '' }}" href="/reports/shelf-count/bin?location_id={{ $loc }}&kind={{ $b['kind'] ?? $kind }}&sub={{ $b['sub'] }}">
             @if ($scDone && empty($b['priority']))<span class="sc-done-tag">DONE</span>@endif
             <b>@if ($scDone)<span class="sc-check" aria-label="Done">&#10003;</span>@endif{{ $b['name'] }}</b>
             <span class="sc-small">{{ number_format($b['titles']) }} titles{{ !empty($b['counted']) ? ', ' . $b['counted'] . ' counted' : '' }}</span><br>
-            @if ($scDone)<span class="sc-ok">Done {{ \Carbon\Carbon::parse($b['last'])->format('m/d/y') }}: {{ (int) ($b['recent'] ?? 0) }} of {{ number_format($b['titles']) }} titles counted</span>
-            @elseif ($scRecent)<span class="sc-due" style="color:#8A4B00;">Started {{ \Carbon\Carbon::parse($b['last'])->format('m/d/y') }}: {{ (int) ($b['recent'] ?? 0) }} of {{ number_format($b['titles']) }} titles counted</span>
+            @if ($scDone)<span class="sc-ok">Done {{ \Carbon\Carbon::parse($b['last'])->format('m/d/y') }}: {{ (int) ($b['recent'] ?? 0) }} of {{ number_format($b['titles']) }} titles counted ({{ $scPct }}%)</span>
+            @elseif ($scRecent)<span class="sc-due" style="color:#8A4B00;">Started {{ \Carbon\Carbon::parse($b['last'])->format('m/d/y') }}: {{ (int) ($b['recent'] ?? 0) }} of {{ number_format($b['titles']) }} titles counted ({{ $scPct }}%)</span>
             @elseif (!empty($b['last']))<span class="sc-small">Counted {{ \Carbon\Carbon::parse($b['last'])->format('m/d/y') }}, due again</span>@else<span class="sc-due">Never counted</span>@endif
             @if (!empty($b['priority']))<br><span class="sc-due">High priority: {{ $b['web'] }} online {{ $b['web'] == 1 ? 'order' : 'orders' }}{{ !empty($b['web_bad']) ? ', ' . $b['web_bad'] . " cancelled or can't find" : '' }}</span>@endif
         </a>
