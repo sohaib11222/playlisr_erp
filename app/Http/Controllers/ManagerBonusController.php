@@ -351,4 +351,17 @@ class ManagerBonusController extends Controller
             return (int) ($p['user_id'] ?? 0) === (int) $userId;
         }));
     }
+
+    // A manager's own store only, for his My Earnings page (Sarah 2026-11-12:
+    // each sees how his bonus is calculated, never the other store). Current
+    // month, or December 2026 before the program starts.
+    public static function liveForUser($businessId, $userId)
+    {
+        if (!isset(self::MANAGER_IDS[(int) $userId])) { return null; }
+        $locId = self::MANAGER_IDS[(int) $userId];
+        $month = \Carbon::now()->format('Y-m');
+        if ($month < self::START_MONTH) { $month = self::START_MONTH; }
+        $self = new self();
+        return $self->compute($businessId, $locId, self::STORES[$locId], $month);
+    }
 }

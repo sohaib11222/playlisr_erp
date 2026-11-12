@@ -172,6 +172,42 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
             @endif
         </div>
 
+        @if(!empty($manager_bonus_live))
+        @php $mb = $manager_bonus_live; @endphp
+        <div class="me-card">
+            <h3 style="margin-bottom:2px;">Store manager bonus: {{ $mb['store'] }}, {{ \Carbon::parse($mb['month'] . '-01')->format('F Y') }}</h3>
+            <p style="margin:2px 0 12px; color:#222;">Each month the store has a sales plan (Clover sales after tax). Hit 100%, 110% or 120% of it and stay within the labor-hour budget to earn the bonus. Paid at the month-end payroll.@if($mb['month'] === '2026-12' && \Carbon::now()->format('Y-m') < '2026-12') Starts 12/01/26.@endif</p>
+            @if(!$mb['plan_set'])
+                <p style="color:#b42318; font-weight:700;">This month's plan isn't set yet.</p>
+            @else
+                <table class="table">
+                    <thead><tr><th>Hit</th><th style="text-align:right;">Store sales for the month</th><th style="text-align:right;">Your bonus</th></tr></thead>
+                    <tbody>
+                        @foreach($mb['tiers'] as $pct => $amt)
+                            <tr style="{{ $mb['tier_hit'] == $pct ? 'background:#E3F2FD; font-weight:700;' : '' }}"><td>{{ $pct }}% of plan</td><td style="text-align:right;">${{ number_format($mb['plan'] * $pct / 100, 0) }}</td><td style="text-align:right;">${{ number_format($amt, 0) }}</td></tr>
+                        @endforeach
+                    </tbody>
+                </table>
+                @if($mb['through'])
+                    <table class="table">
+                        <tbody>
+                            <tr><td>Store sales so far (through {{ $mb['through'] }})</td><td style="text-align:right;">${{ number_format($mb['sales'], 0) }}</td></tr>
+                            <tr><td>Plan for these days</td><td style="text-align:right;">${{ number_format($mb['plan_to_date'], 0) }}</td></tr>
+                            <tr><td><b>On pace for</b></td><td style="text-align:right;"><b>{{ $mb['pct_of_plan'] }}% of plan</b></td></tr>
+                            @if($mb['next_tier'])
+                                <tr><td>Next level: {{ $mb['next_tier']['pct'] }}% (${{ number_format($mb['next_tier']['amount'], 0) }})</td><td style="text-align:right;">${{ number_format($mb['next_tier']['sales'], 0) }} for the month</td></tr>
+                            @endif
+                            <tr><td>Labor hours vs budget</td><td style="text-align:right;">{{ number_format($mb['hours'], 0) }} of {{ number_format($mb['budget']) }} hrs @if($mb['within_budget'])<span style="color:#1a7f37; font-weight:700;">within budget</span>@else<span style="color:#b42318; font-weight:700;">over budget, no bonus</span>@endif</td></tr>
+                            <tr><td><b>Bonus {{ $mb['complete'] ? 'earned' : 'if the month ended today' }}</b></td><td style="text-align:right; font-size:20px; font-weight:700;">${{ number_format($mb['earned'], 0) }}</td></tr>
+                        </tbody>
+                    </table>
+                @else
+                    <p style="color:#222;">The month hasn't started yet.</p>
+                @endif
+            @endif
+        </div>
+        @endif
+
         @if(!empty($manager_bonus))
         <div class="me-card">
             <h3 style="margin-bottom:2px;">Store manager bonus</h3>

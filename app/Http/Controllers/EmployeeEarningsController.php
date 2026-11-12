@@ -269,6 +269,7 @@ class EmployeeEarningsController extends Controller
         return response()->view('employee.my_earnings', [
             // Store manager bonus, shown only once paid (Sarah 2026-11-12).
             'manager_bonus' => \App\Http\Controllers\ManagerBonusController::paidForUser($userId),
+            'manager_bonus_live' => \App\Http\Controllers\ManagerBonusController::liveForUser($businessId, $userId),
             'name'         => trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: ($user->username ?? 'You'),
             'from'         => $from,
             'rate_pct'     => self::RATE * 100,
