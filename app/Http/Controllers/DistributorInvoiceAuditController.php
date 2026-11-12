@@ -217,7 +217,7 @@ class DistributorInvoiceAuditController extends Controller
         }
 
         $intake = \App\Services\DistributorInvoiceIntake::status();
-        $intakeLog = array_slice(\App\Services\DistributorInvoiceIntake::log(), 0, 25);
+        $intakeLog = array_slice(\App\Services\DistributorInvoiceIntake::log(), 0, 100);
         $lastRun = Storage::disk('local')->exists('distributor-invoices/intake-last-run.json')
             ? (json_decode(Storage::disk('local')->get('distributor-invoices/intake-last-run.json'), true)['at'] ?? null) : null;
         $isAdmin = auth()->user()->hasRole('Admin#' . $business_id);
