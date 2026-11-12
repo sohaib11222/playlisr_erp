@@ -75,7 +75,11 @@ class HomeController extends Controller
         $least_30_days = \Carbon::parse($fy['start'])->subDays(30)->format('Y-m-d');
 
         //get all sells
-        $sells_this_fy = $this->transactionUtil->getSellsCurrentFy($business_id, $least_30_days, $fy['end']);
+        // Cached briefly: this whole-year scan is ~1s and identical for every
+        // employee, and /home was timing out (502) from re-running it per visit.
+        $sells_this_fy = \Cache::remember("home:sells_fy:{$business_id}:{$least_30_days}:" . date('Y-m-d-H'), 600, function () use ($business_id, $least_30_days, $fy) {
+            return $this->transactionUtil->getSellsCurrentFy($business_id, $least_30_days, $fy['end']);
+        });
         
         $all_locations = BusinessLocation::forDropdown($business_id)->toArray();
 
@@ -551,8 +555,8 @@ class HomeController extends Controller
                 ->where('type', 'sell')
                 ->where('status', 'final')
                 ->whereNull('import_source')
-                ->whereDate('transaction_date', '>=', $start)
-                ->whereDate('transaction_date', '<=', $end);
+                ->where('transaction_date', '>=', $start . ' 00:00:00')
+                ->where('transaction_date', '<=', $end . ' 23:59:59');
             if (!is_null($location_id)) {
                 $q->where('location_id', $location_id);
             }
@@ -569,6 +573,7 @@ class HomeController extends Controller
             $sales_scope_defs[] = ['key' => 'pico', 'label' => $sales_loc_pico->name, 'loc_id' => $sales_loc_pico->id];
         }
 
+        $sales_scope = \Cache::remember("home:sales_scope:{$business_id}:{$mtd_end}", 300, function () use ($sales_scope_defs, $sumSells, $mtd_start, $mtd_end, $last_month_same_start, $last_month_same_end, $ytd_start, $last_year_same_start, $last_year_same_end) {
         $sales_scope = [];
         foreach ($sales_scope_defs as $def) {
             $mtd = $sumSells($mtd_start, $mtd_end, $def['loc_id']);
@@ -585,6 +590,8 @@ class HomeController extends Controller
                 'yoy_pct' => $ly > 0 ? (($ytd - $ly) / $ly) * 100 : null,
             ];
         }
+        return $sales_scope;
+        });
         $sales_scope_keys = array_column($sales_scope_defs, 'key');
 
         // ---- Personal month-over-month achievement ----
@@ -595,16 +602,16 @@ class HomeController extends Controller
                 ->where('t.type', 'sell')
                 ->whereNull('t.import_source')
                 ->where('t.created_by', $me_id)
-                ->whereDate('t.transaction_date', '>=', $start)
-                ->whereDate('t.transaction_date', '<=', $end)
+                ->where('t.transaction_date', '>=', $start . ' 00:00:00')
+                ->where('t.transaction_date', '<=', $end . ' 23:59:59')
                 ->count();
         };
         $my_countPriced = function ($start, $end) use ($business_id, $me_id) {
             return (int) \DB::table('products')
                 ->where('business_id', $business_id)
                 ->where('created_by', $me_id)
-                ->whereDate('created_at', '>=', $start)
-                ->whereDate('created_at', '<=', $end)
+                ->where('created_at', '>=', $start . ' 00:00:00')
+                ->where('created_at', '<=', $end . ' 23:59:59')
                 ->count();
         };
         $my_mtd_rung = $my_countSellLines($mtd_start, $mtd_end);
@@ -634,12 +641,15 @@ class HomeController extends Controller
         $ts_stores = $this->tsStoreDefs($business_id, $sales_locs);
 
         // Build the rollups for every [store × dimension] at the default range
-        $ts_data = [];
-        foreach ($ts_stores as $s) {
-            foreach (['genres', 'artists', 'records'] as $dim) {
-                $ts_data[$s['key']][$dim] = $this->tsBuildRows($business_id, $s['filter'], $dim, $ts_curr_start, $ts_curr_end, $ts_prev_start, $ts_prev_end);
+        $ts_data = \Cache::remember("home:ts_data:{$business_id}:{$ts_default_range}:" . \Carbon::today()->toDateString(), 900, function () use ($ts_stores, $business_id, $ts_curr_start, $ts_curr_end, $ts_prev_start, $ts_prev_end) {
+            $ts_data = [];
+            foreach ($ts_stores as $s) {
+                foreach (['genres', 'artists', 'records'] as $dim) {
+                    $ts_data[$s['key']][$dim] = $this->tsBuildRows($business_id, $s['filter'], $dim, $ts_curr_start, $ts_curr_end, $ts_prev_start, $ts_prev_end);
+                }
             }
-        }
+            return $ts_data;
+        });
 
         // Auto-insight: biggest riser in the first store's genres list
         $ts_insight = null;
@@ -666,12 +676,14 @@ class HomeController extends Controller
             return ['key' => $d['key'], 'label' => $d['label']];
         }, $sales_scope_defs);
         $fsg_categories = \App\Category::forDropdown($business_id, 'product');
-        $fsg_rows = $this->fsgBuildRows(
-            $business_id,
-            null,
-            $fsg_ranges[$fsg_default_range]['start']->toDateTimeString(),
-            \Carbon::now()->endOfDay()->toDateTimeString()
-        );
+        $fsg_rows = \Cache::remember("home:fsg_rows:{$business_id}:{$fsg_default_range}:" . \Carbon::today()->toDateString(), 1800, function () use ($business_id, $fsg_ranges, $fsg_default_range) {
+            return $this->fsgBuildRows(
+                $business_id,
+                null,
+                $fsg_ranges[$fsg_default_range]['start']->toDateTimeString(),
+                \Carbon::now()->endOfDay()->toDateTimeString()
+            );
+        });
 
         // ==========================================================
         // Nick-style personal progress dashboard
@@ -975,20 +987,22 @@ class HomeController extends Controller
             ->where('p.created_by', $me_id);
 
         $my_priced_rev_mtd = (float) (clone $my_priced_revenue_q)
-            ->whereDate('t.transaction_date', '>=', $mtd_start)
-            ->whereDate('t.transaction_date', '<=', $mtd_end)
+            ->where('t.transaction_date', '>=', $mtd_start . ' 00:00:00')
+            ->where('t.transaction_date', '<=', $mtd_end . ' 23:59:59')
             ->selectRaw('COALESCE(SUM(tsl.quantity * tsl.unit_price_inc_tax), 0) as rev')
             ->value('rev');
 
         $my_priced_rev_lm = (float) (clone $my_priced_revenue_q)
-            ->whereDate('t.transaction_date', '>=', $last_month_same_start)
-            ->whereDate('t.transaction_date', '<=', $last_month_same_end)
+            ->where('t.transaction_date', '>=', $last_month_same_start . ' 00:00:00')
+            ->where('t.transaction_date', '<=', $last_month_same_end . ' 23:59:59')
             ->selectRaw('COALESCE(SUM(tsl.quantity * tsl.unit_price_inc_tax), 0) as rev')
             ->value('rev');
 
-        $my_priced_rev_lifetime = (float) (clone $my_priced_revenue_q)
-            ->selectRaw('COALESCE(SUM(tsl.quantity * tsl.unit_price_inc_tax), 0) as rev')
-            ->value('rev');
+        $my_priced_rev_lifetime = (float) \Cache::remember("home:priced_rev_life:{$business_id}:{$me_id}", 1800, function () use ($my_priced_revenue_q) {
+            return (float) (clone $my_priced_revenue_q)
+                ->selectRaw('COALESCE(SUM(tsl.quantity * tsl.unit_price_inc_tax), 0) as rev')
+                ->value('rev');
+        });
 
         $my_priced_rev_pct = $my_priced_rev_lm > 0 ? (($my_priced_rev_mtd - $my_priced_rev_lm) / $my_priced_rev_lm) * 100 : null;
 
@@ -999,8 +1013,8 @@ class HomeController extends Controller
             ->where('t.type', 'sell')
             ->where('t.status', 'final')
             ->whereNull('t.import_source')
-            ->whereDate('t.transaction_date', '>=', $mtd_start)
-            ->whereDate('t.transaction_date', '<=', $mtd_end)
+            ->where('t.transaction_date', '>=', $mtd_start . ' 00:00:00')
+            ->where('t.transaction_date', '<=', $mtd_end . ' 23:59:59')
             ->selectRaw("t.created_by,
                 CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee,
                 COUNT(*) as tx_count,
