@@ -1,0 +1,51 @@
+# READ-ONLY: why is /home (the "Go to the ERP" target) slow / 502ing?
+# Tails nginx + php-fpm + laravel errors and profiles HomeController@index.
+name: Diag home perf
+
+on:
+  workflow_dispatch:
+    inputs:
+      user_id:
+        description: 'User id to impersonate (blank = first admin)'
+        required: false
+        default: ''
+
+concurrency:
+  group: production-diag
+  cancel-in-progress: false
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve SSH port
+        id: flags
+        env:
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: echo "ssh_port=${DEPLOY_PORT:-22}" >> "$GITHUB_OUTPUT"
+      - name: Profile /home (read-only)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ steps.flags.outputs.ssh_port }}
+          script_stop: false
+          command_timeout: 10m
+          script: |
+            set +e
+            cd /www/playlist.nivessa.com/app
+            echo "=== nginx errors mentioning /home ==="
+            for f in /var/log/nginx/*error*.log; do sudo -n tail -n 3000 "$f" 2>/dev/null || tail -n 3000 "$f" 2>/dev/null; done | grep -E "GET /home " | tail -8 | cut -c1-600
+            echo "=== nginx/php-fpm timeouts ==="
+            grep -rhE "fastcgi_read_timeout|fastcgi_pass" /etc/nginx/sites-enabled/ 2>/dev/null | sort -u | head
+            grep -rhE "^(pm|pm\.max_children|request_terminate_timeout|pm\.max_requests)\b" /etc/php/*/fpm/pool.d/*.conf 2>/dev/null | sort -u
+            grep -hE "^(max_execution_time|memory_limit)" /etc/php/*/fpm/php.ini 2>/dev/null | sort -u
+            ls /var/log/php*fpm*.log 2>/dev/null && tail -n 2000 /var/log/php*fpm*.log 2>/dev/null | grep -iE "max_children|terminat|timeout|SIGSEGV|exited" | tail -10
+            echo "=== laravel errors (latest log) ==="
+            L=storage/logs/$(ls -t storage/logs | head -1); echo $L
+            tail -c 3000000 "$L" | grep -E "production\.(ERROR|CRITICAL)" | grep -iE "home|memory|maximum execution" | tail -8 | cut -c1-800
+            echo "=== profile ==="
+            timeout 300 php scripts/diag_home_profile.php "${{ github.event.inputs.user_id }}" 2>&1 | tail -70
+            echo "=== load ==="
+            uptime; nproc; free -m
