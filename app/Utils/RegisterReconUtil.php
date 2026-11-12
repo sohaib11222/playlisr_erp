@@ -299,6 +299,11 @@ class RegisterReconUtil
             if (isset($splitDone[$sale->id])) continue;
             if (isset($pairFor[$sale->id])) {
                 $c    = $pairFor[$sale->id];
+                // Sarah 11/12 "sometimes there is no error": a same-store
+                // Clover charge for the same amount (within 15c) is this
+                // sale - it was charged, only the link is missing. Don't
+                // send Fatteen to match it by hand.
+                if ($c['amt_delta'] <= self::MISMATCH_TOLERANCE_CENTS) continue;
                 $who  = $first(optional($sale->sales_person)->first_name ?: optional($sale->sales_person)->username);
                 $cpWhen = \Carbon\Carbon::createFromTimestamp($c['ts'], $tz)->format('g:ia');
                 $off  = $c['amt_delta'] > self::MISMATCH_TOLERANCE_CENTS
@@ -589,7 +594,7 @@ class RegisterReconUtil
             ->where('o.business_id', $business_id)
             ->whereIn('o.status', ['draft', 'accepted', 'rejected'])
             ->whereDate('o.created_at', $date)
-            ->select('o.id', 'o.status', 'o.location_id', 'o.created_by', 'o.contact_id', 'o.seller_name', 'o.seller_first_name', 'o.seller_last_name', 'c.name as contact_name', 'u.first_name', 'u.username')
+            ->select('o.id', 'o.status', 'o.location_id', 'o.final_offer_cash', 'o.final_offer_credit', 'o.created_by', 'o.contact_id', 'o.seller_name', 'o.seller_first_name', 'o.seller_last_name', 'c.name as contact_name', 'u.first_name', 'u.username')
             ->orderBy('o.created_at')
             ->get();
         $sellerOf = function ($o) {
@@ -609,8 +614,14 @@ class RegisterReconUtil
             if ($o->contact_id) $finished[(int) $o->location_id . '|c' . (int) $o->contact_id] = true;
         }
         $groups = [];
+        // A draft with no items and no offer (seller name typed, nothing
+        // else - Nick's 11/2 test) can't have had cash paid on it.
+        $hasLines = \DB::table('buy_customer_offer_lines')->whereIn('offer_id', $rows->where('status', 'draft')->pluck('id')->all() ?: [0])
+            ->where(function ($q) { $q->whereNotNull('title')->where('title', '<>', ''); })
+            ->distinct()->pluck('offer_id')->flip();
         foreach ($rows as $o) {
             if ($o->status !== 'draft') continue;
+            if (!isset($hasLines[$o->id]) && (float) ($o->final_offer_cash ?? 0) <= 0 && (float) ($o->final_offer_credit ?? 0) <= 0) continue;
             $seller = $sellerOf($o);
             if ($seller !== 'a walk-in' && isset($finished[(int) $o->location_id . '|' . strtolower($seller)])) continue;
             if ($o->contact_id && isset($finished[(int) $o->location_id . '|c' . (int) $o->contact_id])) continue;
