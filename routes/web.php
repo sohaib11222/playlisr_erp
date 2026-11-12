@@ -1258,6 +1258,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/reports/shelf-count/quick-add', 'ShelfCountController@quickAdd');
     Route::get('/reports/shelf-count/missing', 'ShelfCountController@missing');
     Route::get('/reports/rsd-order', 'RsdOrderController@index');
+    Route::get('/reports/rsd-order/ordered', 'RsdOrderController@ordered');
     Route::get('/reports/store-credit-audit', 'StoreCreditAuditController@index');
     Route::get('/marketing/email-lists', 'EmailListsController@index');
     Route::post('/marketing/email-lists/key', 'EmailListsController@saveKey');

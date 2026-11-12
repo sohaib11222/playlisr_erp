@@ -163,6 +163,38 @@ class RsdOrderController extends Controller
         return [config('rsd_order.requests', []), config('rsd_order.requests_as_of')];
     }
 
+    /** Read-only: what customers asked for and what we actually ordered, per store and distributor (Sarah 11/12). */
+    public function ordered(Request $request)
+    {
+        $data = (array) config('rsd_order_actual', []);
+        $dists = ['AMS', 'Alliance', 'Redeye', 'Secretly'];
+        $rows = [];
+        $tot = [];
+        foreach ((array) ($data['rows'] ?? []) as $r) {
+            $row = ['artist' => $r['artist'], 'title' => $r['title'], 'note' => $r['note'] ?? '', 'all' => 0, 'req' => 0];
+            foreach (array_keys(self::STORES) as $st) {
+                $c = (array) ($r[$st] ?? []);
+                $by = [];
+                foreach ($dists as $d) if (!empty($c[$d])) $by[$d] = (int) $c[$d];
+                $row[$st] = ['req' => (int) ($c['req'] ?? 0), 'by' => $by, 'qty' => array_sum($by)];
+                $row['all'] += $row[$st]['qty'];
+                $row['req'] += $row[$st]['req'];
+                $tot[$st]['req'] = ($tot[$st]['req'] ?? 0) + $row[$st]['req'];
+                $tot[$st]['qty'] = ($tot[$st]['qty'] ?? 0) + $row[$st]['qty'];
+                foreach ($by as $d => $n) $tot[$st]['by'][$d] = ($tot[$st]['by'][$d] ?? 0) + $n;
+            }
+            if ($row['all'] > 0) $rows[] = $row;
+        }
+        usort($rows, function ($a, $b) {
+            return [$b['req'], $b['all'], $a['artist']] <=> [$a['req'], $a['all'], $b['artist']];
+        });
+        return view('report.rsd_ordered', [
+            'rows' => $rows, 'tot' => $tot, 'stores' => self::STORES, 'dists' => $dists,
+            'status' => (array) ($data['status'] ?? []), 'asOf' => $data['as_of'] ?? null,
+            'event' => config('rsd_order.event'), 'eventDate' => config('rsd_order.event_date'),
+        ]);
+    }
+
     public function index(Request $request)
     {
         @ini_set('memory_limit', '512M');

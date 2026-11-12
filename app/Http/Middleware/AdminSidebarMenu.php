@@ -205,7 +205,7 @@ class AdminSidebarMenu
             //RSD Order: per-store Record Store Day order from customer requests.
             if (auth()->user()->can('product.create') || auth()->user()->can('sell.create')) {
                 $menu->url(
-                    action('RsdOrderController@index'),
+                    action('RsdOrderController@ordered'),
                     'RSD Order',
                     ['icon' => 'fa fas fa-compact-disc', 'active' => request()->segment(1) == 'reports' && request()->segment(2) == 'rsd-order']
                 )->order(15);
