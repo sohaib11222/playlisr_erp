@@ -132,7 +132,7 @@
     }
     function row(i) {
         var n = count[i.id] || 0, none = touched[i.id] && !n;
-        return '<div class="sc-item' + (n ? ' seen' : '') + (none ? ' none' : '') + '" data-id="' + i.id + '"><div class="t">' + esc(label(i)) + '<div class="sc-small">' + (ids(i) ? ids(i) + ', ' : '') + (i.bin ? esc(i.bin) + ', ' : '') + 'ERP ' + (i.erp != null ? i.erp : '-') + (none ? ', marked none here' : (touched[i.id] ? '' : ', not counted yet')) + '</div>'
+        return '<div class="sc-item' + (n ? ' seen' : '') + (none ? ' none' : '') + '" data-id="' + i.id + '"><div class="t">' + esc(label(i)) + '<div class="sc-small">' + (ids(i) ? ids(i) + ', ' : '') + (i.bin ? esc(i.bin) + ', ' : '') + 'ERP ' + (i.erp != null ? i.erp : '-') + (none ? ', marked none here' : (touched[i.id] ? '' : (i.cnt && i.cnt.recent && !elsewhere(i) ? '' : ', not counted yet'))) + '</div>'
             + prevLine(i)
             + (moved[i.id] ? '<div class="sc-small sc-moved">Genre changed to ' + esc(moved[i.id]) + '</div>' : '')
             + (editing === i.id ? genreSelect(i) : '') + '</div>'
@@ -146,6 +146,8 @@
     function prevLine(i) {
         var c = i.cnt; if (!c || !c.at) return '';
         if (elsewhere(i)) return '<div class="sc-small sc-prev">Already counted ' + d8(c.at) + ' in ' + esc(c.bin) + ' (' + c.qty + ')' + (another[i.id] ? ', counting another copy here' : '') + '</div>';
+        // Counted in this bin recently (Sarah 11/12: overview said counted, bin said "not counted yet").
+        if (c.recent && !touched[i.id]) return '<div class="sc-small sc-prev" style="color:#2E6B2E;font-weight:700;">Counted ' + d8(c.at) + (c.by ? ' by ' + esc(c.by) : '') + ': ' + c.qty + (c.qty === 1 ? ' copy' : ' copies') + '. Count again only if it changed.</div>';
         return '';
     }
     // Wrong genre (Sarah 10/21): pick another genre of the same format. Saves at once.
