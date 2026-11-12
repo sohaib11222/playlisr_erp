@@ -10,16 +10,28 @@ use Illuminate\Support\Facades\Storage;
 // Sales = CLOVER net sales (after tax, tips and refunds), which Sarah trusts:
 // 2025 Clover ties to the filed return (HW 611,676 vs 612,099; Pico 203,202
 // vs 203,432). ERP imported 2025 history has holes (Oct 2025 about half).
-// Target = the HIGHER of the same month last year or the average of the last
-// 3 months (so the bonus tracks the current trajectory, not just last year).
-// Bonus = 2% of Clover net sales above target, only if the store stayed within
-// its monthly labor-hour budget (Sabina's daily caps vs ERP time-clock hours).
+// Each month Sarah/Jon set a realistic sales PLAN per store (the page suggests
+// last year's month + half the recent growth). Flat bonus by % of plan
+// (TIERS), only if the store stayed within its monthly labor-hour budget
+// (Sabina's daily caps vs ERP time-clock hours). No plan set = no bonus.
 // Paid once a month at the payroll closest to month end. Payouts are ledgered
 // in storage/app/manager-bonus-payouts.json.
 class ManagerBonusController extends Controller
 {
     const START_MONTH = '2026-12';
-    const RATE = 2.0;
+    const RATE = 2.0; // no longer used for pay; kept for the old view text
+    // Flat bonus by % of the month's sales plan (Clover net). Hollywood pays
+    // more because its plan is ~3x Pico's.
+    const TIERS = [
+        2 => [100 => 150, 110 => 300, 120 => 500],
+        1 => [100 => 75, 110 => 150, 120 => 250],
+    ];
+    // Monthly sales plans set by Sarah/Jon (Clover net). Saved edits on the
+    // page (storage/app/manager-bonus-plans.json) override these.
+    const PLANS = [
+        '2026-12' => [2 => 65000, 1 => 23000],
+    ];
+    const PLANS_FILE = 'manager-bonus-plans.json';
     // Clover net sales per month, pulled from the Clover API 2026-11-12 across
     // every merchant account (HW F6J6PKNMC9VT1; Pico 5YAN6F4N3NCT1 +
     // EQWV171MNZP31 + M0RFJQGMSMY91). Months after this come from the ERP's
@@ -135,20 +147,30 @@ class ManagerBonusController extends Controller
 
         $lyMonth = $start->copy()->subYear()->format('Y-m');
         $lyFull = $this->monthNet($businessId, $locId, $lyMonth);
-        $prev = [];
-        // Last 3 COMPLETED months (a month still in progress would drag the
-        // average down).
+        // Recent pace: last 3 COMPLETED months vs the same 3 months a year
+        // earlier. Only used to SUGGEST a plan; the owner sets the real one.
+        $prev = []; $prevLy = [];
         for ($i = 1; count($prev) < 3 && $i <= 12; $i++) {
             $pmStart = $start->copy()->subMonthsNoOverflow($i);
             if ($pmStart->copy()->endOfMonth()->gte($today)) { continue; }
             $pm = $pmStart->format('Y-m');
             $prev[$pm] = $this->monthNet($businessId, $locId, $pm);
+            $prevLy[$pm] = $this->monthNet($businessId, $locId, $pmStart->copy()->subYear()->format('Y-m'));
         }
-        $avg3 = round(array_sum($prev) / 3, 2);
-        $targetFull = max($lyFull, $avg3);
-        $targetBasis = $targetFull == $lyFull ? 'same month last year' : 'average of the last 3 months';
-        $target = $complete ? $targetFull : round($targetFull * $daysDone / $daysIn, 2);
-        $over = round($sales - $target, 2);
+        $pace = array_sum($prevLy) > 0 ? (array_sum($prev) / array_sum($prevLy) - 1) : 0.0;
+        // Suggested plan = last year's month + HALF the recent growth, to $500.
+        $suggested = round($lyFull * (1 + max(0, $pace) / 2) / 500) * 500;
+        $plan = $this->planFor($locId, $month);
+        $planSet = $plan !== null;
+        $planFull = $planSet ? $plan : $suggested;
+        // In-progress month: compare sales so far to the plan for the same days.
+        $planToDate = $complete ? $planFull : round($planFull * $daysDone / $daysIn, 2);
+        $pctOfPlan = $planToDate > 0 ? round($sales / $planToDate * 100, 1) : 0.0;
+        // Next tier up, for "how much more to reach it".
+        $nextTier = null;
+        foreach (self::TIERS[$locId] as $pct => $amt) {
+            if ($pctOfPlan < $pct) { $nextTier = ['pct' => $pct, 'amount' => $amt, 'sales' => round($planFull * $pct / 100, 2)]; break; }
+        }
 
         // Labor budget over the same days.
         $budget = 0;
@@ -158,7 +180,14 @@ class ManagerBonusController extends Controller
         $hours = $started ? $this->laborHours($businessId, $locId, $start, $through) : 0.0;
         $withinBudget = $hours <= $budget;
 
-        $earned = ($over > 0 && $withinBudget) ? round($over * self::RATE / 100, 2) : 0.0;
+        // Flat tiered bonus on % of plan (Sarah 2026-11-12: realistic, real
+        // incentive, no overpaying). Labor budget must also be met.
+        $tierHit = 0; $earned = 0.0;
+        if ($withinBudget && $planSet) {
+            foreach (self::TIERS[$locId] as $pct => $amt) {
+                if ($pctOfPlan >= $pct) { $tierHit = $pct; $earned = (float) $amt; }
+            }
+        }
 
         $manager = DB::table('users')->where('business_id', $businessId)
             ->where('first_name', $cfg['manager_first'])->orderBy('id')->first(['id', 'first_name', 'last_name']);
@@ -179,11 +208,16 @@ class ManagerBonusController extends Controller
             'ly_month' => $lyMonth,
             'ly_full' => round($lyFull, 2),
             'prev' => $prev,
-            'avg3' => $avg3,
-            'target_full' => round($targetFull, 2),
-            'target_basis' => $targetBasis,
-            'target' => $target,
-            'over' => $over,
+            'prev_ly' => $prevLy,
+            'pace' => round($pace * 100, 1),
+            'suggested' => $suggested,
+            'plan' => $planFull,
+            'plan_set' => $planSet,
+            'plan_to_date' => $planToDate,
+            'pct_of_plan' => $pctOfPlan,
+            'tiers' => self::TIERS[$locId],
+            'tier_hit' => $tierHit,
+            'next_tier' => $nextTier,
             'hours' => round($hours, 2),
             'budget' => $budget,
             'within_budget' => $withinBudget,
@@ -191,6 +225,31 @@ class ManagerBonusController extends Controller
             'paid' => round($paid, 2),
             'owed' => ($month >= self::START_MONTH && $complete) ? max(0, round($earned - $paid, 2)) : 0.0,
         ];
+    }
+
+    private function planFor($locId, $month)
+    {
+        $saved = [];
+        if (Storage::disk('local')->exists(self::PLANS_FILE)) {
+            $saved = json_decode(Storage::disk('local')->get(self::PLANS_FILE), true) ?: [];
+        }
+        if (isset($saved[$month][$locId]) && (float) $saved[$month][$locId] > 0) { return (float) $saved[$month][$locId]; }
+        if (isset(self::PLANS[$month][$locId])) { return (float) self::PLANS[$month][$locId]; }
+        return null;
+    }
+
+    public function savePlan(Request $request)
+    {
+        $this->ensureAllowed();
+        $month = (string) $request->input('month');
+        if (!preg_match('/^\d{4}-\d{2}$/', $month)) { return redirect('/admin/manager-bonus'); }
+        $saved = Storage::disk('local')->exists(self::PLANS_FILE) ? (json_decode(Storage::disk('local')->get(self::PLANS_FILE), true) ?: []) : [];
+        foreach (array_keys(self::STORES) as $locId) {
+            $v = round((float) str_replace([',', '$'], '', (string) $request->input('plan_' . $locId, '')), 2);
+            if ($v > 0) { $saved[$month][$locId] = $v; }
+        }
+        Storage::disk('local')->put(self::PLANS_FILE, json_encode($saved, JSON_PRETTY_PRINT));
+        return redirect('/admin/manager-bonus?month=' . $month)->with('status', ['success' => 1, 'msg' => 'Plan saved.']);
     }
 
     // Clover net sales for a whole month: the pulled list when we have it,

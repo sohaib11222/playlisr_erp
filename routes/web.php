@@ -2033,6 +2033,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/admin/manager-bonus', 'ManagerBonusController@index');
     Route::post('/admin/manager-bonus/mark-paid', 'ManagerBonusController@markPaid');
     Route::post('/admin/manager-bonus/undo', 'ManagerBonusController@undo');
+    Route::post('/admin/manager-bonus/plan', 'ManagerBonusController@savePlan');
     Route::get('/admin/party-bonus', 'ListingCommissionController@partyBonus');
     Route::post('/admin/party-bonus/pay', 'ListingCommissionController@partyBonusPay');
     // Shift Commission: per-shift commission for a date + store. 2% of sales

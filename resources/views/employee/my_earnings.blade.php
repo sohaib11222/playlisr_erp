@@ -175,7 +175,7 @@ body.role-picker .me-hero .sub { font-size:14px; color:#6B5E2E; margin-top:8px; 
         @if(!empty($manager_bonus))
         <div class="me-card">
             <h3 style="margin-bottom:2px;">Store manager bonus</h3>
-            <p style="margin:2px 0 12px; color:#222;">Paid once a month: 2% of the store's Clover net sales above target (the higher of the same month last year or the last 3 months' average), when the store stays within its labor budget.</p>
+            <p style="margin:2px 0 12px; color:#222;">Paid once a month for hitting 100%, 110% or 120% of the store's monthly sales plan, when the store stays within its labor budget.</p>
             <table class="table">
                 <thead><tr><th>Month</th><th>Store</th><th style="text-align:right;">Paid</th></tr></thead>
                 <tbody>

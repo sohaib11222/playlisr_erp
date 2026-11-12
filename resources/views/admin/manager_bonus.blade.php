@@ -4,7 +4,7 @@
 @section('content')
 <section class="content-header">
     <h1>Store Manager Bonus</h1>
-    <p style="color:#222;">Each month the store manager earns {{ rtrim(rtrim(number_format($rate, 2), '0'), '.') }}% of the store's Clover net sales (after tax, tips and refunds) above a target. The target is the higher of the same month last year or the average of the last 3 months, so the store has to beat both last year and its current pace. Paid only if the store stayed within its labor-hour budget. Starts 12/01/26, paid once a month at the payroll closest to month end.</p>
+    <p style="color:#222;">Each month you and Jon set a realistic sales plan for each store (Clover net sales, after tax). The manager earns a flat bonus for hitting 100%, 110% or 120% of plan, and only if the store stayed within its labor-hour budget. Starts 12/01/26, paid once a month at the payroll closest to month end.</p>
 </section>
 
 <style>
@@ -34,6 +34,16 @@
         @endif
     </form>
 
+    <form method="POST" action="{{ url('/admin/manager-bonus/plan') }}" class="mb-card" style="display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap;">
+        @csrf
+        <input type="hidden" name="month" value="{{ $month }}">
+        <b style="width:100%;">Set the {{ \Carbon::parse($month . '-01')->format('F Y') }} plan</b>
+        @foreach ($rows as $r)
+            <label style="margin:0;">{{ $r['store'] }}<br><input type="text" name="plan_{{ $r['location_id'] }}" value="{{ $r['plan_set'] ? number_format($r['plan'], 0, '.', '') : '' }}" placeholder="{{ number_format($r['suggested'], 0, '.', '') }}" style="padding:6px 10px; border-radius:8px; border:1px solid #ccc; width:140px;"></label>
+        @endforeach
+        <button class="btn btn-primary">Save plan</button>
+    </form>
+
     @if (!empty($check))
         <div class="mb-card">
             <h4 style="margin-top:0;">Clover check</h4>
@@ -50,13 +60,20 @@
         <div class="mb-card">
             <h3 style="margin-top:0;">{{ $r['store'] }}: {{ $r['manager'] }}</h3>
             <table>
-                <tr><th>How the target is set</th><th>Clover net sales</th></tr>
+                <tr><th>Setting the plan</th><th>Clover net sales</th></tr>
                 <tr><td>Same month last year ({{ \Carbon::parse($r['ly_month'] . '-01')->format('M Y') }})</td><td>${{ number_format($r['ly_full'], 2) }}</td></tr>
-                @foreach ($r['prev'] as $pm => $pv)
-                    <tr><td>{{ \Carbon::parse($pm . '-01')->format('M Y') }}</td><td>${{ number_format($pv, 2) }}</td></tr>
+                <tr><td>Recent pace (last 3 finished months vs a year earlier)</td><td>{{ $r['pace'] > 0 ? '+' : '' }}{{ $r['pace'] }}%</td></tr>
+                <tr><td>Suggested plan (last year + half the recent growth)</td><td>${{ number_format($r['suggested'], 0) }}</td></tr>
+                <tr><td><b>Plan for {{ \Carbon::parse($month . '-01')->format('F') }}</b></td><td><b>@if($r['plan_set'])${{ number_format($r['plan'], 0) }}@else<span class="mb-no">not set yet, no bonus until it is</span>@endif</b></td></tr>
+            </table>
+
+            <h4 style="margin-top:18px;">Bonus</h4>
+            <table>
+                <tr><th>Hit</th><th>{{ $r['store'] }} sales (Clover net)</th><th>Bonus</th></tr>
+                @foreach ($r['tiers'] as $pct => $amt)
+                    <tr><td>{{ $pct }}% of plan</td><td>${{ number_format($r['plan'] * $pct / 100, 0) }}</td><td>${{ number_format($amt, 0) }}</td></tr>
                 @endforeach
-                <tr><td>Average of the last 3 months</td><td>${{ number_format($r['avg3'], 2) }}</td></tr>
-                <tr><td><b>Target for the month</b> (the higher, {{ $r['target_basis'] }})</td><td><b>${{ number_format($r['target_full'], 2) }}</b></td></tr>
+                <tr><td>Under 100%</td><td>below ${{ number_format($r['plan'], 0) }}</td><td>$0</td></tr>
             </table>
 
             @if (!$r['through'])
@@ -65,11 +82,14 @@
                 <table style="margin-top:14px;">
                     <tr><th>{{ $r['complete'] ? 'Whole month' : 'Month so far (through ' . $r['through'] . ')' }}</th><th>Amount</th></tr>
                     <tr><td>Clover net sales</td><td>${{ number_format($r['sales'], 2) }}</td></tr>
-                    <tr><td>Target{{ $r['complete'] ? '' : ' for these days' }}</td><td>${{ number_format($r['target'], 2) }}</td></tr>
-                    <tr><td>Above target</td><td>${{ number_format($r['over'], 2) }}</td></tr>
+                    <tr><td>Plan{{ $r['complete'] ? '' : ' for these days' }}</td><td>${{ number_format($r['plan_to_date'], 2) }}</td></tr>
+                    <tr><td>% of plan</td><td>{{ $r['pct_of_plan'] }}%</td></tr>
+                    @if (!$r['complete'] && $r['next_tier'])
+                        <tr><td>To reach {{ $r['next_tier']['pct'] }}% (${{ number_format($r['next_tier']['amount'], 0) }} bonus)</td><td>${{ number_format($r['next_tier']['sales'], 0) }} for the month</td></tr>
+                    @endif
                     <tr><td>Labor hours (time clock) vs budget</td><td>{{ number_format($r['hours'], 1) }} of {{ number_format($r['budget']) }} hrs
                         @if ($r['within_budget'])<span class="mb-ok">within budget</span>@else<span class="mb-no">over budget, no bonus</span>@endif</td></tr>
-                    <tr><td><b>Bonus earned</b></td><td class="mb-big">${{ number_format($r['earned'], 2) }}</td></tr>
+                    <tr><td><b>Bonus earned</b>{{ $r['complete'] ? '' : ' so far' }}</td><td class="mb-big">${{ number_format($r['earned'], 2) }}</td></tr>
                     <tr><td>Paid</td><td>${{ number_format($r['paid'], 2) }}</td></tr>
                 </table>
                 @if ($r['owed'] > 0)
@@ -83,16 +103,6 @@
                     <p style="margin-top:8px;">Not final until the month ends.</p>
                 @endif
             @endif
-
-            <h4 style="margin-top:18px;">Examples for {{ \Carbon::parse($month . '-01')->format('F') }}</h4>
-            <table>
-                <tr><th>If {{ $r['store'] }} does (Clover net)</th><th>Above target</th><th>Bonus (within labor budget)</th></tr>
-                @foreach ([0, 5, 10, 15, 20, 30] as $pct)
-                    @php $s = $r['target_full'] * (1 + $pct / 100); $g = $s - $r['target_full']; @endphp
-                    <tr><td>${{ number_format($s, 0) }}</td><td>{{ $pct === 0 ? 'right at target' : '+' . $pct . '% ($' . number_format($g, 0) . ')' }}</td><td>${{ number_format($g * $rate / 100, 2) }}</td></tr>
-                @endforeach
-                <tr><td>Below ${{ number_format($r['target_full'], 0) }}</td><td>under target</td><td>$0.00</td></tr>
-            </table>
         </div>
     @endforeach
 
