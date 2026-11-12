@@ -22,6 +22,8 @@ $session->put('business', $business->toArray());
 $session->put('financial_year', app(App\Utils\BusinessUtil::class)->getCurrentFinancialYear($user->business_id));
 echo "user {$user->id} {$user->username}\n";
 
+foreach (['first', 'second'] as $pass) {
+echo "##### pass $pass #####\n";
 $queries = [];
 DB::listen(function ($q) use (&$queries) {
     $queries[] = [$q->time, preg_replace('/\s+/', ' ', $q->sql), $q->bindings];
@@ -38,8 +40,10 @@ $total = round((microtime(true) - $t) * 1000);
 $sqlMs = round(array_sum(array_column($queries, 0)));
 echo "TOTAL {$total}ms, queries=" . count($queries) . " sql={$sqlMs}ms peakMem=" . round(memory_get_peak_usage(true) / 1048576) . "MB\n";
 usort($queries, fn($a, $b) => $b[0] <=> $a[0]);
-foreach (array_slice($queries, 0, 25) as $q) {
+foreach (array_slice($queries, 0, 12) as $q) {
     echo round($q[0]) . "ms  " . substr($q[1], 0, 600) . "  [" . substr(json_encode($q[2]), 0, 150) . "]\n";
+}
+if ($pass === 'second') break;
 }
 // group by caller-ish signature
 $groups = [];
