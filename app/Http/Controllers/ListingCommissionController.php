@@ -30,7 +30,7 @@ class ListingCommissionController extends Controller
     const SALES_BONUS_FROM = '2026-06-15'; // sales-goal bonus go-live (matches leaderboard)
     const RATE = 0.02; // flat 2%, matches barcodingCommissionByUser
     const PARTY_NET_PRETAX = '(tsl.quantity - COALESCE(tsl.quantity_returned, 0)) * (tsl.unit_price_inc_tax - COALESCE(tsl.item_tax, 0))';
-    const PARTY_DEFAULT_PERCENT = 4.0; // matches the % field's own "e.g. 4" placeholder — Sarah's usual rate when nothing else is picked
+    const PARTY_DEFAULT_PERCENT = 3.0; // Sarah 2026-11-12: 3% of party-window sales when guests checked in
     const PARTY_DEFAULT_FROM = '18:00'; // 6 PM, matches the from_h/to_h defaults above
 
     // Category exclusions copied verbatim from barcodingCommissionByUser so the
@@ -1243,12 +1243,13 @@ class ListingCommissionController extends Controller
                     $sC = \Carbon::parse($edate . ' ' . $winFrom . ':00');
                     $eC = $sC->copy()->addMinutes($durationMin);
 
-                    // Pay is 4% of what CHECKED-IN guests bought that day at
-                    // this store, not everything the register rang (Sarah
-                    // 2026-10-31: parties paid out on normal store traffic
-                    // when nobody showed up). No check-ins = $0.
+                    // Sarah 2026-11-12: pay 3% of everything the register rang
+                    // at this store during the party window, but ONLY if at
+                    // least one guest checked in (no-shows still pay $0, the
+                    // 10/31 concern). Matching guests to receipts paid $0 on
+                    // every party because guests are rarely put on receipts.
                     $guest = $this->partyGuestSales($businessId, $locId, $locKey, $edate, (string) ($it['name'] ?? ''), $it['id'] ?? null);
-                    $sales = $guest['sales'];
+                    $sales = ((int) ($guest['checked_in'] ?? 0) > 0) ? $this->windowSales($businessId, $locId, $sC, $eC) : 0.0;
                     $salesGoal = $this->windowSalesGoal($businessId, $locId, $sC, $eC);
                     // Live Sling floor-position shift is the real signal
                     // (Sarah 2026-09-25) - falls back to who rang a sale only

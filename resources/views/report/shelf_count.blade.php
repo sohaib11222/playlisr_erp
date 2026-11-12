@@ -30,12 +30,12 @@
 .sc-overall b { font-size: 18px; display: block; padding-right: 80px; }
 .sc-ov-pct { position: absolute; top: 12px; right: 16px; font-size: 24px; font-weight: 800; }
 .sc-ov-bar { height: 14px; border-radius: 7px; }
-.sc-fixnote { background: #FFF2B3; border: 2px solid #C9A400; border-radius: 10px; padding: 10px 12px; margin: 0 0 10px; font-size: 15px; color: #1F1B16; }
+.sc-fixnote { background: #fff; border: 2px solid #1F1B16; border-left: 8px solid #1F1B16; border-radius: 10px; padding: 12px 16px; margin: 0 0 12px; font-size: 16px; line-height: 1.45; color: #1F1B16; }
 </style>
 <div class="sc-wrap">
 @include('report._count_tabs', ['ctOn' => 'count'])
     <h1>Shelf count</h1>
-    <div class="sc-fixnote"><b>Record in the wrong bin in the ERP? Please fix it.</b> When you count a bin, tap <b>Genre</b> on any record that belongs somewhere else and pick the right one.</div>
+    <div class="sc-fixnote"><b>If the record is in the wrong bin in the ERP, please fix it!</b> When you count a bin, tap <b>Genre</b> on any record that belongs somewhere else and pick the right one.</div>
     <p class="sc-sub">Pick the bin you're standing at. Then scan every record in it (or tap it in the list). When the bin is done, the page shows what the ERP thought was there but wasn't. DONE (green) = at least 80% of the section's titles counted in the last {{ \App\Http\Controllers\ShelfCountController::DUE_DAYS }} days. Use Sort to put High priority or the oldest counts on top. High priority = a cancel or can't find, or 3+ online orders, on titles not counted since. <a href="/reports/shelf-count/missing?location_id={{ $loc }}">Missing list</a></p>
     <form class="sc-row" method="get">
         <select name="location_id" onchange="this.form.submit()">@foreach ($locations as $id => $nm)<option value="{{ $id }}" {{ $id == $loc ? 'selected' : '' }}>{{ ucfirst($nm) }}</option>@endforeach</select>

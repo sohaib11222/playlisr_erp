@@ -82,7 +82,7 @@
     @if (count($unpaid_parties) > 0)
         <div style="margin-top:16px; border-top:1px solid #eee; padding-top:12px;">
             <div style="font-weight:700; color:#b3402e;">{{ count($unpaid_parties) }} {{ count($unpaid_parties) === 1 ? 'party' : 'parties' }} with nothing paid out yet</div>
-            <p class="text-muted" style="font-size:12px; margin:4px 0 8px;">Calculated at {{ rtrim(rtrim(number_format(\App\Http\Controllers\ListingCommissionController::PARTY_DEFAULT_PERCENT, 2), '0'), '.') }}% of what checked-in guests bought that day, split among whoever had a live Sling floor shift (Cashier/Event Lead/Floor Sales) during it. Hit Pay to record it as shown, or Adjust to change staff/amounts first.</p>
+            <p class="text-muted" style="font-size:12px; margin:4px 0 8px;">Calculated at {{ rtrim(rtrim(number_format(\App\Http\Controllers\ListingCommissionController::PARTY_DEFAULT_PERCENT, 2), '0'), '.') }}% of what the store rang during the party (only if a guest checked in), split evenly among everyone clocked in during it. Hit Pay to record it as shown, or Adjust to change staff/amounts first.</p>
             <table class="pb-table">
                 <thead><tr><th>Date</th><th>Party</th><th>Store</th><th>Split</th><th></th></tr></thead>
                 <tbody>
@@ -110,7 +110,7 @@
                                 @elseif ($est['solo'])
                                     <span class="text-muted">Only {{ $est['staff'][0]['name'] }} was on the floor {{ $est['window'] }} - no pool, they're already covered by their normal sales commission</span>
                                 @else
-                                    <div class="text-muted" style="font-size:11px; margin-bottom:2px;">@if(empty($est['guest_ready']))Could not reach RSVPs, try again later @else{{ $est['checked_in'] ?? 0 }} checked in &middot; {{ $est['buyers'] ?? 0 }} bought ${{ number_format($est['sales'], 2) }} &middot; 4% = ${{ number_format($est['pool'], 2) }}@endif</div>
+                                    <div class="text-muted" style="font-size:11px; margin-bottom:2px;">@if(empty($est['guest_ready']))Could not reach RSVPs, try again later @else{{ $est['checked_in'] ?? 0 }} checked in &middot; rang ${{ number_format($est['sales'], 2) }} during the party &middot; 3% = ${{ number_format($est['pool'], 2) }}@endif</div>
                                     @foreach ($est['staff'] as $s)
                                         {{ $s['name'] }}: ${{ number_format($s['amount'], 2) }}@if(!$loop->last), @endif
                                     @endforeach
