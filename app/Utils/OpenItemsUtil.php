@@ -295,7 +295,7 @@ class OpenItemsUtil
         return self::section('Venue booking requests not paid', 'Call or email them to finish the booking, or find out why not.', url('/website-carts?tab=bookings'), self::oldestFirst($out));
     }
 
-    /** Buys left as drafts for over a day (last 30 days). */
+    /** Buys left as drafts for over a day (last 7 days). */
     public static function draftBuys(int $business_id): array
     {
         $rows = \DB::table('buy_customer_offers as b')
@@ -509,6 +509,11 @@ class OpenItemsUtil
                 if ($a) {
                     $at = Carbon::parse($a['at'])->setTimezone(self::TZ);
                     if ($at->diffInHours($now) < self::RECHECK_HOURS) {
+                        continue;
+                    }
+                    // An unpaid booking stays "unpaid" even after the person says no,
+                    // so once he has dealt with it, it stays gone.
+                    if ($a['action'] === 'fixed' && strpos($r['key'], 'booking:') === 0) {
                         continue;
                     }
                     $r['reopened'] = ($a['action'] === 'bug' ? 'Reported as an ERP bug ' : 'Marked fixed ')

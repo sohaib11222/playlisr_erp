@@ -560,6 +560,11 @@ class DailyChecklistController extends Controller
         }
 
         \App\Utils\OpenItemsUtil::saveAction($key, 'fixed', $note, $who, $label);
+        // A fixed contact form message is marked replied on the website so it doesn't come back.
+        if (preg_match('/^contact:([a-f0-9]{24})$/', $key, $m)) {
+            \App\Services\WebsiteBridge::admin('PATCH', '/contact/status/' . $m[1], ['status' => 'replied']);
+            \Cache::forget('open_items_contact');
+        }
         // A fixed customer text or call is closed in the Communications Hub too.
         if (preg_match('/^comm:(\d+)$/', $key, $m)) {
             \DB::table('communications')

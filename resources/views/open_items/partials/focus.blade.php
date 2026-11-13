@@ -56,7 +56,7 @@
 
 <div class="oi-card" id="oi-social">
     <div class="oi-head"><h2>Social: one famous-musician post a day</h2></div>
-    <p class="oi-how">These posts did best. The day before, find the artist in Products and ask the cashier at the store that has a copy for one clear photo of the record in the store. Caption: "Happy birthday to [Artist], born [date, year]. [One true line about them.] We have [album] on vinyl at Nivessa [store] right now." Post around 11am, one a day, never several at once. No copy in the store? Post a rare find instead.</p>
+    <p class="oi-how">These posts did best. The day before, find the artist in Products and ask the cashier at the store that has a copy for one clear photo of the record in the store. Caption: "Happy birthday to [Artist], born [date, year]. [One true line about them.] We have [album] on vinyl at Nivessa [store] right now." If the artist has passed, start with "Remembering [Artist]" instead of "Happy birthday". Post around 11am, one a day, never several at once. No copy in the store? Post a rare find instead.</p>
     @foreach($week as $w)
         <div class="oi-done"><strong>{{ $w[0] }} ({{ $w[1] }}):</strong> {{ $w[2] }}</div>
     @endforeach
