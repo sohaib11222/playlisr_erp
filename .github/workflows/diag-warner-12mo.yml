@@ -1,0 +1,23 @@
+# READ-ONLY: Warner sealed sales + purchases by UPC prefix (scripts/diag/warner_12mo.php). SELECTs only.
+name: Diag Warner 12mo
+on:
+  push:
+    branches: ['diag-warner/**']
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run on prod (read-only)
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "$DEPLOY_SSH_KEY" > ~/.ssh/id && chmod 600 ~/.ssh/id
+          P=${DEPLOY_PORT:-22}
+          for i in 1 2 3 4 5; do ssh-keyscan -T 15 -p $P -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null && grep -q . ~/.ssh/known_hosts && break; sleep 10; done
+          scp -o ConnectTimeout=30 -i ~/.ssh/id -P $P scripts/diag/warner_12mo.php "$DEPLOY_USER@$DEPLOY_HOST:/www/playlist.nivessa.com/app/storage/warner_12mo.php"
+          ssh -o ConnectTimeout=30 -o ServerAliveInterval=15 -i ~/.ssh/id -p $P "$DEPLOY_USER@$DEPLOY_HOST" "cd /www/playlist.nivessa.com/app && sed -i \"s#__DIR__ . '/../../#'\$(pwd)/#g\" storage/warner_12mo.php && php -d memory_limit=2G storage/warner_12mo.php; rm -f storage/warner_12mo.php"
