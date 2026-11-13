@@ -654,6 +654,24 @@ class ProductNameNormalizer
     protected static function deriveTitle($artist, $name)
     {
         $aKey = self::sortedKey($artist);
+        $sep = '(?:\s*\/\s*|\s+-\s+)';
+
+        // Artist that itself contains a separator ("AC/DC"): splitting the name
+        // on "/" would break the artist apart and leave "AC - DC" in the title,
+        // which then grew by another "AC - DC" on every cleanup run. Strip the
+        // artist as a whole first, plus any leftover artist pieces that earlier
+        // runs piled up ("AC/DC - Ac - Dc - Ac - Dc - Title" -> "Title").
+        $artistPieces = preg_split('/' . $sep . '/', trim($artist));
+        $artistPieces = array_values(array_filter(array_map('trim', $artistPieces), function ($p) { return $p !== ''; }));
+        if (count($artistPieces) > 1) {
+            $whole = '/^' . preg_quote(trim($artist), '/') . $sep . '/iu';
+            if (preg_match($whole, $name)) {
+                $rest = preg_replace($whole, '', $name);
+                $piecesRe = implode('|', array_map(function ($p) { return preg_quote($p, '/'); }, $artistPieces));
+                $rest = preg_replace('/^(?:(?:' . $piecesRe . ')(?:' . $sep . '|$))+/iu', '', $rest);
+                return trim(preg_replace('/' . $sep . '/', ' - ', trim($rest)));
+            }
+        }
 
         $parts = preg_split('/\s*\/\s*|\s+-\s+/', $name);
         $parts = array_values(array_filter(array_map('trim', $parts), function ($p) { return $p !== ''; }));
