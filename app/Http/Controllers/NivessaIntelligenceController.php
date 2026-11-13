@@ -29,7 +29,7 @@ class NivessaIntelligenceController extends Controller
             abort(403, 'Nivessa Intelligence is admin-only.');
         }
 
-        $key = 'nivessa_intel_v1_' . $business_id;
+        $key = 'nivessa_intel_v2_' . $business_id;
         if ($request->get('refresh')) {
             Cache::forget($key);
         }
@@ -66,7 +66,6 @@ class NivessaIntelligenceController extends Controller
     protected function deadCapital($business_id, $locations)
     {
         $since = now()->subDays(self::DEAD_DAYS);
-        $sold = $this->soldSince($business_id, $since)->select('tsl.variation_id')->distinct();
 
         $base = DB::table('variation_location_details as vld')
             ->join('variations as v', 'v.id', '=', 'vld.variation_id')
@@ -76,7 +75,14 @@ class NivessaIntelligenceController extends Controller
             ->where('vld.qty_available', '>', 0)
             ->where('p.created_at', '<', $since)
             ->whereNull('v.deleted_at')
-            ->whereNotIn('vld.variation_id', $sold);
+            // NOT EXISTS, not NOT IN: sell lines with a NULL variation_id make NOT IN match nothing.
+            ->whereNotExists(function ($q) use ($business_id, $since) {
+                $q->select(DB::raw(1))->from('transaction_sell_lines as tsl')
+                  ->join('transactions as t', 't.id', '=', 'tsl.transaction_id')
+                  ->whereColumn('tsl.variation_id', 'vld.variation_id')
+                  ->where('t.business_id', $business_id)->where('t.type', 'sell')->where('t.status', 'final')
+                  ->where('t.transaction_date', '>=', $since);
+            });
 
         $byCat = (clone $base)
             ->selectRaw("vld.location_id, COALESCE(c.name, '(uncategorized)') as category,
