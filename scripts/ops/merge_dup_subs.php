@@ -35,7 +35,7 @@ foreach ($merges as [$from, $into, $parent]) {
     if (!$n) continue;
     echo "  $t: $n rows\n";
     if ($mode !== 'apply') continue;
-    if (!$hasId) { echo "  !! $t has no id column, skipped\n"; continue; }
+    if (!$hasId) { DB::table($t)->where('sub_category_id', $from)->update(['sub_category_id' => $into]); echo "  $t (no id col) updated in place\n"; continue; }
     $ids = DB::table($t)->where('sub_category_id', $from)->pluck('id')->all();
     $undo['rows'][$t][$from] = $ids;
     $upd = ['sub_category_id' => $into];
