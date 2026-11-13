@@ -44,6 +44,11 @@ class AdminSidebarMenu
                 $menu->url(url('/eos'), 'EOS', ['icon' => 'fa fas fa-compass', 'active' => request()->segment(1) == 'eos'])->order(7);
             }
 
+            //Nivessa Intelligence: admin-only money/inventory signals across both stores.
+            if ($is_admin) {
+                $menu->url(url('/nivessa-intelligence'), 'Nivessa Intelligence', ['icon' => 'fa fas fa-lightbulb', 'active' => request()->segment(1) == 'nivessa-intelligence'])->order(7);
+            }
+
             // Opening/Closing checklists are intentionally not in the sidebar —
             // they're reached via the dashboard prompt/links. Routes still live.
 
