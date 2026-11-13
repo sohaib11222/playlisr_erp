@@ -40,15 +40,20 @@ class AddTopTierSubcategories extends Command
     protected $description = 'Create the top-tier missing subcategories and re-file matching items.';
 
     // Vinyl and CD (used + sealed) keep their own genre lists: no new subs
-    // and no moves there (Sarah 2026-10-29). handle() also refuses them.
+    // and no moves there (Sarah 2026-10-29); Step 2 refuses moves into them.
+    // Explicitly approved CD genre gaps are created in newSubs() (2026-11-12).
     const MUSIC_ALL = ['Cassettes - Used', 'Cassettes - Sealed'];
 
     /** Parent category => new subcategories under it. */
     public static function newSubs()
     {
         return [
-            'Cassettes - Used' => ['Christmas / Holiday', 'Pop'],
-            'Cassettes - Sealed' => ['Christmas / Holiday'],
+            'Cassettes - Used' => ['Christmas / Holiday', 'Pop', 'Blues', 'Gospel', "Children's"],
+            'Cassettes - Sealed' => ['Christmas / Holiday', 'Blues', 'Country', 'Gospel', "Children's"],
+            // CD genre gaps vs. the other music parents (Sarah 2026-11-12).
+            // Created only — no re-file rules touch CD parents.
+            'CD - Used' => ['Blues', 'Gospel', "Children's"],
+            'CD - Sealed' => ['Soundtracks', 'Gospel'],
             'Toys' => ['Anime Figures'],
             'Trading Cards' => ['Graded Slabs'],
             'Magazines' => ['National Geographic', 'Music Magazines', 'Gaming Magazines'],
@@ -209,7 +214,8 @@ class AddTopTierSubcategories extends Command
         // Step 1 — create the subcategories.
         $this->info('Step 1 — subcategories');
         foreach (self::newSubs() as $parent => $subs) {
-            if (self::isOffLimits($parent)) { $this->warn("  ! {$parent} is off-limits — skipped"); continue; }
+            // Vinyl/CD: subs may be created when listed above, but no items
+            // are ever moved there (Step 2 still skips them).
             $pid = $parentId[mb_strtolower($parent)] ?? null;
             if (!$pid) { $this->warn("  ! parent '{$parent}' not found — skipped"); continue; }
             foreach ($subs as $s) {
