@@ -491,6 +491,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/sell-quotes/lookup', 'SellQuoteController@lookup');
     Route::get('/sell-quotes/{id}', 'SellQuoteController@staffShow')->where('id', '[0-9]+');
     Route::post('/sell-quotes/{id}/start-buy', 'SellQuoteController@startBuy')->where('id', '[0-9]+');
+    Route::get('/nivessa-intelligence', 'NivessaIntelligenceController@index');
     Route::get('/store-or-discogs', 'StoreOrDiscogsController@index');
     Route::post('/store-or-discogs/check', 'StoreOrDiscogsController@check');
     Route::get('/store-or-discogs/unpriced-buys', 'StoreOrDiscogsController@unpricedBuys');
