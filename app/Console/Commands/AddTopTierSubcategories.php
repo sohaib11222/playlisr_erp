@@ -47,7 +47,7 @@ class AddTopTierSubcategories extends Command
     public static function newSubs()
     {
         return [
-            'Cassettes - Used' => ['Christmas / Holiday'],
+            'Cassettes - Used' => ['Christmas / Holiday', 'Pop'],
             'Cassettes - Sealed' => ['Christmas / Holiday'],
             'Toys' => ['Anime Figures'],
             'Trading Cards' => ['Graded Slabs'],
