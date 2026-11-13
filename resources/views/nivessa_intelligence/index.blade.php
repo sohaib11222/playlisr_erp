@@ -89,7 +89,7 @@
     {{-- Dead capital --}}
     <div class="ni-card" id="dead">
         <h2>Dead capital</h2>
-        <p class="ni-help">In-stock items added more than {{ $deadDays }} days ago that haven't sold in {{ $deadDays }} days. Options: mark down, move to the other store, bundle, or list online.</p>
+        <p class="ni-help">In-stock items with no sale and no new stock received in {{ $deadDays }} days. Options: mark down, move to the other store, bundle, or list online.</p>
         @if(!empty($dead['error']))
             <div class="ni-err">Couldn't load this section.</div>
         @else
