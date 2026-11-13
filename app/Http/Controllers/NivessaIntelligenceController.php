@@ -29,7 +29,7 @@ class NivessaIntelligenceController extends Controller
             abort(403, 'Nivessa Intelligence is admin-only.');
         }
 
-        $key = 'nivessa_intel_v2_' . $business_id;
+        $key = 'nivessa_intel_v3_' . $business_id;
         if ($request->get('refresh')) {
             Cache::forget($key);
         }
@@ -73,7 +73,13 @@ class NivessaIntelligenceController extends Controller
             ->leftJoin('categories as c', 'c.id', '=', 'p.category_id')
             ->where('p.business_id', $business_id)
             ->where('vld.qty_available', '>', 0)
-            ->where('p.created_at', '<', $since)
+            // Age = no stock received (purchase / opening stock) in the window. Product
+            // created_at is useless here: most products were bulk-created recently.
+            ->whereNotExists(function ($q) use ($since) {
+                $q->select(DB::raw(1))->from('purchase_lines as pl')
+                  ->whereColumn('pl.variation_id', 'vld.variation_id')
+                  ->where('pl.created_at', '>=', $since);
+            })
             ->whereNull('v.deleted_at')
             // NOT EXISTS, not NOT IN: sell lines with a NULL variation_id make NOT IN match nothing.
             ->whereNotExists(function ($q) use ($business_id, $since) {
