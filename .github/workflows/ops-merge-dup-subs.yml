@@ -1,0 +1,26 @@
+# Merges duplicate music subcategories. Mode from scripts/ops/merge_dup_subs_mode.txt (dry|apply|undo).
+name: Ops merge duplicate subcategories
+on:
+  push:
+    branches: ['ops-cat/merge-dup-subs']
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          MODE=$(tr -d ' \n' < scripts/ops/merge_dup_subs_mode.txt)
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "$DEPLOY_SSH_KEY" > ~/.ssh/id && chmod 600 ~/.ssh/id
+          P=${DEPLOY_PORT:-22}
+          for i in 1 2 3 4 5; do ssh-keyscan -T 15 -p $P -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null && grep -q . ~/.ssh/known_hosts && break; sleep 10; done
+          for i in 1 2 3 4 5; do
+            scp -o ConnectTimeout=30 -i ~/.ssh/id -P $P scripts/ops/merge_dup_subs.php "$DEPLOY_USER@$DEPLOY_HOST:/www/playlist.nivessa.com/app/storage/merge_dup_subs.php" && \
+            ssh -o ConnectTimeout=30 -i ~/.ssh/id -p $P "$DEPLOY_USER@$DEPLOY_HOST" "cd /www/playlist.nivessa.com/app && php storage/merge_dup_subs.php $MODE; rm -f storage/merge_dup_subs.php" | tee out.txt && grep -q "DONE" out.txt && break
+            echo "attempt $i failed"; sleep 20
+          done
