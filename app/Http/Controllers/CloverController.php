@@ -108,6 +108,11 @@ class CloverController extends Controller
             ]);
         }
 
+        // Pay on Clover per-store install (CloverPayController::connect).
+        if (!empty($parsed['rp'])) {
+            return \App\Http\Controllers\CloverPayController::finishConnect($request, $parsed);
+        }
+
         $businessId = (int) $parsed['bid'];
         $code = $request->input('code');
         if (empty($code)) {

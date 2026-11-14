@@ -1979,6 +1979,16 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // Manager Check-ins: short report the managers fill out after each weekly
     // 1:1 (highlight, lowlight, ERP asks, ideas) so Jon sees every employee.
     // JSON sidecar storage/app/manager_checkins.json, no migration.
+    // Pay on Clover (REST Pay Display) setup + POS endpoints
+    Route::get('/admin/clover-pay', 'CloverPayController@index');
+    Route::post('/admin/clover-pay/app', 'CloverPayController@saveApp');
+    Route::post('/admin/clover-pay/location', 'CloverPayController@saveLocation');
+    Route::get('/admin/clover-pay/connect', 'CloverPayController@connect');
+    Route::post('/admin/clover-pay/ping', 'CloverPayController@ping');
+    Route::get('/pos/clover-pay/status', 'CloverPayController@status');
+    Route::post('/pos/clover-pay/pay', 'CloverPayController@pay');
+    Route::post('/pos/clover-pay/recover', 'CloverPayController@recover');
+    Route::post('/pos/clover-pay/cancel', 'CloverPayController@cancel');
     Route::get('/manager-checkins', 'ManagerCheckinController@index')->name('manager-checkins.index');
     Route::post('/manager-checkins', 'ManagerCheckinController@store')->name('manager-checkins.store');
     Route::post('/manager-checkins/notes', 'ManagerCheckinController@saveNotes')->name('manager-checkins.notes');

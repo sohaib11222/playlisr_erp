@@ -1065,6 +1065,66 @@
                         }, 2000);
                     });
                     $('#card_prompt_modal').modal('show');
+                    try { setupCloverPay(btn); } catch (e) {}
+                }
+                // ---- Pay on Clover ------------------------------------------
+                // Sends the ERP's after-tax total to this store's Flex. Any
+                // failure leaves the normal manual flow in place.
+                var cloverPayBusy = false;
+                function cloverPayLoc() { return $('input#location_id').val(); }
+                function cloverPayMsg(t) { $('#clover_pay_msg').text(t || ''); }
+                function cloverPayFinish(btn, paymentId) {
+                    try { $('#card_transaction_number').val(paymentId); } catch (e) {}
+                    window.__clover_rest_payment_id = paymentId;
+                    cloverPayMsg('Approved on Clover. Finishing the sale...');
+                    setTimeout(function () { $('#card_prompt_confirm').trigger('click'); }, 400);
+                }
+                function setupCloverPay(btn) {
+                    $('#clover_pay_box').hide();
+                    $('#clover_pay_send').prop('disabled', false).show();
+                    $('#clover_pay_cancel').hide();
+                    cloverPayMsg('');
+                    window.__clover_rest_payment_id = null;
+                    $.ajax({ url: '/pos/clover-pay/status', data: { location_id: cloverPayLoc() }, dataType: 'json', timeout: 5000 })
+                        .done(function (r) { if (r && r.enabled) { $('#clover_pay_box').show(); } });
+                    $('#clover_pay_send').off('click.cp').on('click.cp', function () {
+                        if (cloverPayBusy) { return; }
+                        cloverPayBusy = true;
+                        var amount = window.__clover_after_tax || readTotalDue();
+                        var ext = 'NV' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase();
+                        $('#clover_pay_send').prop('disabled', true);
+                        $('#clover_pay_cancel').show();
+                        cloverPayMsg('Sent ' + fmtMoney(amount) + ' to Clover. Have the customer tap or insert their card.');
+                        $.ajax({ url: '/pos/clover-pay/pay', method: 'POST', dataType: 'json', timeout: 140000,
+                                 data: { _token: $('meta[name="csrf-token"]').attr('content'), location_id: cloverPayLoc(), amount: amount, external_id: ext } })
+                            .done(function (r) {
+                                if (r && r.success && r.payment_id) { cloverPayFinish(btn, r.payment_id); return; }
+                                if (r && r.unknown) { cloverPayRecover(btn, ext); return; }
+                                cloverPayMsg((r && r.msg) || 'Not paid. Try again or key it in by hand.');
+                                $('#clover_pay_send').prop('disabled', false);
+                                $('#clover_pay_cancel').hide();
+                            })
+                            .fail(function () { cloverPayRecover(btn, ext); })
+                            .always(function () { cloverPayBusy = false; });
+                    });
+                    $('#clover_pay_cancel').off('click.cp').on('click.cp', function () {
+                        $.post('/pos/clover-pay/cancel', { _token: $('meta[name="csrf-token"]').attr('content'), location_id: cloverPayLoc() });
+                        cloverPayMsg('Cancelled on Clover.');
+                    });
+                }
+                function cloverPayRecover(btn, ext) {
+                    cloverPayMsg('Checking with Clover...');
+                    $.ajax({ url: '/pos/clover-pay/recover', method: 'POST', dataType: 'json', timeout: 25000,
+                             data: { _token: $('meta[name="csrf-token"]').attr('content'), location_id: cloverPayLoc(), external_id: ext } })
+                        .done(function (r) {
+                            if (r && r.success && r.payment_id) { cloverPayFinish(btn, r.payment_id); return; }
+                            cloverPayMsg('Clover did not finish this payment. Look at the Clover screen: if it says Approved, tap Approved below. If not, send it again.');
+                            $('#clover_pay_send').prop('disabled', false);
+                        })
+                        .fail(function () {
+                            cloverPayMsg('Could not reach Clover. Look at the Clover screen: if it says Approved, tap Approved below.');
+                            $('#clover_pay_send').prop('disabled', false);
+                        });
                 }
                 // Suppress pos.js's #card_details_modal once when the
                 // cashier already confirmed via our card prompt; click
@@ -1209,6 +1269,13 @@
                             <div class="card-verify-instr">Tell the customer it will be</div>
                             <div class="card-verify-amt" id="card_prompt_total">$0.00</div>
                             <div class="card-amt-tag">after tax</div>
+                        </div>
+                        {{-- Pay on Clover (Sarah 2026-11-13): only shown when the store is set up at /admin/clover-pay. --}}
+                        <div id="clover_pay_box" style="display:none;margin:14px 0 4px;text-align:center;">
+                            <button type="button" class="btn btn-primary" id="clover_pay_send" style="font-size:17px;font-weight:800;padding:12px 22px;border-radius:999px;">Send to Clover</button>
+                            <div id="clover_pay_msg" style="margin-top:10px;font-weight:700;font-size:14.5px;color:#1F1B16;"></div>
+                            <button type="button" class="btn btn-link" id="clover_pay_cancel" style="display:none;">Cancel on Clover</button>
+                            <div style="font-size:13px;color:#2B2620;margin-top:6px;">Or key the amount into Clover by hand like before.</div>
                         </div>
                         <div class="card-reminder">Wait for Clover approval before tapping <strong>Approved</strong>.</div>
                     </div>
